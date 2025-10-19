@@ -1,9 +1,8 @@
+import AdminDashboard from './pages/AdminDashboard';
 import './App.css';
 
 const App = () => {
-  return (
-    <div>App</div>
-  )
+  return <AdminDashboard />;
 }
 
-export default App
+export default App;
