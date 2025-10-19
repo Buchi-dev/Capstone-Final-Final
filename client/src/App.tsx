@@ -1,4 +1,4 @@
-import AdminDashboard from './pages/AdminDashboard';
+import AdminDashboard from './pages/admin/AdminDashboard';
 import './App.css';
 
 const App = () => {
