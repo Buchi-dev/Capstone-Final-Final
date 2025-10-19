@@ -1,28 +1,28 @@
-import { AdminLayout } from '../../components/layouts';
+import { AdminLayout } from '../../../components/layouts';
 import { Card, Typography, Space } from 'antd';
-import { BarChartOutlined } from '@ant-design/icons';
+import { TeamOutlined } from '@ant-design/icons';
 
 const { Title, Paragraph } = Typography;
 
-const Analytics = () => {
+const UserManagement = () => {
   return (
     <AdminLayout>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={2}>
-            <BarChartOutlined /> Analytics
+            <TeamOutlined /> User Management
           </Title>
           <Paragraph type="secondary">
-            View analytics and insights about your IoT devices
+            Manage users, roles, and permissions
           </Paragraph>
         </div>
 
         <Card>
           <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-            <BarChartOutlined style={{ fontSize: '64px', color: '#001f3f', marginBottom: '20px' }} />
-            <Title level={3}>Analytics Dashboard</Title>
+            <TeamOutlined style={{ fontSize: '64px', color: '#001f3f', marginBottom: '20px' }} />
+            <Title level={3}>User Management</Title>
             <Paragraph type="secondary">
-              Analytics features coming soon...
+              User management features coming soon...
             </Paragraph>
           </div>
         </Card>
@@ -31,4 +31,4 @@ const Analytics = () => {
   );
 };
 
-export default Analytics;
+export default UserManagement;

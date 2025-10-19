@@ -26,6 +26,7 @@ import {
   BarChartOutlined,
   FileTextOutlined,
   ApiOutlined,
+  LineChartOutlined,
 } from '@ant-design/icons';
 import { ROUTES } from '../../router';
 
@@ -50,6 +51,10 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
     const path = location.pathname;
     if (path.includes('/devices')) {
       setSelectedKeys(['devices']);
+    } else if (path.includes('/readings')) {
+      setSelectedKeys(['readings']);
+    } else if (path.includes('/data')) {
+      setSelectedKeys(['data']);
     } else if (path.includes('/dashboard')) {
       setSelectedKeys(['dashboard']);
     } else if (path.includes('/analytics')) {
@@ -74,6 +79,11 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
       key: 'devices',
       icon: <ApiOutlined />,
       label: 'Devices',
+    },
+    {
+      key: 'readings',
+      icon: <LineChartOutlined />,
+      label: 'Sensor Readings',
     },
     {
       key: 'analytics',
@@ -130,10 +140,11 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
     const routeMap: Record<string, string> = {
       dashboard: ROUTES.ADMIN.DASHBOARD,
       devices: ROUTES.ADMIN.DEVICES,
+      readings: ROUTES.ADMIN.READINGS,
+      data: ROUTES.ADMIN.DATA,
       analytics: ROUTES.ADMIN.ANALYTICS,
       users: ROUTES.ADMIN.USERS,
       reports: ROUTES.ADMIN.REPORTS,
-      data: ROUTES.ADMIN.BASE + '/data',
       settings: ROUTES.ADMIN.SETTINGS,
     };
 

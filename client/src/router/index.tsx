@@ -1,9 +1,11 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import { DeviceManagement } from '../pages/admin/DeviceManagement';
-import Analytics from '../pages/admin/Analytics';
-import UserManagement from '../pages/admin/UserManagement';
-import Reports from '../pages/admin/Reports';
+import { DeviceReadings } from '../pages/admin/DeviceReadings';
+import { DataManagement } from '../pages/admin/DataManagement';
+import { ManageReports } from '../pages/admin/ManageReports';
+import Analytics from '../pages/admin/Analytics/Analytics';
+import UserManagement from '../pages/admin/UserManagement/UserManagement';
 import Settings from '../pages/admin/Settings';
 
 /**
@@ -28,6 +30,18 @@ export const router = createBrowserRouter([
     element: <DeviceManagement />,
   },
   {
+    path: '/admin/devices/:deviceId/readings',
+    element: <DeviceReadings />,
+  },
+  {
+    path: '/admin/readings',
+    element: <DeviceReadings />,
+  },
+  {
+    path: '/admin/data',
+    element: <DataManagement />,
+  },
+  {
     path: '/admin/analytics',
     element: <Analytics />,
   },
@@ -37,7 +51,7 @@ export const router = createBrowserRouter([
   },
   {
     path: '/admin/reports',
-    element: <Reports />,
+    element: <ManageReports />,
   },
   {
     path: '/admin/settings',
@@ -70,6 +84,8 @@ export const ROUTES = {
     BASE: '/admin',
     DASHBOARD: '/admin/dashboard',
     DEVICES: '/admin/devices',
+    READINGS: '/admin/readings',
+    DATA: '/admin/data',
     ANALYTICS: '/admin/analytics',
     USERS: '/admin/users',
     REPORTS: '/admin/reports',

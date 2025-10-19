@@ -30,6 +30,32 @@ export const SensorReadingSchema = z.object({
   receivedAt: z.number(),
 });
 
+// Report Type Schema
+export const ReportTypeSchema = z.enum(['water-quality', 'device-status', 'data-summary', 'compliance', 'custom']);
+
+// Report Configuration Schema
+export const ReportConfigSchema = z.object({
+  type: ReportTypeSchema,
+  title: z.string(),
+  deviceIds: z.array(z.string()),
+  dateRange: z.any().nullable(), // Can be Dayjs tuple or null
+  includeCharts: z.boolean(),
+  includeRawData: z.boolean(),
+  includeStatistics: z.boolean(),
+  notes: z.string(),
+  generatedBy: z.string(),
+});
+
+// Report History Schema
+export const ReportHistorySchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  title: z.string(),
+  generatedAt: z.date(),
+  devices: z.number(),
+  pages: z.number(),
+});
+
 // API Response Schema
 export const ApiResponseSchema = z.object({
   success: z.boolean(),
@@ -48,6 +74,9 @@ export type Device = z.infer<typeof DeviceSchema>;
 export type SensorReading = z.infer<typeof SensorReadingSchema>;
 export type DeviceStatus = z.infer<typeof DeviceStatusSchema>;
 export type ApiResponse = z.infer<typeof ApiResponseSchema>;
+export type ReportType = z.infer<typeof ReportTypeSchema>;
+export type ReportConfig = z.infer<typeof ReportConfigSchema>;
+export type ReportHistory = z.infer<typeof ReportHistorySchema>;
 
 // Validation helpers
 export const validateDevice = (data: unknown): Device => {
@@ -62,6 +91,14 @@ export const validateApiResponse = (data: unknown): ApiResponse => {
   return ApiResponseSchema.parse(data);
 };
 
+export const validateReportConfig = (data: unknown): ReportConfig => {
+  return ReportConfigSchema.parse(data);
+};
+
+export const validateReportHistory = (data: unknown): ReportHistory => {
+  return ReportHistorySchema.parse(data);
+};
+
 // Safe parsing (returns success/error instead of throwing)
 export const safeParseDevice = (data: unknown) => {
   return DeviceSchema.safeParse(data);
@@ -73,4 +110,12 @@ export const safeParseSensorReading = (data: unknown) => {
 
 export const safeParseApiResponse = (data: unknown) => {
   return ApiResponseSchema.safeParse(data);
+};
+
+export const safeParseReportConfig = (data: unknown) => {
+  return ReportConfigSchema.safeParse(data);
+};
+
+export const safeParseReportHistory = (data: unknown) => {
+  return ReportHistorySchema.safeParse(data);
 };
