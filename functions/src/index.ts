@@ -1,8 +1,8 @@
-import {onRequest} from "firebase-functions/v2/https";
+import {onRequest, Request} from "firebase-functions/v2/https";
 import {setGlobalOptions} from "firebase-functions/v2";
 import * as admin from "firebase-admin";
-import * as mqtt from "mqtt";
-import {Request} from "firebase-functions/v2/https";
+import mqtt from "mqtt";
+
 
 // ===========================
 // TYPE DEFINITIONS
@@ -32,7 +32,7 @@ interface DeviceMetadata {
   location?: string;
   description?: string;
   owner?: string;
-  [key: string]: any;
+  [key: string]: string | number | boolean | undefined;
 }
 
 interface DeviceData {
@@ -99,7 +99,7 @@ interface DeviceManagementRequest {
   deviceData?: DeviceData;
 }
 
-interface ApiResponse<T = any> {
+interface ApiResponse<T = unknown> {
   success: boolean;
   message?: string;
   error?: string;
@@ -193,109 +193,109 @@ export const deviceManagement = onRequest(
 
       // Switch case for different operations
       switch (action) {
-        case "DISCOVER_DEVICES": {
-          await handleDiscoverDevices();
-          res.status(200).json({
-            success: true,
-            message: "Discovery message sent to MQTT",
-          } as ApiResponse);
-          break;
-        }
+      case "DISCOVER_DEVICES": {
+        await handleDiscoverDevices();
+        res.status(200).json({
+          success: true,
+          message: "Discovery message sent to MQTT",
+        } as ApiResponse);
+        break;
+      }
 
-        case "ADD_DEVICE": {
-          if (!deviceId) {
-            res.status(400).json({
-              success: false,
-              error: "Device ID is required",
-            } as ApiResponse);
-            return;
-          }
-          const addResult: DeviceResponse = await handleAddDevice(
-            deviceId,
-            deviceData || {}
-          );
-          res.status(200).json(addResult);
-          break;
-        }
-
-        case "GET_DEVICE": {
-          if (!deviceId) {
-            res.status(400).json({
-              success: false,
-              error: "Device ID is required",
-            } as ApiResponse);
-            return;
-          }
-          const device: DeviceResponse = await handleGetDevice(deviceId);
-          res.status(200).json(device);
-          break;
-        }
-
-        case "UPDATE_DEVICE": {
-          if (!deviceId) {
-            res.status(400).json({
-              success: false,
-              error: "Device ID is required",
-            } as ApiResponse);
-            return;
-          }
-          const updateResult: ApiResponse = await handleUpdateDevice(
-            deviceId,
-            deviceData || {}
-          );
-          res.status(200).json(updateResult);
-          break;
-        }
-
-        case "DELETE_DEVICE": {
-          if (!deviceId) {
-            res.status(400).json({
-              success: false,
-              error: "Device ID is required",
-            } as ApiResponse);
-            return;
-          }
-          const deleteResult: ApiResponse = await handleDeleteDevice(deviceId);
-          res.status(200).json(deleteResult);
-          break;
-        }
-
-        case "LIST_DEVICES": {
-          const devices: DevicesListResponse = await handleListDevices();
-          res.status(200).json(devices);
-          break;
-        }
-
-        case "GET_SENSOR_READINGS": {
-          if (!deviceId) {
-            res.status(400).json({
-              success: false,
-              error: "Device ID is required",
-            } as ApiResponse);
-            return;
-          }
-          const readings: SensorReadingResponse = await handleGetSensorReadings(
-            deviceId
-          );
-          res.status(200).json(readings);
-          break;
-        }
-
-        case "START_MQTT_LISTENER": {
-          await startMqttSensorListener();
-          res.status(200).json({
-            success: true,
-            message: "MQTT sensor listener started",
-          } as ApiResponse);
-          break;
-        }
-
-        default: {
+      case "ADD_DEVICE": {
+        if (!deviceId) {
           res.status(400).json({
             success: false,
-            error: "Invalid action specified",
+            error: "Device ID is required",
           } as ApiResponse);
+          return;
         }
+        const addResult: DeviceResponse = await handleAddDevice(
+          deviceId,
+          deviceData || {}
+        );
+        res.status(200).json(addResult);
+        break;
+      }
+
+      case "GET_DEVICE": {
+        if (!deviceId) {
+          res.status(400).json({
+            success: false,
+            error: "Device ID is required",
+          } as ApiResponse);
+          return;
+        }
+        const device: DeviceResponse = await handleGetDevice(deviceId);
+        res.status(200).json(device);
+        break;
+      }
+
+      case "UPDATE_DEVICE": {
+        if (!deviceId) {
+          res.status(400).json({
+            success: false,
+            error: "Device ID is required",
+          } as ApiResponse);
+          return;
+        }
+        const updateResult: ApiResponse = await handleUpdateDevice(
+          deviceId,
+          deviceData || {}
+        );
+        res.status(200).json(updateResult);
+        break;
+      }
+
+      case "DELETE_DEVICE": {
+        if (!deviceId) {
+          res.status(400).json({
+            success: false,
+            error: "Device ID is required",
+          } as ApiResponse);
+          return;
+        }
+        const deleteResult: ApiResponse = await handleDeleteDevice(deviceId);
+        res.status(200).json(deleteResult);
+        break;
+      }
+
+      case "LIST_DEVICES": {
+        const devices: DevicesListResponse = await handleListDevices();
+        res.status(200).json(devices);
+        break;
+      }
+
+      case "GET_SENSOR_READINGS": {
+        if (!deviceId) {
+          res.status(400).json({
+            success: false,
+            error: "Device ID is required",
+          } as ApiResponse);
+          return;
+        }
+        const readings: SensorReadingResponse = await handleGetSensorReadings(
+          deviceId
+        );
+        res.status(200).json(readings);
+        break;
+      }
+
+      case "START_MQTT_LISTENER": {
+        await startMqttSensorListener();
+        res.status(200).json({
+          success: true,
+          message: "MQTT sensor listener started",
+        } as ApiResponse);
+        break;
+      }
+
+      default: {
+        res.status(400).json({
+          success: false,
+          error: "Invalid action specified",
+        } as ApiResponse);
+      }
       }
     } catch (error) {
       console.error("Error in deviceManagement:", error);
@@ -311,10 +311,13 @@ export const deviceManagement = onRequest(
 // HANDLER FUNCTIONS
 // ===========================
 
-// DISCOVER DEVICES - Send discovery message to MQTT
+/**
+ * Discover devices by sending a discovery message to MQTT broker
+ * @return {Promise<void>} Promise that resolves when discovery message is sent
+ */
 async function handleDiscoverDevices(): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const client: mqtt.MqttClient = mqtt.connect(MQTT_CONFIG.broker, {
+    const client = mqtt.connect(MQTT_CONFIG.broker, {
       port: MQTT_CONFIG.port,
       username: MQTT_CONFIG.username,
       password: MQTT_CONFIG.password,
@@ -353,7 +356,12 @@ async function handleDiscoverDevices(): Promise<void> {
   });
 }
 
-// ADD DEVICE - Create new device in Firestore
+/**
+ * Add a new device to Firestore
+ * @param {string} deviceId - The unique device identifier
+ * @param {DeviceData} deviceData - The device data to store
+ * @return {Promise<DeviceResponse>} Promise with the device creation result
+ */
 async function handleAddDevice(
   deviceId: string,
   deviceData: DeviceData
@@ -408,7 +416,11 @@ async function handleAddDevice(
   }
 }
 
-// GET DEVICE - Read device from Firestore
+/**
+ * Get device information from Firestore
+ * @param {string} deviceId - The unique device identifier
+ * @return {Promise<DeviceResponse>} Promise with the device data
+ */
 async function handleGetDevice(deviceId: string): Promise<DeviceResponse> {
   try {
     const deviceRef: admin.firestore.DocumentReference =
@@ -433,7 +445,12 @@ async function handleGetDevice(deviceId: string): Promise<DeviceResponse> {
   }
 }
 
-// UPDATE DEVICE - Update device in Firestore
+/**
+ * Update device information in Firestore
+ * @param {string} deviceId - The unique device identifier
+ * @param {DeviceData} deviceData - The updated device data
+ * @return {Promise<ApiResponse>} Promise with the update result
+ */
 async function handleUpdateDevice(
   deviceId: string,
   deviceData: DeviceData
@@ -473,7 +490,11 @@ async function handleUpdateDevice(
   }
 }
 
-// DELETE DEVICE - Delete device from Firestore
+/**
+ * Delete a device from Firestore and its sensor readings
+ * @param {string} deviceId - The unique device identifier
+ * @return {Promise<ApiResponse>} Promise with the deletion result
+ */
 async function handleDeleteDevice(deviceId: string): Promise<ApiResponse> {
   try {
     const deviceRef: admin.firestore.DocumentReference =
@@ -504,7 +525,10 @@ async function handleDeleteDevice(deviceId: string): Promise<ApiResponse> {
   }
 }
 
-// LIST DEVICES - Get all devices
+/**
+ * List all devices from Firestore
+ * @return {Promise<DevicesListResponse>} Promise with list of all devices
+ */
 async function handleListDevices(): Promise<DevicesListResponse> {
   try {
     const devicesSnapshot: admin.firestore.QuerySnapshot =
@@ -527,7 +551,11 @@ async function handleListDevices(): Promise<DevicesListResponse> {
   }
 }
 
-// GET SENSOR READINGS - Retrieve sensor data from Realtime Database
+/**
+ * Get sensor readings for a device from Realtime Database
+ * @param {string} deviceId - The unique device identifier
+ * @return {Promise<SensorReadingResponse>} Promise with the sensor readings
+ */
 async function handleGetSensorReadings(
   deviceId: string
 ): Promise<SensorReadingResponse> {
@@ -559,10 +587,13 @@ async function handleGetSensorReadings(
   }
 }
 
-// MQTT SENSOR LISTENER - Listen for sensor data and store in Realtime Database
+/**
+ * Start MQTT listener for sensor data and store in Realtime Database
+ * @return {Promise<void>} Promise that resolves when listener is started
+ */
 async function startMqttSensorListener(): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const client: mqtt.MqttClient = mqtt.connect(MQTT_CONFIG.broker, {
+    const client = mqtt.connect(MQTT_CONFIG.broker, {
       port: MQTT_CONFIG.port,
       username: MQTT_CONFIG.username,
       password: MQTT_CONFIG.password,
@@ -609,7 +640,8 @@ async function startMqttSensorListener(): Promise<void> {
           receivedAt: admin.database.ServerValue.TIMESTAMP,
         };
 
-        // Store in Realtime Database - Latest Reading (for real-time monitoring)
+        // Store in Realtime Database - Latest Reading
+        // (for real-time monitoring)
         await rtdb
           .ref(`sensorReadings/${deviceId}/latestReading`)
           .set(readingData);
