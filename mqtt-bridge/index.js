@@ -8,8 +8,8 @@ const pubsub = new PubSub();
 // MQTT Configuration
 const MQTT_CONFIG = {
   broker: process.env.MQTT_BROKER || 'mqtts://36965de434ff42a4a93a697c94a13ad7.s1.eu.hivemq.cloud:8883',
-  username: process.env.MQTT_USERNAME,
-  password: process.env.MQTT_PASSWORD,
+  username: process.env.MQTT_USERNAME || 'functions2025',
+  password: process.env.MQTT_PASSWORD || 'Jaffmier@0924',
   clientId: `bridge_${Math.random().toString(16).slice(3)}`,
 };
 
