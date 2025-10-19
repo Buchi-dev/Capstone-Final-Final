@@ -1,4 +1,6 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { Result, Button } from 'antd';
+import { HomeOutlined } from '@ant-design/icons';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import { DeviceManagement } from '../pages/admin/DeviceManagement';
 import { DeviceReadings } from '../pages/admin/DeviceReadings';
@@ -65,11 +67,22 @@ export const router = createBrowserRouter([
         justifyContent: 'center', 
         alignItems: 'center', 
         height: '100vh',
-        flexDirection: 'column',
-        gap: '20px'
+        backgroundColor: '#f5f5f5'
       }}>
-        <h1>404 - Page Not Found</h1>
-        <a href="/admin/dashboard">Go to Dashboard</a>
+        <Result
+          status="404"
+          title="404"
+          subTitle="Sorry, the page you visited does not exist."
+          extra={
+            <Button 
+              type="primary" 
+              icon={<HomeOutlined />}
+              onClick={() => window.location.href = '/admin/dashboard'}
+            >
+              Back to Dashboard
+            </Button>
+          }
+        />
       </div>
     ),
   },
