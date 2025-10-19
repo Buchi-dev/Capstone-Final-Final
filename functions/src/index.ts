@@ -71,7 +71,7 @@ interface SensorReading {
   ph: number;
   temperature: number;
   timestamp: number;
-  receivedAt: number;
+  receivedAt: number | object;
 }
 
 interface SensorData {
@@ -575,7 +575,7 @@ async function startMqttSensorListener(): Promise<void> {
       console.log("Connected to MQTT broker for sensor data");
 
       // Subscribe to sensor data topic
-      client.subscribe(TOPICS.SENSOR_DATA, {qos: 1}, (error?: Error) => {
+      client.subscribe(TOPICS.SENSOR_DATA, {qos: 1}, (error: Error | null) => {
         if (error) {
           console.error("Subscription error:", error);
           reject(error);
