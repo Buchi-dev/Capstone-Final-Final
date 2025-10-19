@@ -11,14 +11,14 @@ export const themeConfig: ThemeConfig = {
     colorPrimary: '#001f3f', // Navy Blue
     
     // Border Radius
-    borderRadius: 8,
+    borderRadius: 6,
     
     // Font
     fontSize: 14,
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     
-    // Spacing
-    controlHeight: 36,
+    // Spacing - Reduced from 36 to 32 for more compact components
+    controlHeight: 32,
     
     // Colors
     colorSuccess: '#52c41a',
@@ -53,30 +53,38 @@ export const themeConfig: ThemeConfig = {
   // Component-specific token overrides
   components: {
     Button: {
-      controlHeight: 36,
-      borderRadius: 8,
+      controlHeight: 32,        // Reduced from 36 to 32
+      borderRadius: 6,          // Reduced from 8 to 6
       fontWeight: 500,
+      paddingContentHorizontal: 15, // Slightly more compact padding
     },
     Input: {
-      controlHeight: 36,
-      borderRadius: 8,
+      controlHeight: 32,        // Reduced from 36 to 32
+      borderRadius: 6,          // Reduced from 8 to 6
+      paddingBlock: 4,          // Tighter vertical padding
+      paddingInline: 11,        // Standard horizontal padding
     },
     Select: {
-      controlHeight: 36,
-      borderRadius: 8,
+      controlHeight: 32,        // Reduced from 36 to 32
+      borderRadius: 6,          // Reduced from 8 to 6
     },
     Card: {
-      borderRadiusLG: 12,
-      paddingLG: 24,
+      borderRadiusLG: 8,        // Reduced from 12 to 8
+      paddingLG: 20,            // Reduced from 24 to 20
     },
     Table: {
-      borderRadiusLG: 8,
+      borderRadiusLG: 6,        // Reduced from 8 to 6
+      cellPaddingBlock: 12,     // More compact table cells
+      cellPaddingInline: 12,    // More compact table cells
     },
     Modal: {
-      borderRadiusLG: 12,
+      borderRadiusLG: 8,        // Reduced from 12 to 8
     },
     Drawer: {
-      borderRadiusLG: 12,
+      borderRadiusLG: 8,        // Reduced from 12 to 8
+    },
+    Space: {
+      size: 12,                 // Default space size for consistency
     },
   },
   
