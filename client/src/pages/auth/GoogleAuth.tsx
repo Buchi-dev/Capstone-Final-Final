@@ -1,14 +1,14 @@
 /**
  * Google Authentication Component
  * Handles Google OAuth sign-in using Firebase Authentication
- * Consistent design pattern with theme configuration
+ * Clean, optimized design with popup method as default
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Card, Alert, Typography, Space, Spin, Switch, Divider, theme } from "antd";
-import { GoogleOutlined, LoadingOutlined, SwapOutlined } from "@ant-design/icons";
-import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider } from "firebase/auth";
+import { Button, Card, Alert, Typography, Space, Spin, Divider, theme } from "antd";
+import { GoogleOutlined, LoadingOutlined } from "@ant-design/icons";
+import { signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "../../config/firebase";
 
@@ -16,172 +16,148 @@ const { Title, Text } = Typography;
 
 export default function GoogleAuth() {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [retrying, setRetrying] = useState(false);
-  const [useRedirect, setUseRedirect] = useState(false);
+  const [error, setError] = useState<{ message: string; solution?: string; canRetry?: boolean } | null>(null);
   const navigate = useNavigate();
   const { token } = theme.useToken();
 
-  // Helper function to handle user profile and navigation
+  // Navigate user based on profile status
   const handleUserProfile = async (user: any) => {
-    const userDocRef = doc(db, "users", user.uid);
-    const userDoc = await getDoc(userDocRef);
+    try {
+      const userDocRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userDocRef);
 
-    if (!userDoc.exists()) {
-      console.log("New user detected, redirecting to account completion");
-      navigate("/auth/complete-account");
-      return;
-    }
+      if (!userDoc.exists()) {
+        navigate("/auth/complete-account");
+        return;
+      }
 
-    const userData = userDoc.data();
-    const status = userData.status;
+      const userData = userDoc.data();
 
-    // Check if user needs to complete their profile
-    if (!userData.department || !userData.phoneNumber) {
-      console.log("User needs to complete profile");
-      navigate("/auth/complete-account");
-      return;
-    }
+      // Check if profile is incomplete
+      if (!userData.department || !userData.phoneNumber) {
+        navigate("/auth/complete-account");
+        return;
+      }
 
-    // Check user status and redirect accordingly
-    if (status === "Pending") {
-      console.log("User account pending approval");
-      navigate("/auth/pending-approval");
-    } else if (status === "Suspended") {
-      console.log("User account is suspended");
-      navigate("/auth/account-inactive");
-    } else if (status === "Approved") {
-      console.log("User approved, redirecting to dashboard");
-      const role = userData.role;
-      navigate(role === "Admin" ? "/admin/dashboard" : "/staff/dashboard");
-    } else {
-      // Unknown status, default to pending
-      navigate("/auth/pending-approval");
-    }
-  };
-
-  // Helper function to get user-friendly error messages
-  const getErrorMessage = (err: any): string => {
-    if (err && typeof err === "object" && "code" in err) {
-      const error = err as { code: string; message: string };
+      // Route based on user status
+      const { status, role } = userData;
       
-      switch (error.code) {
-        case "auth/popup-closed-by-user":
-          return "Sign-in cancelled. Please try again.";
-        case "auth/cancelled-popup-request":
-          return "Another sign-in is in progress. Please wait.";
-        case "auth/popup-blocked":
-          return "Pop-up blocked by browser. Please allow pop-ups for this site or try Redirect method.";
-        case "auth/network-request-failed":
-          return "Network error. Please check your internet connection and try again.";
-        case "auth/too-many-requests":
-          return "Too many failed attempts. Please wait a few minutes and try again.";
-        case "auth/user-disabled":
-          return "This account has been disabled. Please contact support.";
-        case "auth/configuration-not-found":
-          return "Authentication not configured. Please contact support.";
-        case "auth/unauthorized-domain":
-          return "This domain is not authorized. Please contact support.";
-        case "auth/operation-not-allowed":
-          return "Google sign-in is not enabled. Please contact support.";
-        case "auth/error-code:-47":
-        case "auth/internal-error":
-          if (error.message?.includes("503")) {
-            return "⚠️ Firebase service temporarily unavailable (503 Error). The authentication server is experiencing issues. Please wait 2-5 minutes and try the Redirect method or retry. If the issue persists, try: Clear browser cache and cookies, Use incognito/private mode, Try a different browser";
-          }
-          return `Internal authentication error. Please try again or contact support. Error: ${error.message}`;
-        default:
-          return `Authentication failed: ${error.message || "Unknown error"}. Please try again.`;
+      if (status === "Approved") {
+        navigate(role === "Admin" ? "/admin/dashboard" : "/staff/dashboard");
+      } else if (status === "Suspended") {
+        navigate("/auth/account-inactive");
+      } else {
+        navigate("/auth/pending-approval");
       }
+    } catch (err) {
+      console.error("Error checking user profile:", err);
+      setError({ 
+        message: "Failed to load user profile. Please try again.",
+        canRetry: true 
+      });
     }
-    
-    if (err instanceof Error) {
-      return err.message;
-    }
-    
-    return "An unexpected error occurred. Please try again.";
   };
 
-  // Check for redirect result on component mount
-  useEffect(() => {
-    const checkRedirectResult = async () => {
-      try {
-        setLoading(true);
-        const result = await getRedirectResult(auth);
-        if (result) {
-          console.log("✓ Redirect sign-in successful:", result.user.email);
-          await handleUserProfile(result.user);
-        }
-      } catch (err: any) {
-        console.error("Redirect result error:", err);
-        setError(getErrorMessage(err));
-      } finally {
-        setLoading(false);
-      }
+  // Enhanced error handler with detailed messages and solutions
+  const getErrorMessage = (err: any): { message: string; solution?: string; canRetry?: boolean } => {
+    if (!err || typeof err !== "object" || !("code" in err)) {
+      return { 
+        message: "An unexpected error occurred. Please try again.",
+        canRetry: true 
+      };
+    }
+
+    const error = err as { code: string; message: string };
+    
+    const errorMap: Record<string, { message: string; solution?: string; canRetry?: boolean }> = {
+      "auth/popup-closed-by-user": {
+        message: "Sign-in was cancelled",
+        solution: "Click the button below to try again",
+        canRetry: true
+      },
+      "auth/cancelled-popup-request": {
+        message: "Another sign-in is already in progress",
+        solution: "Please wait for the current sign-in to complete",
+        canRetry: false
+      },
+      "auth/popup-blocked": {
+        message: "Pop-up was blocked by your browser",
+        solution: "Please allow pop-ups for this site in your browser settings and try again",
+        canRetry: true
+      },
+      "auth/network-request-failed": {
+        message: "Network connection error",
+        solution: "Check your internet connection and try again",
+        canRetry: true
+      },
+      "auth/too-many-requests": {
+        message: "Too many sign-in attempts",
+        solution: "Please wait a few minutes before trying again",
+        canRetry: false
+      },
+      "auth/user-disabled": {
+        message: "Your account has been disabled",
+        solution: "Please contact support for assistance",
+        canRetry: false
+      },
+      "auth/invalid-credential": {
+        message: "Invalid credentials",
+        solution: "Please try signing in again with a valid Google account",
+        canRetry: true
+      },
+      "auth/account-exists-with-different-credential": {
+        message: "An account already exists with the same email",
+        solution: "Try signing in with your original sign-in method",
+        canRetry: false
+      },
+      "auth/configuration-not-found": {
+        message: "Authentication is not properly configured",
+        solution: "Please contact the system administrator",
+        canRetry: false
+      },
+      "auth/unauthorized-domain": {
+        message: "This domain is not authorized",
+        solution: "Please contact the system administrator",
+        canRetry: false
+      },
+      "auth/operation-not-allowed": {
+        message: "Google sign-in is not enabled",
+        solution: "Please contact the system administrator",
+        canRetry: false
+      },
     };
 
-    checkRedirectResult();
-  }, []);
+    return errorMap[error.code] || { 
+      message: `Authentication failed: ${error.message || "Unknown error"}`,
+      solution: "Please try again or contact support if the issue persists",
+      canRetry: true
+    };
+  };
 
-  const handleGoogleSignIn = async (isRetry = false) => {
+  // Handle Google Sign-In
+  const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
-    if (isRetry) setRetrying(true);
 
     try {
-      // Check if Firebase is properly initialized
-      if (!auth || !auth.app) {
-        throw new Error("Firebase Authentication is not properly initialized");
-      }
-
-      // Check if we're in development and provide helpful info
-      const isDevelopment = import.meta.env.DEV;
-      if (isDevelopment) {
-        console.log("Environment:", import.meta.env.MODE);
-        console.log("Auth Domain:", auth.config.authDomain);
-        console.log("Current Origin:", window.location.origin);
-      }
-
-      // Create Google Auth Provider
       const provider = new GoogleAuthProvider();
       
-      // Force account selection and add scopes
       provider.setCustomParameters({
         prompt: "select_account",
       });
       
-      // Add required scopes
       provider.addScope('profile');
       provider.addScope('email');
 
-      console.log("Attempting Google sign-in...");
-
-      // Use redirect or popup based on user preference
-      if (useRedirect) {
-        console.log("Using redirect method...");
-        await signInWithRedirect(auth, provider);
-        // User will be redirected away, result handled in useEffect
-        return;
-      } else {
-        console.log("Using popup method...");
-        const result = await signInWithPopup(auth, provider);
-        const user = result.user;
-        console.log("✓ Popup sign-in successful:", user.email);
-        await handleUserProfile(user);
-      }
+      const result = await signInWithPopup(auth, provider);
+      await handleUserProfile(result.user);
 
     } catch (err: unknown) {
-      console.error("Google sign-in error:", err);
+      console.error("Sign-in error:", err);
       setError(getErrorMessage(err));
     } finally {
       setLoading(false);
-      setRetrying(false);
     }
-  };
-
-  // Retry function for 503 errors
-  const handleRetry = () => {
-    handleGoogleSignIn(true);
   };
 
   return (
@@ -197,19 +173,40 @@ export default function GoogleAuth() {
     >
       <Card
         style={{
-          maxWidth: 600,
+          maxWidth: 480,
           width: "100%",
           boxShadow: token.boxShadow,
         }}
         bordered={false}
       >
-        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+        <Space direction="vertical" size="large" style={{ width: "100%" }}>
           {/* Header */}
           <div style={{ textAlign: "center" }}>
-            <Title level={3} style={{ margin: 0, marginBottom: token.marginXS, color: token.colorPrimary }}>
-              Water Quality Monitoring
+            <img 
+              src="/system_logo.svg" 
+              alt="PureTrack Logo" 
+              style={{ 
+                width: 80, 
+                height: 80,
+                marginBottom: token.marginMD,
+              }} 
+            />
+            <Title 
+              level={3} 
+              style={{ 
+                margin: 0, 
+                marginBottom: token.marginXS, 
+                color: token.colorPrimary,
+                fontSize: token.fontSizeHeading3,
+              }}
+            >
+              PureTrack
             </Title>
             <Text type="secondary" style={{ fontSize: token.fontSize }}>
+              Water Quality Monitoring System
+            </Text>
+            <br />
+            <Text type="secondary" style={{ fontSize: token.fontSizeSM }}>
               Sign in with your Google account
             </Text>
           </div>
@@ -217,22 +214,26 @@ export default function GoogleAuth() {
           {/* Error Alert */}
           {error && (
             <Alert
-              message="Sign-in Error"
+              message="Sign-in Failed"
               description={
-                <div>
-                  <div style={{ whiteSpace: 'pre-line', fontSize: token.fontSizeSM }}>{error}</div>
-                  {(error.includes('503') || error.includes('unavailable')) && (
+                <Space direction="vertical" size="small">
+                  <Text>{error.message}</Text>
+                  {error.solution && (
+                    <Text type="secondary" style={{ fontSize: token.fontSizeSM }}>
+                      {error.solution}
+                    </Text>
+                  )}
+                  {error.canRetry && (
                     <Button
                       size="small"
                       type="primary"
-                      onClick={handleRetry}
-                      loading={retrying}
-                      style={{ marginTop: token.marginSM }}
+                      onClick={handleGoogleSignIn}
+                      style={{ marginTop: token.marginXS }}
                     >
-                      {retrying ? 'Retrying...' : 'Retry Sign In'}
+                      Try Again
                     </Button>
                   )}
-                </div>
+                </Space>
               }
               type="error"
               showIcon
@@ -241,76 +242,24 @@ export default function GoogleAuth() {
             />
           )}
 
-          <Divider style={{ margin: `${token.marginXS}px 0` }} />
-
-          {/* Sign-in Method Toggle */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: token.paddingSM,
-              background: token.colorInfoBg,
-              border: `1px solid ${token.colorInfoBorder}`,
-              borderRadius: token.borderRadius,
-            }}
-          >
-            <Space size="small">
-              <SwapOutlined style={{ color: token.colorInfo }} />
-              <Text style={{ fontSize: token.fontSizeSM, fontWeight: 500 }}>
-                {useRedirect ? "Redirect Method" : "Popup Method"}
-              </Text>
-            </Space>
-            <Switch
-              checked={useRedirect}
-              onChange={setUseRedirect}
-              size="small"
-            />
-          </div>
-
           {/* Sign-in Button */}
           <Button
             type="primary"
             size="large"
             icon={loading ? <LoadingOutlined /> : <GoogleOutlined />}
-            onClick={() => handleGoogleSignIn(false)}
+            onClick={handleGoogleSignIn}
             disabled={loading}
+            loading={loading}
             block
+            style={{ height: 48 }}
           >
             {loading ? "Signing in..." : "Sign in with Google"}
           </Button>
 
-          <Divider style={{ margin: `${token.marginXS}px 0` }} />
-
-          {/* Info Section */}
-          <Alert
-            message="First time signing in?"
-            description="You'll complete your profile and wait for admin approval."
-            type="info"
-            showIcon
-          />
-
-          {/* Troubleshooting for 503 */}
-          {error && error.includes('503') && (
-            <Alert
-              message="Troubleshooting 503 Error"
-              description={
-                <Space direction="vertical" size={2}>
-                  <Text style={{ fontSize: token.fontSizeSM }}>• Wait 2-3 minutes and try again</Text>
-                  <Text style={{ fontSize: token.fontSizeSM }}>• Try Redirect method above</Text>
-                  <Text style={{ fontSize: token.fontSizeSM }}>• Clear browser cache</Text>
-                  <Text style={{ fontSize: token.fontSizeSM }}>• Try incognito mode</Text>
-                </Space>
-              }
-              type="warning"
-              showIcon
-            />
-          )}
-
-          {/* Loading Overlay */}
+          {/* Loading State */}
           {loading && (
-            <div style={{ textAlign: "center", padding: `${token.paddingLG}px 0` }}>
-              <Spin size="large" tip="Authenticating..." />
+            <div style={{ textAlign: "center", padding: `${token.padding}px 0` }}>
+              <Spin size="large" tip="Authenticating with Google..." />
             </div>
           )}
         </Space>
