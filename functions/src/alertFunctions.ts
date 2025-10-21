@@ -5,6 +5,7 @@
 
 import * as admin from "firebase-admin";
 import * as nodemailer from "nodemailer";
+import * as functions from "firebase-functions";
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import {logger} from "firebase-functions/v2";
@@ -119,15 +120,35 @@ const DEFAULT_THRESHOLDS: AlertThresholds = {
 // EMAIL CONFIGURATION
 // ===========================
 
+// Get email config from Firebase Functions config
+const getEmailConfig = () => {
+  try {
+    const config = functions.config();
+    return {
+      user: config.email?.user || process.env.EMAIL_USER || "your-email@gmail.com",
+      pass: config.email?.password || process.env.EMAIL_PASSWORD || "your-app-password",
+    };
+  } catch (error) {
+    logger.warn("Failed to get email config, using environment variables", error);
+    return {
+      user: process.env.EMAIL_USER || "hed-tjyuzon@smu.edu.ph",
+      pass: process.env.EMAIL_PASSWORD || "khjo xjed akne uonm",
+    };
+  }
+};
+
 // Configure nodemailer transporter
 // Note: In production, use environment variables for credentials
+const emailConfig = getEmailConfig();
 const emailTransporter = nodemailer.createTransport({
   service: "gmail", // or your email service
   auth: {
-    user: process.env.EMAIL_USER || "your-email@gmail.com",
-    pass: process.env.EMAIL_PASSWORD || "your-app-password",
+    user: emailConfig.user,
+    pass: emailConfig.pass,
   },
 });
+
+logger.info("Email transporter configured", {user: emailConfig.user});
 
 // ===========================
 // HELPER FUNCTIONS
