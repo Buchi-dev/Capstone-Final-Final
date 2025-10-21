@@ -57,5 +57,46 @@ service cloud.firestore {
       // Only Cloud Functions can write reports
       allow write: if false;
     }
+    
+    // ==================== ALERTS ====================
+    match /alerts/{alertId} {
+      // Authenticated users can read alerts
+      allow read: if request.auth != null;
+      
+      // Admins can acknowledge/resolve alerts (update status fields)
+      allow update: if isAdmin()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                       .hasOnly(['status', 'acknowledgedAt', 'acknowledgedBy', 'resolvedAt', 'resolvedBy', 'metadata']);
+      
+      // Only Cloud Functions can create or delete alerts
+      allow create, delete: if false;
+    }
+    
+    // ==================== ALERT SETTINGS ====================
+    match /alertSettings/{settingId} {
+      // Authenticated users can read alert settings
+      allow read: if request.auth != null;
+      
+      // Only Admins can update alert settings (thresholds)
+      allow write: if isAdmin();
+    }
+    
+    // ==================== NOTIFICATION PREFERENCES ====================
+    match /notificationPreferences/{userId} {
+      // Users can read and write their own notification preferences
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Admins can read all notification preferences
+      allow read: if isAdmin();
+    }
+    
+    // ==================== READINGS (for alert monitoring) ====================
+    match /readings/{readingId} {
+      // Authenticated users can read readings
+      allow read: if request.auth != null;
+      
+      // Only Cloud Functions can write readings
+      allow write: if false;
+    }
   }
 }

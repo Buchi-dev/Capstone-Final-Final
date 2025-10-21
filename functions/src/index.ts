@@ -14,6 +14,9 @@ import * as admin from "firebase-admin";
 import {PubSub} from "@google-cloud/pubsub";
 import type {Response} from "express";
 
+// Import alert functions
+export {monitorSensorReadings, checkStaleAlerts} from "./alertFunctions";
+
 // ===========================
 // INITIALIZATION
 // ===========================

@@ -1,6 +1,7 @@
 import { AdminLayout } from '../../components/layouts';
 import { Card, Typography, Space, Tabs } from 'antd';
 import { SettingOutlined } from '@ant-design/icons';
+import AlertConfiguration from './Settings/AlertConfiguration';
 
 const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
@@ -26,6 +27,11 @@ const Settings = () => {
                 <Paragraph type="secondary">
                   General settings configuration coming soon...
                 </Paragraph>
+              </div>
+            </TabPane>
+            <TabPane tab="Alerts" key="alerts">
+              <div style={{ padding: '20px' }}>
+                <AlertConfiguration />
               </div>
             </TabPane>
             <TabPane tab="Security" key="security">

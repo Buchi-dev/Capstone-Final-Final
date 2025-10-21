@@ -12,6 +12,7 @@ import { DeviceManagement } from '../pages/admin/DeviceManagement';
 import { DeviceReadings } from '../pages/admin/DeviceReadings';
 import { DataManagement } from '../pages/admin/DataManagement';
 import { ManageReports } from '../pages/admin/ManageReports';
+import ManageAlerts from '../pages/admin/ManageAlerts';
 import Analytics from '../pages/admin/Analytics/Analytics';
 import UserManagement from '../pages/admin/UserManagement/UserManagement';
 import Settings from '../pages/admin/Settings';
@@ -168,6 +169,14 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    path: '/admin/alerts',
+    element: (
+      <AdminRoute>
+        <ManageAlerts />
+      </AdminRoute>
+    ),
+  },
+  {
     path: '/admin/settings',
     element: (
       <AdminRoute>
@@ -254,6 +263,7 @@ export const ROUTES = {
     ANALYTICS: '/admin/analytics',
     USERS: '/admin/users',
     REPORTS: '/admin/reports',
+    ALERTS: '/admin/alerts',
     SETTINGS: '/admin/settings',
   },
   STAFF: {

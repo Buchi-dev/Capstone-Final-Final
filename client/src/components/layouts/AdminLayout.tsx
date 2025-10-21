@@ -4,7 +4,6 @@ import {
   Layout,
   Menu,
   Button,
-  Badge,
   theme,
   Typography,
 } from 'antd';
@@ -24,6 +23,7 @@ import {
 } from '@ant-design/icons';
 import { ROUTES } from '../../router';
 import UserMenu from '../UserMenu';
+import AlertNotificationCenter from '../AlertNotificationCenter';
 
 const { Header, Sider, Content, Footer } = Layout;
 const { Text } = Typography;
@@ -66,6 +66,8 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
       setSelectedKeys(['users']);
     } else if (path.includes('/reports')) {
       setSelectedKeys(['reports']);
+    } else if (path.includes('/alerts')) {
+      setSelectedKeys(['alerts']);
     } else if (path.includes('/settings')) {
       setSelectedKeys(['settings']);
     }
@@ -92,6 +94,11 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
       key: 'analytics',
       icon: <BarChartOutlined />,
       label: 'Analytics',
+    },
+    {
+      key: 'alerts',
+      icon: <BellOutlined />,
+      label: 'Alerts',
     },
     {
       key: 'users',
@@ -123,6 +130,7 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
       readings: ROUTES.ADMIN.READINGS,
       data: ROUTES.ADMIN.DATA,
       analytics: ROUTES.ADMIN.ANALYTICS,
+      alerts: ROUTES.ADMIN.ALERTS,
       users: ROUTES.ADMIN.USERS,
       reports: ROUTES.ADMIN.REPORTS,
       settings: ROUTES.ADMIN.SETTINGS,
@@ -228,14 +236,8 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
 
           {/* Right side - Notifications & User */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            {/* Notifications */}
-            <Badge count={5} size="small">
-              <Button
-                type="text"
-                icon={<BellOutlined style={{ fontSize: '18px' }} />}
-                size="large"
-              />
-            </Badge>
+            {/* Alert Notifications */}
+            <AlertNotificationCenter />
 
             {/* User Profile Menu */}
             <UserMenu />
