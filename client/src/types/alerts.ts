@@ -25,6 +25,8 @@ export interface WaterQualityAlert {
   alertId: string;
   deviceId: string;
   deviceName?: string;
+  deviceBuilding?: string;
+  deviceFloor?: string;
   parameter: WaterParameter;
   alertType: AlertType;
   severity: AlertSeverity;

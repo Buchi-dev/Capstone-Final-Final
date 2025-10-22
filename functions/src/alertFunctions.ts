@@ -25,13 +25,16 @@ interface SensorReading {
   ph: number;
   turbidity: number;
   timestamp: number;
-  receivedAt: admin.firestore.FieldValue | admin.firestore.Timestamp;
+  receivedAt: number | object | admin.firestore.FieldValue |
+    admin.firestore.Timestamp;
 }
 
 interface WaterQualityAlert {
   alertId: string;
   deviceId: string;
   deviceName?: string;
+  deviceBuilding?: string;
+  deviceFloor?: string;
   parameter: WaterParameter;
   alertType: AlertType;
   severity: AlertSeverity;
@@ -278,21 +281,31 @@ async function analyzeTrend(
   const windowStart = Date.now() - timeWindow * 60 * 1000;
 
   try {
-    // Get readings from the time window
-    const readingsSnapshot = await db
-      .collection("readings")
-      .where("deviceId", "==", deviceId)
-      .where("timestamp", ">=", windowStart)
-      .orderBy("timestamp", "asc")
-      .limit(10)
-      .get();
+    // Get readings from Realtime Database history
+    const rtdb = admin.database();
+    const snapshot = await rtdb
+      .ref(`sensorReadings/${deviceId}/history`)
+      .orderByChild("timestamp")
+      .startAt(windowStart)
+      .limitToLast(10)
+      .once("value");
 
-    if (readingsSnapshot.empty || readingsSnapshot.size < 2) {
+    if (!snapshot.exists()) {
+      return null;
+    }
+
+    // Convert snapshot to array
+    const readings: SensorReading[] = [];
+    snapshot.forEach((childSnapshot) => {
+      readings.push(childSnapshot.val() as SensorReading);
+    });
+
+    if (readings.length < 2) {
       return null;
     }
 
     // Get first and current values
-    const firstReading = readingsSnapshot.docs[0].data() as SensorReading;
+    const firstReading = readings[0];
     const previousValue = firstReading[parameter];
     const changeRate = ((currentValue - previousValue) / previousValue) * 100;
 
@@ -319,6 +332,7 @@ async function analyzeTrend(
  * @param {AlertSeverity} severity - The alert severity
  * @param {AlertType} alertType - The type of alert
  * @param {TrendDirection} trendDirection - The trend direction (optional)
+ * @param {object} location - Device location (building, floor) (optional)
  * @return {object} Object containing message and recommendedAction
  */
 function generateAlertContent(
@@ -326,42 +340,63 @@ function generateAlertContent(
   value: number,
   severity: AlertSeverity,
   alertType: AlertType,
-  trendDirection?: TrendDirection
+  trendDirection?: TrendDirection,
+  location?: { building?: string; floor?: string }
 ): { message: string; recommendedAction: string } {
   const paramName = getParameterName(parameter);
   const unit = getParameterUnit(parameter);
   const valueStr = `${value.toFixed(2)}${unit ? " " + unit : ""}`;
+
+  // Build location prefix if available
+  const locationPrefix = location?.building && location?.floor ?
+    `[${location.building}, ${location.floor}] ` :
+    location?.building ?
+      `[${location.building}] ` :
+      "";
 
   let message = "";
   let recommendedAction = "";
 
   if (alertType === "threshold") {
     message =
-      `${paramName} has reached ${severity.toLowerCase()} level: ` +
+      `${locationPrefix}${paramName} has reached ${severity.toLowerCase()} level: ` +
       `${valueStr}`;
+
+    const locationContext = location?.building && location?.floor ?
+      ` at ${location.building}, ${location.floor}` :
+      location?.building ?
+        ` at ${location.building}` :
+        "";
 
     switch (severity) {
     case "Critical":
       recommendedAction =
-        "Immediate action required. Investigate water source and " +
+        `Immediate action required${locationContext}. Investigate water source and ` +
         "treatment system. Consider temporary shutdown if necessary.";
       break;
     case "Warning":
       recommendedAction =
-        "Monitor closely and prepare corrective actions. Schedule " +
+        `Monitor closely${locationContext} and prepare corrective actions. Schedule ` +
         "system inspection within 24 hours.";
       break;
     case "Advisory":
       recommendedAction =
-        "Continue monitoring. Note for regular maintenance schedule.";
+        `Continue monitoring${locationContext}. Note for regular maintenance schedule.`;
       break;
     }
   } else if (alertType === "trend") {
     const direction =
       trendDirection === "increasing" ? "increasing" : "decreasing";
-    message = `${paramName} is ${direction} abnormally: ${valueStr}`;
+    message = `${locationPrefix}${paramName} is ${direction} abnormally: ${valueStr}`;
+
+    const locationContext = location?.building && location?.floor ?
+      ` at ${location.building}, ${location.floor}` :
+      location?.building ?
+        ` at ${location.building}` :
+        "";
+
     recommendedAction =
-      `Investigate cause of ${direction} trend. Check system ` +
+      `Investigate cause of ${direction} trend${locationContext}. Check system ` +
       "calibration and recent changes to water source or treatment.";
   }
 
@@ -392,28 +427,45 @@ async function createAlert(
   trendDirection?: TrendDirection,
   metadata?: Record<string, unknown>
 ): Promise<string> {
+  // Get device name and location first
+  let deviceName = "Unknown Device";
+  const deviceLocation: { building?: string; floor?: string } = {};
+  try {
+    const deviceDoc = await db.collection("devices").doc(deviceId).get();
+    if (deviceDoc.exists) {
+      const deviceData = deviceDoc.data();
+      deviceName = deviceData?.name || deviceId;
+
+      // Extract location information if available
+      if (deviceData?.metadata?.location) {
+        const location = deviceData.metadata.location;
+        if (location.building) {
+          deviceLocation.building = location.building;
+        }
+        if (location.floor) {
+          deviceLocation.floor = location.floor;
+        }
+      }
+    }
+  } catch (error) {
+    logger.warn("Failed to fetch device information:", error);
+  }
+
+  // Generate alert content with location context
   const {message, recommendedAction} = generateAlertContent(
     parameter,
     currentValue,
     severity,
     alertType,
-    trendDirection
+    trendDirection,
+    deviceLocation
   );
-
-  // Get device name
-  let deviceName = "Unknown Device";
-  try {
-    const deviceDoc = await db.collection("devices").doc(deviceId).get();
-    if (deviceDoc.exists) {
-      deviceName = deviceDoc.data()?.name || deviceId;
-    }
-  } catch (error) {
-    logger.warn("Failed to fetch device name:", error);
-  }
 
   const alertData: Partial<WaterQualityAlert> = {
     deviceId,
     deviceName,
+    ...(deviceLocation.building && {deviceBuilding: deviceLocation.building}),
+    ...(deviceLocation.floor && {deviceFloor: deviceLocation.floor}),
     parameter,
     alertType,
     severity,
@@ -516,11 +568,22 @@ async function sendEmailNotification(
     const severityColor = alert.severity === "Critical" ? "#ff4d4f" :
       alert.severity === "Warning" ? "#faad14" : "#1890ff";
 
+    // Build location string for subject and body
+    const alertWithLocation = alert as WaterQualityAlert;
+    const locationStr = alertWithLocation.deviceBuilding &&
+      alertWithLocation.deviceFloor ?
+      `${alertWithLocation.deviceBuilding}, ${alertWithLocation.deviceFloor}` :
+      alertWithLocation.deviceBuilding ?
+        alertWithLocation.deviceBuilding :
+        "";
+
+    const subjectLocation = locationStr ? ` - ${locationStr}` : "";
+
     const mailOptions = {
       from: process.env.EMAIL_USER || "noreply@puretrack.com",
       to: recipient.email,
       subject:
-        `[${alert.severity}] Water Quality Alert - ` +
+        `[${alert.severity}] Water Quality Alert${subjectLocation} - ` +
         `${getParameterName(alert.parameter!)}`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; 
@@ -528,6 +591,9 @@ async function sendEmailNotification(
           <div style="background: ${severityColor}; color: white; 
             padding: 20px; border-radius: 8px 8px 0 0;">
             <h2 style="margin: 0;">⚠️ Water Quality Alert</h2>
+            ${locationStr ?
+    `<p style="margin: 5px 0 0 0; font-size: 14px;">📍 ${locationStr}</p>` :
+    ""}
           </div>
           <div style="background: #f5f5f5; padding: 20px; 
             border-radius: 0 0 8px 8px;">
@@ -537,6 +603,7 @@ async function sendEmailNotification(
                 ${alert.severity} Alert
               </h3>
               <p><strong>Device:</strong> ${alert.deviceName}</p>
+              ${locationStr ? `<p><strong>Location:</strong> ${locationStr}</p>` : ""}
               <p>
                 <strong>Parameter:</strong>
                 ${getParameterName(alert.parameter!)}
@@ -629,95 +696,25 @@ async function processNotifications(
 // ===========================
 
 /**
- * Monitor new sensor readings and generate alerts
- * Triggered when a new reading document is created
+ * @deprecated This function is deprecated and no longer in use.
+ * Alert monitoring is now handled directly in processSensorData
+ * via processSensorReadingForAlerts() function.
+ *
+ * Previous behavior: Monitored Firestore "readings" collection which was
+ * incorrect since sensor data is stored in Realtime Database.
+ *
+ * Kept for backward compatibility during migration.
  */
 export const monitorSensorReadings = onDocumentCreated(
   "readings/{readingId}",
-  async (event) => {
-    const reading = event.data?.data() as SensorReading;
-    if (!reading) {
-      return;
-    }
-
-    const db = admin.firestore();
-    const thresholds = await getThresholdConfig(db);
-
-    logger.info(`Processing reading for device ${reading.deviceId}`);
-
-    // Check each parameter for threshold violations
-    const parameters: WaterParameter[] = ["tds", "ph", "turbidity"];
-
-    for (const parameter of parameters) {
-      const value = reading[parameter];
-
-      // Check threshold violation
-      const thresholdCheck = checkThreshold(parameter, value, thresholds);
-
-      if (thresholdCheck.exceeded) {
-        const alertId = await createAlert(
-          db,
-          reading.deviceId,
-          parameter,
-          "threshold",
-          thresholdCheck.severity!,
-          value,
-          thresholdCheck.threshold,
-          undefined,
-          {location: reading.deviceId}
-        );
-
-        // Get the created alert
-        const alertDoc = await db.collection("alerts").doc(alertId).get();
-        const alertData = {
-          alertId,
-          ...alertDoc.data(),
-        } as Partial<WaterQualityAlert>;
-
-        // Process notifications in background
-        await processNotifications(db, alertId, alertData);
-      }
-
-      // Check for trends
-      const trendAnalysis = await analyzeTrend(
-        db,
-        reading.deviceId,
-        parameter,
-        value,
-        thresholds
-      );
-
-      if (trendAnalysis && trendAnalysis.hasTrend) {
-        const severity: AlertSeverity =
-          trendAnalysis.changeRate > 30 ? "Critical" :
-            trendAnalysis.changeRate > 20 ? "Warning" : "Advisory";
-
-        const alertId = await createAlert(
-          db,
-          reading.deviceId,
-          parameter,
-          "trend",
-          severity,
-          value,
-          null,
-          trendAnalysis.direction,
-          {
-            previousValue: trendAnalysis.previousValue,
-            changeRate: trendAnalysis.changeRate,
-          }
-        );
-
-        // Get the created alert
-        const alertDoc = await db.collection("alerts").doc(alertId).get();
-        const alertData = {
-          alertId,
-          ...alertDoc.data(),
-        } as Partial<WaterQualityAlert>;
-
-        // Process notifications
-        await processNotifications(db, alertId, alertData);
-      }
-    }
+  async () => {
+    logger.warn(
+      "DEPRECATED: monitorSensorReadings triggered. " +
+      "This function is no longer used. " +
+      "Alert processing now occurs in processSensorData function."
+    );
+    // No-op - function kept for deployment compatibility
+    return;
   }
 );
 
@@ -755,6 +752,95 @@ export const checkStaleAlerts = onSchedule("every 1 hours", async () => {
 });
 
 /**
+ * Process sensor reading and check for alerts
+ * Called from processSensorData function
+ * @param {SensorReading} reading - The sensor reading to process
+ * @return {Promise<void>} Promise that resolves when processing is complete
+ */
+export async function processSensorReadingForAlerts(
+  reading: SensorReading
+): Promise<void> {
+  const db = admin.firestore();
+  const thresholds = await getThresholdConfig(db);
+
+  logger.info(`Processing reading for alerts: device ${reading.deviceId}`);
+
+  // Check each parameter for threshold violations
+  const parameters: WaterParameter[] = ["tds", "ph", "turbidity"];
+
+  for (const parameter of parameters) {
+    const value = reading[parameter];
+
+    // Check threshold violation
+    const thresholdCheck = checkThreshold(parameter, value, thresholds);
+
+    if (thresholdCheck.exceeded) {
+      const alertId = await createAlert(
+        db,
+        reading.deviceId,
+        parameter,
+        "threshold",
+        thresholdCheck.severity!,
+        value,
+        thresholdCheck.threshold,
+        undefined,
+        {location: reading.deviceId}
+      );
+
+      // Get the created alert
+      const alertDoc = await db.collection("alerts").doc(alertId).get();
+      const alertData = {
+        alertId,
+        ...alertDoc.data(),
+      } as Partial<WaterQualityAlert>;
+
+      // Process notifications in background
+      await processNotifications(db, alertId, alertData);
+    }
+
+    // Check for trends
+    const trendAnalysis = await analyzeTrend(
+      db,
+      reading.deviceId,
+      parameter,
+      value,
+      thresholds
+    );
+
+    if (trendAnalysis && trendAnalysis.hasTrend) {
+      const severity: AlertSeverity =
+        trendAnalysis.changeRate > 30 ? "Critical" :
+          trendAnalysis.changeRate > 20 ? "Warning" : "Advisory";
+
+      const alertId = await createAlert(
+        db,
+        reading.deviceId,
+        parameter,
+        "trend",
+        severity,
+        value,
+        null,
+        trendAnalysis.direction,
+        {
+          previousValue: trendAnalysis.previousValue,
+          changeRate: trendAnalysis.changeRate,
+        }
+      );
+
+      // Get the created alert
+      const alertDoc = await db.collection("alerts").doc(alertId).get();
+      const alertData = {
+        alertId,
+        ...alertDoc.data(),
+      } as Partial<WaterQualityAlert>;
+
+      // Process notifications
+      await processNotifications(db, alertId, alertData);
+    }
+  }
+}
+
+/**
  * Initialize default threshold configuration
  * Call this once to set up default thresholds
  * @param {admin.firestore.Firestore} db - The Firestore database instance
@@ -773,3 +859,4 @@ export const initializeAlertThresholds = async (
     logger.error("Failed to initialize thresholds:", error);
   }
 };
+

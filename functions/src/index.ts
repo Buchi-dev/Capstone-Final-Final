@@ -16,6 +16,7 @@ import type {Response} from "express";
 
 // Import alert functions
 export {monitorSensorReadings, checkStaleAlerts} from "./alertFunctions";
+import {processSensorReadingForAlerts} from "./alertFunctions";
 
 // ===========================
 // INITIALIZATION
@@ -542,6 +543,9 @@ export const processSensorData = onMessagePublished(
         status: "online",
       });
 
+      // Process alerts for this reading
+      await processSensorReadingForAlerts(readingData);
+
       console.log(`✓ Sensor data processed for device: ${deviceId}`);
     } catch (error) {
       console.error("Error processing sensor data:", error);
@@ -1046,15 +1050,19 @@ async function generateWaterQualityReport(
   };
 
   for (const devId of devices) {
+    // Query by receivedAt (server timestamp) instead of timestamp (device time)
     const snapshot = await rtdb
       .ref(`sensorReadings/${devId}/history`)
-      .orderByChild("timestamp")
+      .orderByChild("receivedAt")
       .startAt(start)
       .endAt(end)
       .limitToLast(10000)
       .once("value");
 
-    if (!snapshot.exists()) continue;
+    if (!snapshot.exists()) {
+      console.log(`No readings found for device ${devId} in time range`);
+      continue;
+    }
 
     const readings: SensorReading[] = [];
     snapshot.forEach((child) => {
@@ -1178,9 +1186,10 @@ async function generateDataSummaryReport(
   };
 
   for (const devId of devices) {
+    // Query by receivedAt (server timestamp) instead of timestamp (device time)
     const snapshot = await rtdb
       .ref(`sensorReadings/${devId}/history`)
-      .orderByChild("timestamp")
+      .orderByChild("receivedAt")
       .startAt(start)
       .endAt(end)
       .limitToLast(10000)
@@ -1244,9 +1253,10 @@ async function generateComplianceReport(
   const complianceData: Array<unknown> = [];
 
   for (const devId of devices) {
+    // Query by receivedAt (server timestamp) instead of timestamp (device time)
     const snapshot = await rtdb
       .ref(`sensorReadings/${devId}/history`)
-      .orderByChild("timestamp")
+      .orderByChild("receivedAt")
       .startAt(start)
       .endAt(end)
       .limitToLast(10000)

@@ -204,10 +204,20 @@ export default function AlertNotificationCenter() {
                       >
                         {alert.message}
                       </Text>
-                      <Space size={8}>
+                      <Space size={8} wrap>
                         <Text type="secondary" style={{ fontSize: 11 }}>
                           {alert.deviceName || alert.deviceId}
                         </Text>
+                        {(alert.deviceBuilding || alert.deviceFloor) && (
+                          <>
+                            <Text type="secondary" style={{ fontSize: 11 }}>
+                              •
+                            </Text>
+                            <Text type="secondary" style={{ fontSize: 11 }}>
+                              📍 {[alert.deviceBuilding, alert.deviceFloor].filter(Boolean).join(', ')}
+                            </Text>
+                          </>
+                        )}
                         <Text type="secondary" style={{ fontSize: 11 }}>
                           •
                         </Text>

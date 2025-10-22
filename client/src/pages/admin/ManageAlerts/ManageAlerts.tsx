@@ -275,6 +275,24 @@ export default function ManageAlerts() {
       ),
     },
     {
+      title: 'Location',
+      key: 'location',
+      width: 180,
+      render: (_, record) => {
+        if (record.deviceBuilding || record.deviceFloor) {
+          const locationText = [record.deviceBuilding, record.deviceFloor]
+            .filter(Boolean)
+            .join(', ');
+          return (
+            <Text type="secondary">
+              📍 {locationText}
+            </Text>
+          );
+        }
+        return <Text type="secondary" italic>Not configured</Text>;
+      },
+    },
+    {
       title: 'Value',
       dataIndex: 'currentValue',
       key: 'currentValue',
@@ -530,6 +548,14 @@ export default function ManageAlerts() {
                     <div>
                       <Text strong>Device:</Text> {selectedAlert.deviceName || selectedAlert.deviceId}
                     </div>
+                    {(selectedAlert.deviceBuilding || selectedAlert.deviceFloor) && (
+                      <div>
+                        <Text strong>Location:</Text>{' '}
+                        <Text>
+                          📍 {[selectedAlert.deviceBuilding, selectedAlert.deviceFloor].filter(Boolean).join(', ')}
+                        </Text>
+                      </div>
+                    )}
                     <div>
                       <Text strong>Parameter:</Text> {getParameterName(selectedAlert.parameter)}
                     </div>
