@@ -10,13 +10,11 @@ import {
 } from "firebase-functions/v2/identity";
 import type {CloudEvent} from "firebase-functions/v2";
 import {setGlobalOptions, logger} from "firebase-functions/v2";
+import {onSchedule} from "firebase-functions/v2/scheduler";
 import * as admin from "firebase-admin";
 import {PubSub} from "@google-cloud/pubsub";
 import type {Response} from "express";
-
-// Import alert functions
-export {monitorSensorReadings, checkStaleAlerts} from "./alertFunctions";
-import {processSensorReadingForAlerts} from "./alertFunctions";
+import * as nodemailer from "nodemailer";
 
 // ===========================
 // INITIALIZATION
@@ -37,8 +35,119 @@ setGlobalOptions({
 });
 
 // ===========================
+// ALERT CONFIGURATION
+// ===========================
+
+// Default threshold configuration
+const DEFAULT_THRESHOLDS: AlertThresholds = {
+  tds: {
+    warningMin: 0,
+    warningMax: 500,
+    criticalMin: 0,
+    criticalMax: 1000,
+    unit: "ppm",
+  },
+  ph: {
+    warningMin: 6.0,
+    warningMax: 8.5,
+    criticalMin: 5.5,
+    criticalMax: 9.0,
+    unit: "",
+  },
+  turbidity: {
+    warningMin: 0,
+    warningMax: 5,
+    criticalMin: 0,
+    criticalMax: 10,
+    unit: "NTU",
+  },
+  trendDetection: {
+    enabled: true,
+    thresholdPercentage: 15,
+    timeWindowMinutes: 30,
+  },
+};
+
+// Email configuration
+const EMAIL_USER = "hed-tjyuzon@smu.edu.ph";
+const EMAIL_PASSWORD = "khjo xjed akne uonm";
+
+const emailTransporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: EMAIL_USER,
+    pass: EMAIL_PASSWORD,
+  },
+});
+
+logger.info("Email transporter configured", {user: EMAIL_USER});
+
+// ===========================
 // TYPE DEFINITIONS
 // ===========================
+
+// Alert Types
+type AlertSeverity = "Advisory" | "Warning" | "Critical";
+type AlertStatus = "Active" | "Acknowledged" | "Resolved";
+type WaterParameter = "tds" | "ph" | "turbidity";
+type TrendDirection = "increasing" | "decreasing" | "stable";
+type AlertType = "threshold" | "trend";
+
+interface WaterQualityAlert {
+  alertId: string;
+  deviceId: string;
+  deviceName?: string;
+  deviceBuilding?: string;
+  deviceFloor?: string;
+  parameter: WaterParameter;
+  alertType: AlertType;
+  severity: AlertSeverity;
+  status: AlertStatus;
+  currentValue: number;
+  thresholdValue?: number;
+  trendDirection?: TrendDirection;
+  message: string;
+  recommendedAction: string;
+  createdAt: admin.firestore.FieldValue;
+  notificationsSent: string[];
+  metadata?: {
+    previousValue?: number;
+    changeRate?: number;
+    location?: string;
+  };
+}
+
+interface ThresholdConfig {
+  warningMin?: number;
+  warningMax?: number;
+  criticalMin?: number;
+  criticalMax?: number;
+  unit: string;
+}
+
+interface AlertThresholds {
+  tds: ThresholdConfig;
+  ph: ThresholdConfig;
+  turbidity: ThresholdConfig;
+  trendDetection: {
+    enabled: boolean;
+    thresholdPercentage: number;
+    timeWindowMinutes: number;
+  };
+}
+
+interface NotificationPreferences {
+  userId: string;
+  email: string;
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  alertSeverities: AlertSeverity[];
+  parameters: WaterParameter[];
+  devices: string[];
+  quietHoursEnabled: boolean;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
+}
 
 // Device Types
 type DeviceStatus = "online" | "offline" | "error" | "maintenance";
@@ -100,7 +209,444 @@ interface SensorData {
   timestamp?: number;
 }
 
-// Request/Response Types
+// ===========================
+// ALERT HELPER FUNCTIONS
+// ===========================
+
+/**
+ * Get parameter unit string
+ */
+function getParameterUnit(parameter: WaterParameter): string {
+  switch (parameter) {
+  case "tds": return "ppm";
+  case "ph": return "";
+  case "turbidity": return "NTU";
+  default: return "";
+  }
+}
+
+/**
+ * Get parameter display name
+ */
+function getParameterName(parameter: WaterParameter): string {
+  switch (parameter) {
+  case "tds": return "TDS (Total Dissolved Solids)";
+  case "ph": return "pH Level";
+  case "turbidity": return "Turbidity";
+  default: return parameter;
+  }
+}
+
+/**
+ * Get current threshold configuration from Firestore
+ */
+async function getThresholdConfig(
+  db: admin.firestore.Firestore
+): Promise<AlertThresholds> {
+  try {
+    const configDoc = await db
+      .collection("alertSettings")
+      .doc("thresholds")
+      .get();
+
+    if (configDoc.exists) {
+      return configDoc.data() as AlertThresholds;
+    }
+  } catch (error) {
+    logger.warn("Failed to load threshold config, using defaults:", error);
+  }
+
+  return DEFAULT_THRESHOLDS;
+}
+
+/**
+ * Check if value exceeds thresholds
+ */
+function checkThreshold(
+  parameter: WaterParameter,
+  value: number,
+  thresholds: AlertThresholds
+): { exceeded: boolean; severity: AlertSeverity | null; threshold: number | null } {
+  const config = thresholds[parameter];
+
+  if (config.criticalMax !== undefined && value > config.criticalMax) {
+    return {exceeded: true, severity: "Critical", threshold: config.criticalMax};
+  }
+  if (config.criticalMin !== undefined && value < config.criticalMin) {
+    return {exceeded: true, severity: "Critical", threshold: config.criticalMin};
+  }
+  if (config.warningMax !== undefined && value > config.warningMax) {
+    return {exceeded: true, severity: "Warning", threshold: config.warningMax};
+  }
+  if (config.warningMin !== undefined && value < config.warningMin) {
+    return {exceeded: true, severity: "Warning", threshold: config.warningMin};
+  }
+
+  return {exceeded: false, severity: null, threshold: null};
+}
+
+/**
+ * Analyze trend for a parameter
+ */
+async function analyzeTrend(
+  deviceId: string,
+  parameter: WaterParameter,
+  currentValue: number,
+  thresholds: AlertThresholds
+): Promise<{
+  hasTrend: boolean;
+  direction: TrendDirection;
+  changeRate: number;
+  previousValue: number;
+} | null> {
+  if (!thresholds.trendDetection.enabled) return null;
+
+  const timeWindow = thresholds.trendDetection.timeWindowMinutes;
+  const thresholdPercentage = thresholds.trendDetection.thresholdPercentage;
+  const windowStart = Date.now() - timeWindow * 60 * 1000;
+
+  try {
+    const rtdb = admin.database();
+    const snapshot = await rtdb
+      .ref(`sensorReadings/${deviceId}/history`)
+      .orderByChild("timestamp")
+      .startAt(windowStart)
+      .limitToLast(10)
+      .once("value");
+
+    if (!snapshot.exists()) return null;
+
+    const readings: SensorReading[] = [];
+    snapshot.forEach((childSnapshot) => {
+      readings.push(childSnapshot.val() as SensorReading);
+    });
+
+    if (readings.length < 2) return null;
+
+    const firstReading = readings[0];
+    const previousValue = firstReading[parameter];
+    const changeRate = ((currentValue - previousValue) / previousValue) * 100;
+
+    if (Math.abs(changeRate) >= thresholdPercentage) {
+      return {
+        hasTrend: true,
+        direction: changeRate > 0 ? "increasing" : "decreasing",
+        changeRate: Math.abs(changeRate),
+        previousValue,
+      };
+    }
+  } catch (error) {
+    logger.error("Error analyzing trend:", error);
+  }
+
+  return null;
+}
+
+/**
+ * Generate alert message and recommended action
+ */
+function generateAlertContent(
+  parameter: WaterParameter,
+  value: number,
+  severity: AlertSeverity,
+  alertType: AlertType,
+  trendDirection?: TrendDirection,
+  location?: { building?: string; floor?: string }
+): { message: string; recommendedAction: string } {
+  const paramName = getParameterName(parameter);
+  const unit = getParameterUnit(parameter);
+  const valueStr = `${value.toFixed(2)}${unit ? " " + unit : ""}`;
+
+  const locationPrefix = location?.building && location?.floor ?
+    `[${location.building}, ${location.floor}] ` :
+    location?.building ? `[${location.building}] ` : "";
+
+  let message = "";
+  let recommendedAction = "";
+
+  if (alertType === "threshold") {
+    message = `${locationPrefix}${paramName} has reached ${severity.toLowerCase()} level: ${valueStr}`;
+
+    const locationContext = location?.building && location?.floor ?
+      ` at ${location.building}, ${location.floor}` :
+      location?.building ? ` at ${location.building}` : "";
+
+    switch (severity) {
+    case "Critical":
+      recommendedAction = `Immediate action required${locationContext}. Investigate water source and treatment system. Consider temporary shutdown if necessary.`;
+      break;
+    case "Warning":
+      recommendedAction = `Monitor closely${locationContext} and prepare corrective actions. Schedule system inspection within 24 hours.`;
+      break;
+    case "Advisory":
+      recommendedAction = `Continue monitoring${locationContext}. Note for regular maintenance schedule.`;
+      break;
+    }
+  } else if (alertType === "trend") {
+    const direction = trendDirection === "increasing" ? "increasing" : "decreasing";
+    message = `${locationPrefix}${paramName} is ${direction} abnormally: ${valueStr}`;
+
+    const locationContext = location?.building && location?.floor ?
+      ` at ${location.building}, ${location.floor}` :
+      location?.building ? ` at ${location.building}` : "";
+
+    recommendedAction = `Investigate cause of ${direction} trend${locationContext}. Check system calibration and recent changes to water source or treatment.`;
+  }
+
+  return {message, recommendedAction};
+}
+
+/**
+ * Create alert in Firestore
+ */
+async function createAlert(
+  db: admin.firestore.Firestore,
+  deviceId: string,
+  parameter: WaterParameter,
+  alertType: AlertType,
+  severity: AlertSeverity,
+  currentValue: number,
+  thresholdValue: number | null,
+  trendDirection?: TrendDirection,
+  metadata?: Record<string, unknown>
+): Promise<string> {
+  let deviceName = "Unknown Device";
+  const deviceLocation: { building?: string; floor?: string } = {};
+  
+  try {
+    const deviceDoc = await db.collection("devices").doc(deviceId).get();
+    if (deviceDoc.exists) {
+      const deviceData = deviceDoc.data();
+      deviceName = deviceData?.name || deviceId;
+
+      if (deviceData?.metadata?.location) {
+        const location = deviceData.metadata.location;
+        if (location.building) deviceLocation.building = location.building;
+        if (location.floor) deviceLocation.floor = location.floor;
+      }
+    }
+  } catch (error) {
+    logger.warn("Failed to fetch device information:", error);
+  }
+
+  const {message, recommendedAction} = generateAlertContent(
+    parameter, currentValue, severity, alertType, trendDirection, deviceLocation
+  );
+
+  const alertData: Partial<WaterQualityAlert> = {
+    deviceId,
+    deviceName,
+    ...(deviceLocation.building && {deviceBuilding: deviceLocation.building}),
+    ...(deviceLocation.floor && {deviceFloor: deviceLocation.floor}),
+    parameter,
+    alertType,
+    severity,
+    status: "Active",
+    currentValue,
+    ...(thresholdValue !== null && {thresholdValue}),
+    ...(trendDirection && {trendDirection}),
+    message,
+    recommendedAction,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    notificationsSent: [],
+    ...(metadata && {metadata}),
+  };
+
+  const alertRef = await db.collection("alerts").add(alertData);
+  await alertRef.update({alertId: alertRef.id});
+
+  logger.info(`Alert created: ${alertRef.id}`, {deviceId, parameter, severity});
+
+  return alertRef.id;
+}
+
+/**
+ * Get users who should be notified
+ */
+async function getNotificationRecipients(
+  db: admin.firestore.Firestore,
+  alert: Partial<WaterQualityAlert>
+): Promise<NotificationPreferences[]> {
+  try {
+    const prefsSnapshot = await db
+      .collection("notificationPreferences")
+      .where("emailNotifications", "==", true)
+      .get();
+
+    const recipients: NotificationPreferences[] = [];
+    const currentHour = new Date().getHours();
+
+    for (const doc of prefsSnapshot.docs) {
+      const prefs = doc.data() as NotificationPreferences;
+
+      if (!prefs.alertSeverities.includes(alert.severity!)) continue;
+      if (prefs.parameters.length > 0 && !prefs.parameters.includes(alert.parameter!)) continue;
+      if (prefs.devices.length > 0 && !prefs.devices.includes(alert.deviceId!)) continue;
+
+      if (prefs.quietHoursEnabled && prefs.quietHoursStart && prefs.quietHoursEnd) {
+        const startHour = parseInt(prefs.quietHoursStart.split(":")[0]);
+        const endHour = parseInt(prefs.quietHoursEnd.split(":")[0]);
+        if (currentHour >= startHour && currentHour < endHour) continue;
+      }
+
+      recipients.push(prefs);
+    }
+
+    return recipients;
+  } catch (error) {
+    logger.error("Error fetching notification recipients:", error);
+    return [];
+  }
+}
+
+/**
+ * Send email notification
+ */
+async function sendEmailNotification(
+  recipient: NotificationPreferences,
+  alert: Partial<WaterQualityAlert>
+): Promise<boolean> {
+  try {
+    const severityColor = alert.severity === "Critical" ? "#ff4d4f" :
+      alert.severity === "Warning" ? "#faad14" : "#1890ff";
+
+    const alertWithLocation = alert as WaterQualityAlert;
+    const locationStr = alertWithLocation.deviceBuilding && alertWithLocation.deviceFloor ?
+      `${alertWithLocation.deviceBuilding}, ${alertWithLocation.deviceFloor}` :
+      alertWithLocation.deviceBuilding ? alertWithLocation.deviceBuilding : "";
+
+    const subjectLocation = locationStr ? ` - ${locationStr}` : "";
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER || "noreply@puretrack.com",
+      to: recipient.email,
+      subject: `[${alert.severity}] Water Quality Alert${subjectLocation} - ${getParameterName(alert.parameter!)}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: ${severityColor}; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
+            <h2 style="margin: 0;">Water Quality Alert</h2>
+            ${locationStr ? `<p style="margin: 5px 0 0 0; font-size: 14px;">Location: ${locationStr}</p>` : ""}
+          </div>
+          <div style="background: #f5f5f5; padding: 20px; border-radius: 0 0 8px 8px;">
+            <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
+              <h3 style="color: ${severityColor}; margin-top: 0;">${alert.severity} Alert</h3>
+              <p><strong>Device:</strong> ${alert.deviceName}</p>
+              ${locationStr ? `<p><strong>Location:</strong> ${locationStr}</p>` : ""}
+              <p><strong>Parameter:</strong> ${getParameterName(alert.parameter!)}</p>
+              <p><strong>Current Value:</strong> ${alert.currentValue?.toFixed(2)} ${getParameterUnit(alert.parameter!)}</p>
+              ${alert.thresholdValue ? `<p><strong>Threshold:</strong> ${alert.thresholdValue} ${getParameterUnit(alert.parameter!)}</p>` : ""}
+              <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+            </div>
+            <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
+              <h4 style="margin-top: 0;">Message</h4>
+              <p>${alert.message}</p>
+            </div>
+            <div style="background: #fff3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #faad14;">
+              <h4 style="margin-top: 0;">Recommended Action</h4>
+              <p>${alert.recommendedAction}</p>
+            </div>
+            <div style="margin-top: 20px; text-align: center;">
+              <p style="color: #666; font-size: 12px;">
+                This is an automated alert from PureTrack Water Quality Monitoring System
+              </p>
+            </div>
+          </div>
+        </div>
+      `,
+    };
+
+    await emailTransporter.sendMail(mailOptions);
+    logger.info(`Email sent to ${recipient.email} for alert ${alert.alertId}`);
+    return true;
+  } catch (error) {
+    logger.error(`Failed to send email to ${recipient.email}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Process and send notifications for an alert
+ */
+async function processNotifications(
+  db: admin.firestore.Firestore,
+  alertId: string,
+  alert: Partial<WaterQualityAlert>
+): Promise<void> {
+  const recipients = await getNotificationRecipients(db, alert);
+
+  if (recipients.length === 0) {
+    logger.info(`No recipients found for alert ${alertId}`);
+    return;
+  }
+
+  const notifiedUsers: string[] = [];
+
+  for (const recipient of recipients) {
+    const success = await sendEmailNotification(recipient, alert);
+    if (success) notifiedUsers.push(recipient.userId);
+  }
+
+  await db.collection("alerts").doc(alertId).update({
+    notificationsSent: admin.firestore.FieldValue.arrayUnion(...notifiedUsers),
+  });
+
+  logger.info(`Notifications sent for alert ${alertId} to ${notifiedUsers.length} users`);
+}
+
+/**
+ * Process sensor reading and check for alerts
+ */
+async function processSensorReadingForAlerts(reading: SensorReading): Promise<void> {
+  const thresholds = await getThresholdConfig(db);
+
+  logger.info(`Processing reading for alerts: device ${reading.deviceId}`);
+
+  const parameters: WaterParameter[] = ["tds", "ph", "turbidity"];
+
+  for (const parameter of parameters) {
+    const value = reading[parameter];
+
+    const thresholdCheck = checkThreshold(parameter, value, thresholds);
+
+    if (thresholdCheck.exceeded) {
+      const alertId = await createAlert(
+        db, reading.deviceId, parameter, "threshold",
+        thresholdCheck.severity!, value, thresholdCheck.threshold,
+        undefined, {location: reading.deviceId}
+      );
+
+      const alertDoc = await db.collection("alerts").doc(alertId).get();
+      const alertData = {alertId, ...alertDoc.data()} as Partial<WaterQualityAlert>;
+
+      await processNotifications(db, alertId, alertData);
+    }
+
+    const trendAnalysis = await analyzeTrend(reading.deviceId, parameter, value, thresholds);
+
+    if (trendAnalysis && trendAnalysis.hasTrend) {
+      const severity: AlertSeverity =
+        trendAnalysis.changeRate > 30 ? "Critical" :
+          trendAnalysis.changeRate > 20 ? "Warning" : "Advisory";
+
+      const alertId = await createAlert(
+        db, reading.deviceId, parameter, "trend", severity, value, null,
+        trendAnalysis.direction, {
+          previousValue: trendAnalysis.previousValue,
+          changeRate: trendAnalysis.changeRate,
+        }
+      );
+
+      const alertDoc = await db.collection("alerts").doc(alertId).get();
+      const alertData = {alertId, ...alertDoc.data()} as Partial<WaterQualityAlert>;
+
+      await processNotifications(db, alertId, alertData);
+    }
+  }
+}
+
+// ===========================
+// REQUEST/RESPONSE TYPES
+// ===========================
 type DeviceAction =
   | "DISCOVER_DEVICES"
   | "SEND_COMMAND"
@@ -546,7 +1092,7 @@ export const processSensorData = onMessagePublished(
       // Process alerts for this reading
       await processSensorReadingForAlerts(readingData);
 
-      console.log(`✓ Sensor data processed for device: ${deviceId}`);
+      console.log(`Sensor data processed for device: ${deviceId}`);
     } catch (error) {
       console.error("Error processing sensor data:", error);
       throw error; // Trigger retry
@@ -618,7 +1164,7 @@ export const autoRegisterDevice = onMessagePublished(
         status: "waiting_for_data",
       });
 
-      console.log(`✓ Device registered successfully: ${deviceId}`);
+      console.log(`Device registered successfully: ${deviceId}`);
     } catch (error) {
       console.error("Error registering device:", error);
       throw error; // Trigger retry
@@ -657,7 +1203,7 @@ export const monitorDeviceStatus = onMessagePublished(
         lastSeen: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      console.log(`✓ Device status updated: ${deviceId} → ${status}`);
+      console.log(`Device status updated: ${deviceId} -> ${status}`);
     } catch (error) {
       console.error("Error monitoring device status:", error);
       // Don't throw - status updates are informational only
@@ -749,7 +1295,7 @@ export const beforeCreate = beforeUserCreated(
     try {
       await db.collection("users").doc(user.uid).set(userProfile);
 
-      console.log(`✓ User profile created for ${user.email} with status: Pending`);
+      console.log(`User profile created for ${user.email} with status: Pending`);
 
       // Log the account creation
       await db.collection("business_logs").add({
@@ -851,7 +1397,7 @@ export const beforeSignIn = beforeUserSignedIn(
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      console.log(`✓ Sign-in allowed for ${user.email} (Status: ${status})`);
+      console.log(`Sign-in allowed for ${user.email} (Status: ${status})`);
 
       // Allow sign-in to proceed
       return;
@@ -878,6 +1424,53 @@ export const beforeSignIn = beforeUserSignedIn(
         "internal",
         "An error occurred during sign-in. Please try again."
       );
+    }
+  }
+);
+
+// ===========================
+// SCHEDULED FUNCTIONS
+// ===========================
+
+/**
+ * Check for stale critical alerts and log warnings
+ * Runs every hour to monitor unresolved critical alerts
+ */
+export const checkStaleAlerts = onSchedule(
+  {
+    schedule: "every 1 hours",
+    timeZone: "Asia/Manila",
+    retryCount: 3,
+  },
+  async () => {
+    try {
+      const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+
+      const staleAlertsSnapshot = await db
+        .collection("alerts")
+        .where("status", "==", "Active")
+        .where("severity", "==", "Critical")
+        .get();
+
+      let staleCount = 0;
+      for (const doc of staleAlertsSnapshot.docs) {
+        const alert = doc.data() as WaterQualityAlert;
+        const createdAt = (alert.createdAt as admin.firestore.Timestamp).toMillis();
+
+        if (createdAt < twoHoursAgo) {
+          logger.warn(`Stale critical alert: ${doc.id} - Device: ${alert.deviceId}, Parameter: ${alert.parameter}`);
+          staleCount++;
+        }
+      }
+
+      if (staleCount > 0) {
+        logger.warn(`Found ${staleCount} stale critical alert(s) requiring attention`);
+      } else {
+        logger.info("No stale critical alerts found");
+      }
+    } catch (error) {
+      logger.error("Error checking stale alerts:", error);
+      throw error; // Allow retry
     }
   }
 );
@@ -1325,7 +1918,7 @@ async function generateComplianceReport(
       complianceStatus,
       overallCompliance: complianceStatus.every((s) => s.status === "compliant"),
       violations,
-      recommendations: generateComplianceRecommendations(complianceStatus, violations),
+      recommendations: generateComplianceRecommendations(violations),
     });
   }
 
@@ -1532,13 +2125,11 @@ function assessDataQuality(): Record<string, string> {
 }
 
 /**
- * Generate compliance recommendations based on status and violations
- * @param {ComplianceStatus[]} _status - Compliance status array (currently unused)
+ * Generate compliance recommendations based on violations
  * @param {Record<string, number>} violations - Violation counts by parameter
  * @return {Array<string>} Array of recommendation strings
  */
 function generateComplianceRecommendations(
-  _status: ComplianceStatus[],
   violations: Record<string, number>
 ): Array<string> {
   const recommendations: Array<string> = [];
@@ -1559,320 +2150,22 @@ function generateComplianceRecommendations(
 }
 
 // ===========================
-// TESTING ENDPOINTS
+// UTILITY & INITIALIZATION FUNCTIONS
 // ===========================
 
 /**
- * Test alert email notification system
- * POST endpoint to manually trigger a test alert and email
- *
- * Body parameters:
- * - email: string (required) - Email address to send test alert
- * - deviceId: string (optional) - Device ID for test alert
- * - parameter: "tds"|"ph"|"turbidity" (optional) - Parameter to test
- * - severity: "Advisory"|"Warning"|"Critical" (optional) - Severity level
- *
- * Example curl command:
- * curl -X POST https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/testAlertEmail \
- *   -H "Content-Type: application/json" \
- *   -d '{"email":"your-email@example.com","severity":"Critical","parameter":"ph"}'
+ * Initialize default alert threshold configuration in Firestore
+ * Call this function once during initial setup to create default thresholds
+ * 
+ * @return {Promise<void>} Promise that resolves when initialization is complete
  */
-export const testAlertEmail = onRequest(async (req: Request, res: Response) => {
-  // Only allow POST requests
-  if (req.method !== "POST") {
-    res.status(405).json({error: "Method not allowed. Use POST."});
-    return;
-  }
-
+export async function initializeAlertThresholds(): Promise<void> {
   try {
-    const {
-      email,
-      deviceId = "TEST_DEVICE",
-      parameter = "tds",
-      severity = "Warning",
-    } = req.body;
-
-    // Validate required parameters
-    if (!email) {
-      res.status(400).json({error: "Email address is required"});
-      return;
-    }
-
-    // Validate parameter
-    const validParameters = ["tds", "ph", "turbidity"];
-    if (!validParameters.includes(parameter)) {
-      res.status(400).json({
-        error: `Invalid parameter. Must be one of: ${validParameters.join(", ")}`,
-      });
-      return;
-    }
-
-    // Validate severity
-    const validSeverities = ["Advisory", "Warning", "Critical"];
-    if (!validSeverities.includes(severity)) {
-      res.status(400).json({
-        error: `Invalid severity. Must be one of: ${validSeverities.join(", ")}`,
-      });
-      return;
-    }
-
-    logger.info("Testing alert email", {email, deviceId, parameter, severity});
-
-    // Create a test alert document in Firestore
-    const testAlertData = {
-      deviceId,
-      deviceName: "Test Device (Email Test)",
-      parameter,
-      alertType: "threshold",
-      severity,
-      status: "Active",
-      currentValue:
-        parameter === "tds" ? 850 :
-          parameter === "ph" ? 9.5 : 12.5,
-      thresholdValue:
-        parameter === "tds" ? 500 :
-          parameter === "ph" ? 8.5 : 10,
-      message: `TEST ALERT: ${parameter.toUpperCase()} has reached ${severity.toLowerCase()} level`,
-      recommendedAction: "This is a test alert. No action required.",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      notificationsSent: [],
-      metadata: {
-        location: "Test Location",
-        isTest: true,
-      },
-    };
-
-    // Add to Firestore (this will trigger the real alert function)
-    const alertRef = await db.collection("alerts").add(testAlertData);
-    await alertRef.update({alertId: alertRef.id});
-
-    logger.info(`Test alert created: ${alertRef.id}`);
-
-    // Also create a test notification preference for the email
-    const testPrefData = {
-      userId: "test_user",
-      email,
-      emailNotifications: true,
-      pushNotifications: false,
-      alertSeverities: ["Advisory", "Warning", "Critical"],
-      parameters: ["tds", "ph", "turbidity"],
-      devices: [],
-      quietHoursEnabled: false,
-    };
-
-    // Check if preference already exists
-    const existingPref = await db
-      .collection("notificationPreferences")
-      .where("email", "==", email)
-      .limit(1)
-      .get();
-
-    if (existingPref.empty) {
-      await db.collection("notificationPreferences").add(testPrefData);
-      logger.info(`Test notification preference created for ${email}`);
-    }
-
-    // Wait a moment for the trigger to process
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    // Check if email was sent
-    const updatedAlert = await alertRef.get();
-    const notificationsSent = updatedAlert.data()?.notificationsSent || [];
-
-    res.status(200).json({
-      success: true,
-      message: "Test alert created successfully",
-      alertId: alertRef.id,
-      emailSent: notificationsSent.length > 0,
-      notificationsSent,
-      details: {
-        email,
-        deviceId,
-        parameter,
-        severity,
-        testAlertData,
-      },
-      note: notificationsSent.length === 0 ?
-        "Email may still be processing. Check Firebase Functions logs." :
-        "Email notification sent successfully!",
-    });
+    await db.collection("alertSettings").doc("thresholds").set(DEFAULT_THRESHOLDS, {merge: true});
+    logger.info("Default alert thresholds initialized successfully");
+    logger.info("Thresholds:", DEFAULT_THRESHOLDS);
   } catch (error) {
-    logger.error("Error testing alert email:", error);
-    res.status(500).json({
-      error: "Failed to test alert email",
-      details: error instanceof Error ? error.message : String(error),
-    });
+    logger.error("Failed to initialize alert thresholds:", error);
+    throw error;
   }
-});
-
-/**
- * Test complete email flow by creating a sensor reading that triggers alerts
- * POST endpoint to create a reading that exceeds thresholds
- *
- * Body parameters:
- * - email: string (required) - Email to receive alert
- * - parameter: "tds"|"ph"|"turbidity" (optional) - Which parameter to exceed
- * - severity: "Warning"|"Critical" (optional) - Severity level
- *
- * Example curl command:
- * curl -X POST https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/testCompleteEmailFlow \
- *   -H "Content-Type: application/json" \
- *   -d '{"email":"your-email@example.com","parameter":"ph","severity":"Critical"}'
- */
-export const testCompleteEmailFlow = onRequest(async (req: Request, res: Response) => {
-  // Only allow POST requests
-  if (req.method !== "POST") {
-    res.status(405).json({error: "Method not allowed. Use POST."});
-    return;
-  }
-
-  try {
-    const {
-      email,
-      parameter = "tds",
-      severity = "Critical",
-    } = req.body;
-
-    // Validate required parameters
-    if (!email) {
-      res.status(400).json({error: "Email address is required"});
-      return;
-    }
-
-    logger.info("Testing complete email flow", {email, parameter, severity});
-
-    // Create notification preference for the email
-    const notifPrefData = {
-      userId: `test_${Date.now()}`,
-      email,
-      emailNotifications: true,
-      pushNotifications: false,
-      alertSeverities: ["Advisory", "Warning", "Critical"],
-      parameters: ["tds", "ph", "turbidity"],
-      devices: [],
-      quietHoursEnabled: false,
-    };
-
-    await db.collection("notificationPreferences").add(notifPrefData);
-    logger.info(`Notification preference created for ${email}`);
-
-    // Create a sensor reading that will exceed thresholds
-    let readingData: Record<string, unknown>;
-
-    if (parameter === "tds") {
-      readingData = {
-        deviceId: "TEST_DEVICE_EMAIL",
-        tds: severity === "Critical" ? 1200 : 750, // Critical > 1000, Warning > 500
-        ph: 7.0,
-        turbidity: 2.0,
-        timestamp: Date.now(),
-        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      };
-    } else if (parameter === "ph") {
-      readingData = {
-        deviceId: "TEST_DEVICE_EMAIL",
-        tds: 400,
-        ph: severity === "Critical" ? 9.5 : 8.8, // Critical > 9.0, Warning > 8.5
-        turbidity: 2.0,
-        timestamp: Date.now(),
-        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      };
-    } else {
-      readingData = {
-        deviceId: "TEST_DEVICE_EMAIL",
-        tds: 400,
-        ph: 7.0,
-        turbidity: severity === "Critical" ? 12 : 7, // Critical > 10, Warning > 5
-        timestamp: Date.now(),
-        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      };
-    }
-
-    // Add to readings collection - this will trigger monitorSensorReadings
-    const readingRef = await db.collection("readings").add(readingData);
-    logger.info(`Test reading created: ${readingRef.id}`);
-
-    // Wait for the trigger to process
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-
-    // Check if alert was created
-    const alertsSnapshot = await db
-      .collection("alerts")
-      .where("deviceId", "==", "TEST_DEVICE_EMAIL")
-      .orderBy("createdAt", "desc")
-      .limit(1)
-      .get();
-
-    const alertCreated = !alertsSnapshot.empty;
-    let alertData = null;
-
-    if (alertCreated) {
-      const alertDoc = alertsSnapshot.docs[0];
-      alertData = {
-        alertId: alertDoc.id,
-        ...alertDoc.data(),
-      };
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Test reading created successfully",
-      readingId: readingRef.id,
-      alertCreated,
-      alertData,
-      emailConfigured: true,
-      expectedFlow: [
-        "1. Reading added to /readings collection ✓",
-        "2. monitorSensorReadings triggered",
-        "3. Alert created in /alerts collection " + (alertCreated ? "✓" : "⏳"),
-        "4. Email sent to " + email + " (check inbox!)",
-      ],
-      note: alertCreated ?
-        "Check your email! Alert was created and email should be sent." :
-        "Alert may still be processing. Check Firebase logs for monitorSensorReadings.",
-    });
-  } catch (error) {
-    logger.error("Error testing complete email flow:", error);
-    res.status(500).json({
-      error: "Failed to test complete email flow",
-      details: error instanceof Error ? error.message : String(error),
-    });
-  }
-});
-
-/**
- * Simple test endpoint to verify email configuration
- * GET endpoint - no authentication required
- *
- * Example curl command:
- * curl https://YOUR_REGION-YOUR_PROJECT.cloudfunctions.net/testEmailConfig
- */
-export const testEmailConfig = onRequest(async (req: Request, res: Response) => {
-  try {
-    // For Firebase Functions v2, we use direct configuration
-    const emailUser = "hed-tjyuzon@smu.edu.ph";
-    const hasPassword = true; // Password is configured
-    const isConfigured = true;
-
-    logger.info("Email configuration check", {
-      hasEmailUser: true,
-      hasEmailPassword: true,
-      emailUser,
-    });
-
-    res.status(200).json({
-      configured: isConfigured,
-      emailUser,
-      hasPassword,
-      source: "hardcoded configuration (Functions v2)",
-      message: "Email is configured correctly",
-      note: "Using direct configuration for Firebase Functions v2",
-    });
-  } catch (error) {
-    logger.error("Error checking email config:", error);
-    res.status(500).json({
-      error: "Failed to check email configuration",
-      details: error instanceof Error ? error.message : String(error),
-    });
-  }
-});
+}
