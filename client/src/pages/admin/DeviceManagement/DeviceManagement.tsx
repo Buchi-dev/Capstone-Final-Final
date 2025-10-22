@@ -14,6 +14,7 @@ import {
   Row,
   Col,
   Statistic,
+  Tabs,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -28,17 +29,22 @@ import {
   WarningOutlined,
   ToolOutlined,
   WifiOutlined,
+  EnvironmentOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import { api } from '../../../services/api';
 import type { Device, DeviceStatus } from '../../../schemas';
+import { isDeviceRegistered } from '../../../schemas';
 import { AdminLayout } from '../../../components/layouts';
 import { AddEditDeviceModal } from './AddEditDeviceModal';
 import { ViewDeviceModal } from './ViewDeviceModal';
+import { RegisterDeviceModal } from './RegisterDeviceModal';
 import type { ReactNode } from 'react';
 import { useThemeToken } from '../../../theme';
 
 const { Title, Text } = Typography;
 const { Search } = Input;
+const { TabPane } = Tabs;
 
 // Status color mapping
 const statusConfig: Record<DeviceStatus, { color: string; icon: ReactNode }> = {
@@ -56,7 +62,9 @@ const DeviceManagement = () => {
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [isAddEditModalVisible, setIsAddEditModalVisible] = useState(false);
   const [isViewModalVisible, setIsViewModalVisible] = useState(false);
+  const [isRegisterModalVisible, setIsRegisterModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+  const [activeTab, setActiveTab] = useState<'registered' | 'unregistered'>('registered');
 
   // Load devices on mount
   useEffect(() => {
@@ -123,6 +131,7 @@ const DeviceManagement = () => {
   const handleModalClose = () => {
     setIsAddEditModalVisible(false);
     setIsViewModalVisible(false);
+    setIsRegisterModalVisible(false);
     setSelectedDevice(null);
   };
 
@@ -144,6 +153,52 @@ const DeviceManagement = () => {
     }
   };
 
+  // Handle register device
+  const handleRegister = (device: Device) => {
+    setSelectedDevice(device);
+    setIsRegisterModalVisible(true);
+  };
+
+  // Handle device registration save
+  const handleRegisterSave = async (
+    deviceId: string,
+    locationData: { building: string; floor: string; notes?: string }
+  ) => {
+    try {
+      // Get the current device data
+      const device = devices.find((d) => d.deviceId === deviceId);
+      if (!device) {
+        message.error('Device not found');
+        return;
+      }
+
+      // Update device with location data
+      const updatedMetadata = {
+        ...device.metadata,
+        location: {
+          building: locationData.building,
+          floor: locationData.floor,
+          notes: locationData.notes || '',
+        },
+      };
+
+      await api.updateDevice(deviceId, {
+        metadata: updatedMetadata,
+      });
+
+      message.success('Device registered successfully!');
+      setIsRegisterModalVisible(false);
+      setSelectedDevice(null);
+      loadDevices();
+      
+      // Switch to registered tab after registration
+      setActiveTab('registered');
+    } catch (error) {
+      message.error('Failed to register device');
+      console.error('Error registering device:', error);
+    }
+  };
+
   // Handle discover devices
   const handleDiscover = async () => {
     setLoading(true);
@@ -159,8 +214,13 @@ const DeviceManagement = () => {
     }
   };
 
-  // Filter devices based on search
-  const filteredDevices = devices.filter(
+  // Filter devices based on registration status and search
+  const registeredDevices = devices.filter((d) => isDeviceRegistered(d));
+  const unregisteredDevices = devices.filter((d) => !isDeviceRegistered(d));
+
+  // Apply search filter to the appropriate tab
+  const currentDevices = activeTab === 'registered' ? registeredDevices : unregisteredDevices;
+  const filteredDevices = currentDevices.filter(
     (device) =>
       device.name.toLowerCase().includes(searchText.toLowerCase()) ||
       device.deviceId.toLowerCase().includes(searchText.toLowerCase()) ||
@@ -175,6 +235,8 @@ const DeviceManagement = () => {
     offline: devices.filter((d) => d.status === 'offline').length,
     error: devices.filter((d) => d.status === 'error').length,
     maintenance: devices.filter((d) => d.status === 'maintenance').length,
+    registered: devices.filter((d) => isDeviceRegistered(d)).length,
+    unregistered: devices.filter((d) => !isDeviceRegistered(d)).length,
   };
 
   // Table columns
@@ -221,6 +283,62 @@ const DeviceManagement = () => {
       ),
     },
     {
+      title: 'Registration',
+      key: 'registration',
+      width: 130,
+      filters: [
+        { text: 'Registered', value: 'registered' },
+        { text: 'Unregistered', value: 'unregistered' },
+      ],
+      onFilter: (value, record) => {
+        const registered = isDeviceRegistered(record);
+        return value === 'registered' ? registered : !registered;
+      },
+      render: (_, record) => {
+        const registered = isDeviceRegistered(record);
+        return registered ? (
+          <Tag icon={<CheckCircleOutlined />} color="success">
+            REGISTERED
+          </Tag>
+        ) : (
+          <Tag icon={<InfoCircleOutlined />} color="warning">
+            UNREGISTERED
+          </Tag>
+        );
+      },
+    },
+    {
+      title: 'Location',
+      key: 'location',
+      width: 200,
+      render: (_, record) => {
+        const registered = isDeviceRegistered(record);
+        return (
+          <Space direction="vertical" size={0}>
+            <Space size="small">
+              <EnvironmentOutlined style={{ color: registered ? token.colorSuccess : token.colorWarning }} />
+              <Text style={{ fontSize: '12px' }}>
+                {registered ? (
+                  <>
+                    <Text strong>{record.metadata?.location?.building}</Text>
+                    <br />
+                    <Text type="secondary">{record.metadata?.location?.floor}</Text>
+                  </>
+                ) : (
+                  <Text type="secondary">No location set</Text>
+                )}
+              </Text>
+            </Space>
+            {record.metadata?.location?.notes && (
+              <Text type="secondary" style={{ fontSize: '11px' }}>
+                {record.metadata.location.notes}
+              </Text>
+            )}
+          </Space>
+        );
+      },
+    },
+    {
       title: 'Network',
       key: 'network',
       width: 150,
@@ -255,36 +373,57 @@ const DeviceManagement = () => {
       title: 'Actions',
       key: 'actions',
       fixed: 'right',
-      width: 150,
-      render: (_, record) => (
-        <Space size="small">
-          <Tooltip title="View Details">
-            <Button
-              type="text"
-              icon={<EyeOutlined />}
-              onClick={() => handleView(record)}
-              size="small"
-            />
-          </Tooltip>
-          <Tooltip title="Edit Device">
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              onClick={() => handleEdit(record)}
-              size="small"
-            />
-          </Tooltip>
-          <Tooltip title="Delete Device">
-            <Button
-              type="text"
-              danger
-              icon={<DeleteOutlined />}
-              onClick={() => handleDelete(record)}
-              size="small"
-            />
-          </Tooltip>
-        </Space>
-      ),
+      width: activeTab === 'unregistered' ? 120 : 150,
+      render: (_, record) => {
+        const isUnregistered = !isDeviceRegistered(record);
+        
+        return (
+          <Space size="small">
+            {/* Unregistered tab: Only show Register button */}
+            {activeTab === 'unregistered' && isUnregistered ? (
+              <Tooltip title="Register Device">
+                <Button
+                  type="primary"
+                  icon={<CheckCircleOutlined />}
+                  onClick={() => handleRegister(record)}
+                  size="small"
+                >
+                  Register
+                </Button>
+              </Tooltip>
+            ) : (
+              /* Registered tab: Show View, Edit, Delete */
+              <>
+                <Tooltip title="View Details">
+                  <Button
+                    type="text"
+                    icon={<EyeOutlined />}
+                    onClick={() => handleView(record)}
+                    size="small"
+                  />
+                </Tooltip>
+                <Tooltip title="Edit Device">
+                  <Button
+                    type="text"
+                    icon={<EditOutlined />}
+                    onClick={() => handleEdit(record)}
+                    size="small"
+                  />
+                </Tooltip>
+                <Tooltip title="Delete Device">
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => handleDelete(record)}
+                    size="small"
+                  />
+                </Tooltip>
+              </>
+            )}
+          </Space>
+        );
+      },
     },
   ];
 
@@ -352,6 +491,26 @@ const DeviceManagement = () => {
               />
             </Card>
           </Col>
+          <Col xs={24} sm={12} md={6} lg={5}>
+            <Card>
+              <Statistic
+                title="Registered"
+                value={stats.registered}
+                valueStyle={{ color: token.colorSuccess }}
+                prefix={<CheckCircleOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} md={6} lg={5}>
+            <Card>
+              <Statistic
+                title="Unregistered"
+                value={stats.unregistered}
+                valueStyle={{ color: token.colorWarning }}
+                prefix={<InfoCircleOutlined />}
+              />
+            </Card>
+          </Col>
         </Row>
 
         {/* Actions Bar */}
@@ -386,21 +545,62 @@ const DeviceManagement = () => {
           </Space>
         </Card>
 
-        {/* Devices Table */}
-        <Card title={`Devices (${filteredDevices.length})`}>
-          <Table
-            columns={columns}
-            dataSource={filteredDevices}
-            rowKey="deviceId"
-            loading={loading}
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showTotal: (total) => `Total ${total} devices`,
-            }}
-            scroll={{ x: 1200 }}
-            bordered
-          />
+        {/* Devices Table with Tabs */}
+        <Card>
+          <Tabs
+            activeKey={activeTab}
+            onChange={(key) => setActiveTab(key as 'registered' | 'unregistered')}
+            size="large"
+          >
+            <TabPane
+              tab={
+                <Space>
+                  <CheckCircleOutlined />
+                  <span>Registered Devices</span>
+                  <Badge count={stats.registered} style={{ backgroundColor: token.colorSuccess }} />
+                </Space>
+              }
+              key="registered"
+            >
+              <Table
+                columns={columns}
+                dataSource={filteredDevices}
+                rowKey="deviceId"
+                loading={loading}
+                pagination={{
+                  pageSize: 10,
+                  showSizeChanger: true,
+                  showTotal: (total) => `Total ${total} registered devices`,
+                }}
+                scroll={{ x: 1200 }}
+                bordered
+              />
+            </TabPane>
+            <TabPane
+              tab={
+                <Space>
+                  <InfoCircleOutlined />
+                  <span>Unregistered Devices</span>
+                  <Badge count={stats.unregistered} style={{ backgroundColor: token.colorWarning }} />
+                </Space>
+              }
+              key="unregistered"
+            >
+              <Table
+                columns={columns}
+                dataSource={filteredDevices}
+                rowKey="deviceId"
+                loading={loading}
+                pagination={{
+                  pageSize: 10,
+                  showSizeChanger: true,
+                  showTotal: (total) => `Total ${total} unregistered devices`,
+                }}
+                scroll={{ x: 1200 }}
+                bordered
+              />
+            </TabPane>
+          </Tabs>
         </Card>
 
         {/* Add/Edit Modal */}
@@ -417,6 +617,14 @@ const DeviceManagement = () => {
           visible={isViewModalVisible}
           device={selectedDevice}
           onClose={handleModalClose}
+        />
+
+        {/* Register Device Modal */}
+        <RegisterDeviceModal
+          visible={isRegisterModalVisible}
+          device={selectedDevice}
+          onRegister={handleRegisterSave}
+          onCancel={handleModalClose}
         />
       </Space>
     </AdminLayout>

@@ -44,9 +44,9 @@
 #define TURBIDITY_PIN A2    // Turbidity Sensor
 
 // Timing Configuration
-#define SENSOR_READ_INTERVAL 5000   // Read sensors every 5 seconds
+#define SENSOR_READ_INTERVAL 10000   // Read sensors every 10 seconds
 #define MQTT_PUBLISH_INTERVAL 10000 // Publish to MQTT every 10 seconds
-#define HEARTBEAT_INTERVAL 30000    // Send status every 30 seconds
+#define HEARTBEAT_INTERVAL 10000    // Send status every 10 seconds
 
 // ===========================
 // GLOBAL OBJECTS

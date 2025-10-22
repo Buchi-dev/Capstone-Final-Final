@@ -4,6 +4,20 @@ import { z } from 'zod';
 // Device Status Schema
 export const DeviceStatusSchema = z.enum(['online', 'offline', 'error', 'maintenance']);
 
+// Device Location Schema
+export const DeviceLocationSchema = z.object({
+  building: z.string().min(1, 'Building is required'),
+  floor: z.string().min(1, 'Floor is required'),
+  notes: z.string().optional(),
+});
+
+// Device Metadata Schema
+export const DeviceMetadataSchema = z.object({
+  location: DeviceLocationSchema.optional(),
+  description: z.string().optional(),
+  owner: z.string().optional(),
+}).passthrough(); // Allow additional properties
+
 // Device Schema
 export const DeviceSchema = z.object({
   id: z.string(),
@@ -17,7 +31,7 @@ export const DeviceSchema = z.object({
   status: DeviceStatusSchema,
   registeredAt: z.any(), // Firebase Timestamp
   lastSeen: z.any(), // Firebase Timestamp
-  metadata: z.record(z.string(), z.any()).optional(),
+  metadata: DeviceMetadataSchema.optional(),
 });
 
 // Sensor Reading Schema
@@ -244,6 +258,8 @@ export const ApiResponseSchema = z.object({
 
 // Export inferred types from schemas
 export type Device = z.infer<typeof DeviceSchema>;
+export type DeviceLocation = z.infer<typeof DeviceLocationSchema>;
+export type DeviceMetadata = z.infer<typeof DeviceMetadataSchema>;
 export type SensorReading = z.infer<typeof SensorReadingSchema>;
 export type DeviceStatus = z.infer<typeof DeviceStatusSchema>;
 export type ApiResponse = z.infer<typeof ApiResponseSchema>;
@@ -388,4 +404,22 @@ export type EmailTemplate = z.infer<typeof EmailTemplateSchema>;
 // Only include functions that are actually used in the codebase
 export const safeParseApiResponse = (data: unknown) => {
   return ApiResponseSchema.safeParse(data);
+};
+
+// Helper function to check if device is registered (has location configured)
+export const isDeviceRegistered = (device: Device): boolean => {
+  return !!(
+    device.metadata?.location?.building &&
+    device.metadata?.location?.floor
+  );
+};
+
+// Helper function to get location display string
+export const getDeviceLocationString = (device: Device): string => {
+  if (!device.metadata?.location) return 'No location set';
+  const { building, floor, notes } = device.metadata.location;
+  if (!building || !floor) return 'Incomplete location';
+  const locationParts = [building, floor];
+  if (notes) locationParts.push(`(${notes})`);
+  return locationParts.join(', ');
 };

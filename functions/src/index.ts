@@ -42,11 +42,17 @@ setGlobalOptions({
 // Device Types
 type DeviceStatus = "online" | "offline" | "error" | "maintenance";
 
+interface DeviceLocation {
+  building: string;
+  floor: string;
+  notes?: string;
+}
+
 interface DeviceMetadata {
-  location?: string;
+  location?: DeviceLocation;
   description?: string;
   owner?: string;
-  [key: string]: string | number | boolean | undefined;
+  [key: string]: string | number | boolean | undefined | DeviceLocation;
 }
 
 interface DeviceData {
