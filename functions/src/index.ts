@@ -215,6 +215,8 @@ interface SensorData {
 
 /**
  * Get parameter unit string
+ * @param {WaterParameter} parameter - The water parameter
+ * @return {string} The unit string for the parameter
  */
 function getParameterUnit(parameter: WaterParameter): string {
   switch (parameter) {
@@ -227,6 +229,8 @@ function getParameterUnit(parameter: WaterParameter): string {
 
 /**
  * Get parameter display name
+ * @param {WaterParameter} parameter - The water parameter
+ * @return {string} The display name for the parameter
  */
 function getParameterName(parameter: WaterParameter): string {
   switch (parameter) {
@@ -239,6 +243,8 @@ function getParameterName(parameter: WaterParameter): string {
 
 /**
  * Get current threshold configuration from Firestore
+ * @param {admin.firestore.Firestore} db - The Firestore database instance
+ * @return {Promise<AlertThresholds>} The threshold configuration
  */
 async function getThresholdConfig(
   db: admin.firestore.Firestore
@@ -261,12 +267,16 @@ async function getThresholdConfig(
 
 /**
  * Check if value exceeds thresholds
+ * @param {WaterParameter} parameter - The water parameter to check
+ * @param {number} value - The current value
+ * @param {AlertThresholds} thresholds - The threshold configuration
+ * @return {object} Object containing exceeded flag, severity, and threshold
  */
 function checkThreshold(
   parameter: WaterParameter,
   value: number,
   thresholds: AlertThresholds
-): { exceeded: boolean; severity: AlertSeverity | null; threshold: number | null } {
+): {exceeded: boolean; severity: AlertSeverity | null; threshold: number | null} {
   const config = thresholds[parameter];
 
   if (config.criticalMax !== undefined && value > config.criticalMax) {
@@ -287,6 +297,11 @@ function checkThreshold(
 
 /**
  * Analyze trend for a parameter
+ * @param {string} deviceId - The device identifier
+ * @param {WaterParameter} parameter - The water quality parameter
+ * @param {number} currentValue - Current parameter value
+ * @param {AlertThresholds} thresholds - Alert threshold configuration
+ * @return {Promise<object|null>} Trend analysis result or null
  */
 async function analyzeTrend(
   deviceId: string,
@@ -344,6 +359,13 @@ async function analyzeTrend(
 
 /**
  * Generate alert message and recommended action
+ * @param {WaterParameter} parameter - The water quality parameter
+ * @param {number} value - The parameter value
+ * @param {AlertSeverity} severity - Alert severity level
+ * @param {AlertType} alertType - Type of alert (threshold/trend)
+ * @param {TrendDirection} [trendDirection] - Direction of trend
+ * @param {object} [location] - Location information
+ * @return {object} Alert message and recommended action
  */
 function generateAlertContent(
   parameter: WaterParameter,
@@ -365,32 +387,42 @@ function generateAlertContent(
   let recommendedAction = "";
 
   if (alertType === "threshold") {
-    message = `${locationPrefix}${paramName} has reached ${severity.toLowerCase()} level: ${valueStr}`;
+    const severityText = severity.toLowerCase();
+    message = `${locationPrefix}${paramName} has reached ` +
+      `${severityText} level: ${valueStr}`;
 
-    const locationContext = location?.building && location?.floor ?
+    const locContext = location?.building && location?.floor ?
       ` at ${location.building}, ${location.floor}` :
       location?.building ? ` at ${location.building}` : "";
 
     switch (severity) {
     case "Critical":
-      recommendedAction = `Immediate action required${locationContext}. Investigate water source and treatment system. Consider temporary shutdown if necessary.`;
+      recommendedAction = "Immediate action required" + locContext + ". " +
+        "Investigate water source and treatment system. " +
+        "Consider temporary shutdown if necessary.";
       break;
     case "Warning":
-      recommendedAction = `Monitor closely${locationContext} and prepare corrective actions. Schedule system inspection within 24 hours.`;
+      recommendedAction = "Monitor closely" + locContext + " and prepare " +
+        "corrective actions. Schedule system inspection within 24 hours.";
       break;
     case "Advisory":
-      recommendedAction = `Continue monitoring${locationContext}. Note for regular maintenance schedule.`;
+      recommendedAction = "Continue monitoring" + locContext + ". " +
+        "Note for regular maintenance schedule.";
       break;
     }
   } else if (alertType === "trend") {
-    const direction = trendDirection === "increasing" ? "increasing" : "decreasing";
-    message = `${locationPrefix}${paramName} is ${direction} abnormally: ${valueStr}`;
+    const direction = trendDirection === "increasing" ?
+      "increasing" : "decreasing";
+    message = `${locationPrefix}${paramName} is ${direction} ` +
+      `abnormally: ${valueStr}`;
 
-    const locationContext = location?.building && location?.floor ?
+    const locContext = location?.building && location?.floor ?
       ` at ${location.building}, ${location.floor}` :
       location?.building ? ` at ${location.building}` : "";
 
-    recommendedAction = `Investigate cause of ${direction} trend${locationContext}. Check system calibration and recent changes to water source or treatment.`;
+    recommendedAction = "Investigate cause of " + direction + " trend" +
+      locContext + ". Check system calibration and recent changes " +
+      "to water source or treatment.";
   }
 
   return {message, recommendedAction};
@@ -398,6 +430,16 @@ function generateAlertContent(
 
 /**
  * Create alert in Firestore
+ * @param {admin.firestore.Firestore} db - Firestore instance
+ * @param {string} deviceId - Device identifier
+ * @param {WaterParameter} parameter - Water quality parameter
+ * @param {AlertType} alertType - Type of alert
+ * @param {AlertSeverity} severity - Alert severity level
+ * @param {number} currentValue - Current parameter value
+ * @param {number|null} thresholdValue - Threshold value exceeded
+ * @param {TrendDirection} [trendDirection] - Direction of trend
+ * @param {Record<string, unknown>} [metadata] - Additional metadata
+ * @return {Promise<string>} Alert document ID
  */
 async function createAlert(
   db: admin.firestore.Firestore,
@@ -412,7 +454,7 @@ async function createAlert(
 ): Promise<string> {
   let deviceName = "Unknown Device";
   const deviceLocation: { building?: string; floor?: string } = {};
-  
+
   try {
     const deviceDoc = await db.collection("devices").doc(deviceId).get();
     if (deviceDoc.exists) {
@@ -462,6 +504,9 @@ async function createAlert(
 
 /**
  * Get users who should be notified
+ * @param {admin.firestore.Firestore} db - Firestore instance
+ * @param {Partial<WaterQualityAlert>} alert - Alert object
+ * @return {Promise<NotificationPreferences[]>} List of recipients
  */
 async function getNotificationRecipients(
   db: admin.firestore.Firestore,
@@ -502,6 +547,12 @@ async function getNotificationRecipients(
 /**
  * Send email notification
  */
+/**
+ * Send email notification for an alert
+ * @param {NotificationPreferences} recipient - Notification recipient
+ * @param {Partial<WaterQualityAlert>} alert - Alert object
+ * @return {Promise<boolean>} Success status
+ */
 async function sendEmailNotification(
   recipient: NotificationPreferences,
   alert: Partial<WaterQualityAlert>
@@ -510,44 +561,59 @@ async function sendEmailNotification(
     const severityColor = alert.severity === "Critical" ? "#ff4d4f" :
       alert.severity === "Warning" ? "#faad14" : "#1890ff";
 
-    const alertWithLocation = alert as WaterQualityAlert;
-    const locationStr = alertWithLocation.deviceBuilding && alertWithLocation.deviceFloor ?
-      `${alertWithLocation.deviceBuilding}, ${alertWithLocation.deviceFloor}` :
-      alertWithLocation.deviceBuilding ? alertWithLocation.deviceBuilding : "";
+    const alertWithLoc = alert as WaterQualityAlert;
+    const locStr = alertWithLoc.deviceBuilding && alertWithLoc.deviceFloor ?
+      `${alertWithLoc.deviceBuilding}, ${alertWithLoc.deviceFloor}` :
+      alertWithLoc.deviceBuilding ? alertWithLoc.deviceBuilding : "";
 
-    const subjectLocation = locationStr ? ` - ${locationStr}` : "";
+    const subLoc = locStr ? ` - ${locStr}` : "";
 
+    const paramName = getParameterName(alert.parameter!);
     const mailOptions = {
       from: process.env.EMAIL_USER || "noreply@puretrack.com",
       to: recipient.email,
-      subject: `[${alert.severity}] Water Quality Alert${subjectLocation} - ${getParameterName(alert.parameter!)}`,
+      subject: `[${alert.severity}] Water Quality Alert${subLoc} ` +
+        `- ${paramName}`,
       html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background: ${severityColor}; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
+        <div style="font-family: Arial, sans-serif; ` +
+        `max-width: 600px; margin: 0 auto;">
+          <div style="background: ${severityColor}; color: white; ` +
+          `padding: 20px; border-radius: 8px 8px 0 0;">
             <h2 style="margin: 0;">Water Quality Alert</h2>
-            ${locationStr ? `<p style="margin: 5px 0 0 0; font-size: 14px;">Location: ${locationStr}</p>` : ""}
+            ${locStr ? "<p style=\"margin: 5px 0 0 0; font-size: 14px;\">" +
+      `Location: ${locStr}</p>` : ""}
           </div>
-          <div style="background: #f5f5f5; padding: 20px; border-radius: 0 0 8px 8px;">
-            <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
-              <h3 style="color: ${severityColor}; margin-top: 0;">${alert.severity} Alert</h3>
+          <div style="background: #f5f5f5; padding: 20px; ` +
+          `border-radius: 0 0 8px 8px;">
+            <div style="background: white; padding: 20px; ` +
+            `border-radius: 8px; margin-bottom: 15px;">
+              <h3 style="color: ${severityColor}; ` +
+              `margin-top: 0;">${alert.severity} Alert</h3>
               <p><strong>Device:</strong> ${alert.deviceName}</p>
-              ${locationStr ? `<p><strong>Location:</strong> ${locationStr}</p>` : ""}
-              <p><strong>Parameter:</strong> ${getParameterName(alert.parameter!)}</p>
-              <p><strong>Current Value:</strong> ${alert.currentValue?.toFixed(2)} ${getParameterUnit(alert.parameter!)}</p>
-              ${alert.thresholdValue ? `<p><strong>Threshold:</strong> ${alert.thresholdValue} ${getParameterUnit(alert.parameter!)}</p>` : ""}
+              ${locStr ? `<p><strong>Location:</strong> ${locStr}</p>` : ""}
+              <p><strong>Parameter:</strong> ` +
+              `${getParameterName(alert.parameter!)}</p>
+              <p><strong>Current Value:</strong> ` +
+              `${alert.currentValue?.toFixed(2)} ` +
+              `${getParameterUnit(alert.parameter!)}</p>
+              ${alert.thresholdValue ? "<p><strong>Threshold:</strong> " +
+      `${alert.thresholdValue} ${getParameterUnit(alert.parameter!)}</p>` : ""}
               <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
             </div>
-            <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 15px;">
+            <div style="background: white; padding: 20px; ` +
+            `border-radius: 8px; margin-bottom: 15px;">
               <h4 style="margin-top: 0;">Message</h4>
               <p>${alert.message}</p>
             </div>
-            <div style="background: #fff3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #faad14;">
+            <div style="background: #fff3cd; padding: 20px; ` +
+            `border-radius: 8px; border-left: 4px solid #faad14;">
               <h4 style="margin-top: 0;">Recommended Action</h4>
               <p>${alert.recommendedAction}</p>
             </div>
             <div style="margin-top: 20px; text-align: center;">
               <p style="color: #666; font-size: 12px;">
-                This is an automated alert from PureTrack Water Quality Monitoring System
+                This is an automated alert from ` +
+                `PureTrack Water Quality Monitoring System
               </p>
             </div>
           </div>
@@ -566,6 +632,10 @@ async function sendEmailNotification(
 
 /**
  * Process and send notifications for an alert
+ * @param {admin.firestore.Firestore} db - Firestore instance
+ * @param {string} alertId - Alert document ID
+ * @param {Partial<WaterQualityAlert>} alert - Alert object
+ * @return {Promise<void>}
  */
 async function processNotifications(
   db: admin.firestore.Firestore,
@@ -595,8 +665,12 @@ async function processNotifications(
 
 /**
  * Process sensor reading and check for alerts
+ * @param {SensorReading} reading - Sensor reading data
+ * @return {Promise<void>}
  */
-async function processSensorReadingForAlerts(reading: SensorReading): Promise<void> {
+async function processSensorReadingForAlerts(
+  reading: SensorReading
+): Promise<void> {
   const thresholds = await getThresholdConfig(db);
 
   logger.info(`Processing reading for alerts: device ${reading.deviceId}`);
@@ -1397,7 +1471,8 @@ export const beforeSignIn = beforeUserSignedIn(
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      console.log(`Sign-in allowed for ${user.email} (Status: ${status})`);
+      const email = user.email || "unknown";
+      console.log(`Sign-in allowed for ${email} (Status: ${status})`);
 
       // Allow sign-in to proceed
       return;
@@ -1458,7 +1533,8 @@ export const checkStaleAlerts = onSchedule(
         const createdAt = (alert.createdAt as admin.firestore.Timestamp).toMillis();
 
         if (createdAt < twoHoursAgo) {
-          logger.warn(`Stale critical alert: ${doc.id} - Device: ${alert.deviceId}, Parameter: ${alert.parameter}`);
+          logger.warn(`Stale critical alert: ${doc.id} - Device: ` +
+            `${alert.deviceId}, Parameter: ${alert.parameter}`);
           staleCount++;
         }
       }
@@ -2156,7 +2232,7 @@ function generateComplianceRecommendations(
 /**
  * Initialize default alert threshold configuration in Firestore
  * Call this function once during initial setup to create default thresholds
- * 
+ *
  * @return {Promise<void>} Promise that resolves when initialization is complete
  */
 export async function initializeAlertThresholds(): Promise<void> {
