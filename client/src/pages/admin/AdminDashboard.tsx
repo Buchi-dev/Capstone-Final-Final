@@ -18,6 +18,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
 } from '@ant-design/icons';
+import { useThemeToken } from '../../theme';
 
 const { Title, Text } = Typography;
 
@@ -94,6 +95,8 @@ const columns = [
 ];
 
 const AdminDashboard = () => {
+  const token = useThemeToken();
+  
   return (
     <AdminLayout>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -113,7 +116,7 @@ const AdminDashboard = () => {
                 prefix={<ApiOutlined />}
                 suffix={
                   <span style={{ fontSize: '14px' }}>
-                    <ArrowUpOutlined style={{ color: '#52c41a' }} /> 12%
+                    <ArrowUpOutlined style={{ color: token.colorSuccess }} /> 12%
                   </span>
                 }
               />
@@ -127,7 +130,7 @@ const AdminDashboard = () => {
                 prefix={<UserOutlined />}
                 suffix={
                   <span style={{ fontSize: '14px' }}>
-                    <ArrowUpOutlined style={{ color: '#52c41a' }} /> 8%
+                    <ArrowUpOutlined style={{ color: token.colorSuccess }} /> 8%
                   </span>
                 }
               />
@@ -138,7 +141,7 @@ const AdminDashboard = () => {
               <Statistic
                 title="Online Devices"
                 value={21}
-                valueStyle={{ color: '#52c41a' }}
+                valueStyle={{ color: token.colorSuccess }}
                 prefix={<CheckCircleOutlined />}
               />
             </Card>
@@ -148,11 +151,11 @@ const AdminDashboard = () => {
               <Statistic
                 title="Offline Devices"
                 value={3}
-                valueStyle={{ color: '#ff4d4f' }}
+                valueStyle={{ color: token.colorError }}
                 prefix={<CloseCircleOutlined />}
                 suffix={
                   <span style={{ fontSize: '14px' }}>
-                    <ArrowDownOutlined style={{ color: '#ff4d4f' }} /> 2
+                    <ArrowDownOutlined style={{ color: token.colorError }} /> 2
                   </span>
                 }
               />

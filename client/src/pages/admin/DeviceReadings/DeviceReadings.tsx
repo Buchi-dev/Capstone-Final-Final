@@ -18,6 +18,7 @@ import {
   message,
   Empty,
 } from 'antd';
+import { useThemeToken } from '../../../theme';
 import {
   ReloadOutlined,
   DownloadOutlined,
@@ -56,6 +57,7 @@ const REFRESH_INTERVALS = [
 ];
 
 const DeviceReadings = () => {
+  const token = useThemeToken();
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [latestReading, setLatestReading] = useState<SensorReading | null>(null);
@@ -189,11 +191,11 @@ const DeviceReadings = () => {
     const status = getStatusColor(value, type);
     switch (status) {
       case 'success':
-        return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
+        return <CheckCircleOutlined style={{ color: token.colorSuccess }} />;
       case 'warning':
-        return <WarningOutlined style={{ color: '#faad14' }} />;
+        return <WarningOutlined style={{ color: token.colorWarning }} />;
       case 'error':
-        return <ExclamationCircleOutlined style={{ color: '#ff4d4f' }} />;
+        return <ExclamationCircleOutlined style={{ color: token.colorError }} />;
       default:
         return null;
     }

@@ -24,6 +24,7 @@ import {
   Tooltip,
   Empty,
 } from 'antd';
+import { useThemeToken } from '../../../theme';
 import {
   SearchOutlined,
   FilterOutlined,
@@ -58,6 +59,7 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 export default function ManageAlerts() {
+  const token = useThemeToken();
   const [alerts, setAlerts] = useState<WaterQualityAlert[]>([]);
   const [filteredAlerts, setFilteredAlerts] = useState<WaterQualityAlert[]>([]);
   const [loading, setLoading] = useState(false);
@@ -202,7 +204,7 @@ export default function ManageAlerts() {
     // Set up real-time listener
     const alertsRef = collection(db, 'alerts');
     const q = query(alertsRef, orderBy('createdAt', 'desc'));
-    
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const alertsData = snapshot.docs.map((doc) => ({
         ...doc.data(),
@@ -243,8 +245,8 @@ export default function ManageAlerts() {
       render: (status: AlertStatus) => {
         const icon =
           status === 'Active' ? <ExclamationCircleOutlined /> :
-          status === 'Acknowledged' ? <CheckCircleOutlined /> :
-          <CloseCircleOutlined />;
+            status === 'Acknowledged' ? <CheckCircleOutlined /> :
+              <CloseCircleOutlined />;
         return (
           <Tag color={getStatusColor(status)} icon={icon}>
             {status}
@@ -341,295 +343,295 @@ export default function ManageAlerts() {
 
   return (
     <AdminLayout>
-    <div>
-      <Title level={2}>
-        <BellOutlined /> Water Quality Alerts
-      </Title>
-      <Text type="secondary">
-        Monitor and manage real-time water quality alerts
-      </Text>
+      <div>
+        <Title level={2}>
+          <BellOutlined /> Water Quality Alerts
+        </Title>
+        <Text type="secondary">
+          Monitor and manage real-time water quality alerts
+        </Text>
 
-      {/* Statistics */}
-      <Row gutter={16} style={{ marginTop: 24, marginBottom: 24 }}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="Total Alerts"
-              value={stats.total}
-              prefix={<BellOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="Active Alerts"
-              value={stats.active}
-              valueStyle={{ color: '#ff4d4f' }}
-              prefix={<ExclamationCircleOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="Critical Alerts"
-              value={stats.critical}
-              valueStyle={{ color: '#ff4d4f' }}
-              prefix={<WarningOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="Resolved"
-              value={stats.resolved}
-              valueStyle={{ color: '#52c41a' }}
-              prefix={<CheckCircleOutlined />}
-            />
-          </Card>
-        </Col>
-      </Row>
+        {/* Statistics */}
+        <Row gutter={16} style={{ marginTop: 24, marginBottom: 24 }}>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="Total Alerts"
+                value={stats.total}
+                prefix={<BellOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="Active Alerts"
+                value={stats.active}
+                valueStyle={{ color: token.colorError }}
+                prefix={<ExclamationCircleOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="Critical Alerts"
+                value={stats.critical}
+                valueStyle={{ color: token.colorError }}
+                prefix={<WarningOutlined />}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card>
+              <Statistic
+                title="Resolved"
+                value={stats.resolved}
+                valueStyle={{ color: token.colorSuccess }}
+                prefix={<CheckCircleOutlined />}
+              />
+            </Card>
+          </Col>
+        </Row>
 
-      {/* Filters and Actions */}
-      <Card style={{ marginBottom: 16 }}>
-        <Space wrap>
-          <Input
-            placeholder="Search alerts..."
-            prefix={<SearchOutlined />}
-            style={{ width: 250 }}
-            value={filters.searchTerm}
-            onChange={(e) => setFilters({ ...filters, searchTerm: e.target.value })}
-            onPressEnter={applyFilters}
-          />
-          <Select
-            mode="multiple"
-            placeholder="Severity"
-            style={{ minWidth: 150 }}
-            value={filters.severity}
-            onChange={(value) => setFilters({ ...filters, severity: value })}
-            options={[
-              { label: 'Critical', value: 'Critical' },
-              { label: 'Warning', value: 'Warning' },
-              { label: 'Advisory', value: 'Advisory' },
-            ]}
-          />
-          <Select
-            mode="multiple"
-            placeholder="Status"
-            style={{ minWidth: 150 }}
-            value={filters.status}
-            onChange={(value) => setFilters({ ...filters, status: value })}
-            options={[
-              { label: 'Active', value: 'Active' },
-              { label: 'Acknowledged', value: 'Acknowledged' },
-              { label: 'Resolved', value: 'Resolved' },
-            ]}
-          />
-          <Select
-            mode="multiple"
-            placeholder="Parameter"
-            style={{ minWidth: 150 }}
-            value={filters.parameter}
-            onChange={(value) => setFilters({ ...filters, parameter: value })}
-            options={[
-              { label: 'TDS', value: 'tds' },
-              { label: 'pH', value: 'ph' },
-              { label: 'Turbidity', value: 'turbidity' },
-            ]}
-          />
-          <Button type="primary" icon={<FilterOutlined />} onClick={applyFilters}>
-            Apply Filters
-          </Button>
-          <Button icon={<ReloadOutlined />} onClick={clearFilters}>
-            Clear
-          </Button>
-          <Button icon={<ReloadOutlined />} onClick={loadAlerts}>
-            Refresh
-          </Button>
-        </Space>
-      </Card>
-
-      {/* Alerts Table */}
-      <Card>
-        <Table
-          columns={columns}
-          dataSource={filteredAlerts}
-          rowKey="alertId"
-          loading={loading}
-          scroll={{ x: 1200 }}
-          pagination={{
-            pageSize: 20,
-            showSizeChanger: true,
-            showTotal: (total) => `Total ${total} alerts`,
-          }}
-          locale={{
-            emptyText: (
-              <Empty description="No alerts found">
-                <Text type="secondary">
-                  All systems are operating normally
-                </Text>
-              </Empty>
-            ),
-          }}
-        />
-      </Card>
-
-      {/* Alert Details Drawer */}
-      <Drawer
-        title="Alert Details"
-        placement="right"
-        width={600}
-        open={detailsVisible}
-        onClose={() => setDetailsVisible(false)}
-        extra={
-          <Space>
-            {selectedAlert?.status === 'Active' && (
-              <Button
-                type="primary"
-                icon={<CheckCircleOutlined />}
-                onClick={() => acknowledgeAlert(selectedAlert.alertId)}
-              >
-                Acknowledge
-              </Button>
-            )}
+        {/* Filters and Actions */}
+        <Card style={{ marginBottom: 16 }}>
+          <Space wrap>
+            <Input
+              placeholder="Search alerts..."
+              prefix={<SearchOutlined />}
+              style={{ width: 250 }}
+              value={filters.searchTerm}
+              onChange={(e) => setFilters({ ...filters, searchTerm: e.target.value })}
+              onPressEnter={applyFilters}
+            />
+            <Select
+              mode="multiple"
+              placeholder="Severity"
+              style={{ minWidth: 150 }}
+              value={filters.severity}
+              onChange={(value) => setFilters({ ...filters, severity: value })}
+              options={[
+                { label: 'Critical', value: 'Critical' },
+                { label: 'Warning', value: 'Warning' },
+                { label: 'Advisory', value: 'Advisory' },
+              ]}
+            />
+            <Select
+              mode="multiple"
+              placeholder="Status"
+              style={{ minWidth: 150 }}
+              value={filters.status}
+              onChange={(value) => setFilters({ ...filters, status: value })}
+              options={[
+                { label: 'Active', value: 'Active' },
+                { label: 'Acknowledged', value: 'Acknowledged' },
+                { label: 'Resolved', value: 'Resolved' },
+              ]}
+            />
+            <Select
+              mode="multiple"
+              placeholder="Parameter"
+              style={{ minWidth: 150 }}
+              value={filters.parameter}
+              onChange={(value) => setFilters({ ...filters, parameter: value })}
+              options={[
+                { label: 'TDS', value: 'tds' },
+                { label: 'pH', value: 'ph' },
+                { label: 'Turbidity', value: 'turbidity' },
+              ]}
+            />
+            <Button type="primary" icon={<FilterOutlined />} onClick={applyFilters}>
+              Apply Filters
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={clearFilters}>
+              Clear
+            </Button>
+            <Button icon={<ReloadOutlined />} onClick={loadAlerts}>
+              Refresh
+            </Button>
           </Space>
-        }
-      >
-        {selectedAlert && (
-          <div>
-            <Space direction="vertical" size="large" style={{ width: '100%' }}>
-              {/* Status and Severity */}
-              <Card size="small">
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <div>
-                    <Text type="secondary">Status:</Text>{' '}
-                    <Tag color={getStatusColor(selectedAlert.status)}>
-                      {selectedAlert.status}
-                    </Tag>
-                  </div>
-                  <div>
-                    <Text type="secondary">Severity:</Text>{' '}
-                    <Tag color={getSeverityColor(selectedAlert.severity)}>
-                      {selectedAlert.severity}
-                    </Tag>
-                  </div>
-                  <div>
-                    <Text type="secondary">Type:</Text>{' '}
-                    <Tag>{selectedAlert.alertType}</Tag>
-                  </div>
-                </Space>
-              </Card>
+        </Card>
 
-              {/* Device and Parameter Info */}
-              <Card size="small" title="Device Information">
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <div>
-                    <Text strong>Device:</Text> {selectedAlert.deviceName || selectedAlert.deviceId}
-                  </div>
-                  <div>
-                    <Text strong>Parameter:</Text> {getParameterName(selectedAlert.parameter)}
-                  </div>
-                  <div>
-                    <Text strong>Current Value:</Text>{' '}
-                    <Text strong style={{ color: getSeverityColor(selectedAlert.severity) }}>
-                      {selectedAlert.currentValue.toFixed(2)} {getParameterUnit(selectedAlert.parameter)}
-                    </Text>
-                  </div>
-                  {selectedAlert.thresholdValue && (
-                    <div>
-                      <Text strong>Threshold:</Text> {selectedAlert.thresholdValue} {getParameterUnit(selectedAlert.parameter)}
-                    </div>
-                  )}
-                  {selectedAlert.trendDirection && (
-                    <div>
-                      <Text strong>Trend:</Text> <Tag>{selectedAlert.trendDirection}</Tag>
-                    </div>
-                  )}
-                </Space>
-              </Card>
+        {/* Alerts Table */}
+        <Card>
+          <Table
+            columns={columns}
+            dataSource={filteredAlerts}
+            rowKey="alertId"
+            loading={loading}
+            scroll={{ x: 1200 }}
+            pagination={{
+              pageSize: 20,
+              showSizeChanger: true,
+              showTotal: (total) => `Total ${total} alerts`,
+            }}
+            locale={{
+              emptyText: (
+                <Empty description="No alerts found">
+                  <Text type="secondary">
+                    All systems are operating normally
+                  </Text>
+                </Empty>
+              ),
+            }}
+          />
+        </Card>
 
-              {/* Alert Message */}
-              <Card size="small" title="Alert Message">
-                <Text>{selectedAlert.message}</Text>
-              </Card>
-
-              {/* Recommended Action */}
-              <Card size="small" title="Recommended Action" style={{ background: '#fff3cd' }}>
-                <Text>{selectedAlert.recommendedAction}</Text>
-              </Card>
-
-              {/* Timestamps */}
-              <Card size="small" title="Timeline">
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <div>
-                    <Text type="secondary">Created:</Text>{' '}
-                    {selectedAlert.createdAt?.toDate().toLocaleString()}
-                  </div>
-                  {selectedAlert.acknowledgedAt && (
-                    <div>
-                      <Text type="secondary">Acknowledged:</Text>{' '}
-                      {selectedAlert.acknowledgedAt.toDate().toLocaleString()}
-                    </div>
-                  )}
-                  {selectedAlert.resolvedAt && (
-                    <div>
-                      <Text type="secondary">Resolved:</Text>{' '}
-                      {selectedAlert.resolvedAt.toDate().toLocaleString()}
-                    </div>
-                  )}
-                </Space>
-              </Card>
-
-              {/* Notifications Sent */}
-              {selectedAlert.notificationsSent && selectedAlert.notificationsSent.length > 0 && (
-                <Card size="small" title="Notifications Sent">
-                  <Badge
-                    count={selectedAlert.notificationsSent.length}
-                    style={{ backgroundColor: '#52c41a' }}
-                  >
-                    <Text>{selectedAlert.notificationsSent.length} users notified</Text>
-                  </Badge>
-                </Card>
-              )}
-
-              <Divider />
-
-              {/* Resolve Alert Form */}
-              {selectedAlert.status !== 'Resolved' && (
-                <Card size="small" title="Resolve Alert">
-                  <Form
-                    layout="vertical"
-                    onFinish={(values) => resolveAlert(selectedAlert.alertId, values.notes)}
-                  >
-                    <Form.Item
-                      name="notes"
-                      label="Resolution Notes (optional)"
-                    >
-                      <TextArea
-                        rows={4}
-                        placeholder="Enter any notes about how this alert was resolved..."
-                      />
-                    </Form.Item>
-                    <Form.Item>
-                      <Button
-                        type="primary"
-                        htmlType="submit"
-                        icon={<CheckCircleOutlined />}
-                        block
-                      >
-                        Mark as Resolved
-                      </Button>
-                    </Form.Item>
-                  </Form>
-                </Card>
+        {/* Alert Details Drawer */}
+        <Drawer
+          title="Alert Details"
+          placement="right"
+          width={600}
+          open={detailsVisible}
+          onClose={() => setDetailsVisible(false)}
+          extra={
+            <Space>
+              {selectedAlert?.status === 'Active' && (
+                <Button
+                  type="primary"
+                  icon={<CheckCircleOutlined />}
+                  onClick={() => acknowledgeAlert(selectedAlert.alertId)}
+                >
+                  Acknowledge
+                </Button>
               )}
             </Space>
-          </div>
-        )}
-      </Drawer>
-    </div>
+          }
+        >
+          {selectedAlert && (
+            <div>
+              <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                {/* Status and Severity */}
+                <Card size="small">
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <div>
+                      <Text type="secondary">Status:</Text>{' '}
+                      <Tag color={getStatusColor(selectedAlert.status)}>
+                        {selectedAlert.status}
+                      </Tag>
+                    </div>
+                    <div>
+                      <Text type="secondary">Severity:</Text>{' '}
+                      <Tag color={getSeverityColor(selectedAlert.severity)}>
+                        {selectedAlert.severity}
+                      </Tag>
+                    </div>
+                    <div>
+                      <Text type="secondary">Type:</Text>{' '}
+                      <Tag>{selectedAlert.alertType}</Tag>
+                    </div>
+                  </Space>
+                </Card>
+
+                {/* Device and Parameter Info */}
+                <Card size="small" title="Device Information">
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <div>
+                      <Text strong>Device:</Text> {selectedAlert.deviceName || selectedAlert.deviceId}
+                    </div>
+                    <div>
+                      <Text strong>Parameter:</Text> {getParameterName(selectedAlert.parameter)}
+                    </div>
+                    <div>
+                      <Text strong>Current Value:</Text>{' '}
+                      <Text strong style={{ color: getSeverityColor(selectedAlert.severity) }}>
+                        {selectedAlert.currentValue.toFixed(2)} {getParameterUnit(selectedAlert.parameter)}
+                      </Text>
+                    </div>
+                    {selectedAlert.thresholdValue && (
+                      <div>
+                        <Text strong>Threshold:</Text> {selectedAlert.thresholdValue} {getParameterUnit(selectedAlert.parameter)}
+                      </div>
+                    )}
+                    {selectedAlert.trendDirection && (
+                      <div>
+                        <Text strong>Trend:</Text> <Tag>{selectedAlert.trendDirection}</Tag>
+                      </div>
+                    )}
+                  </Space>
+                </Card>
+
+                {/* Alert Message */}
+                <Card size="small" title="Alert Message">
+                  <Text>{selectedAlert.message}</Text>
+                </Card>
+
+                {/* Recommended Action */}
+                <Card size="small" title="Recommended Action" style={{ background: '#fff3cd' }}>
+                  <Text>{selectedAlert.recommendedAction}</Text>
+                </Card>
+
+                {/* Timestamps */}
+                <Card size="small" title="Timeline">
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <div>
+                      <Text type="secondary">Created:</Text>{' '}
+                      {selectedAlert.createdAt?.toDate().toLocaleString()}
+                    </div>
+                    {selectedAlert.acknowledgedAt && (
+                      <div>
+                        <Text type="secondary">Acknowledged:</Text>{' '}
+                        {selectedAlert.acknowledgedAt.toDate().toLocaleString()}
+                      </div>
+                    )}
+                    {selectedAlert.resolvedAt && (
+                      <div>
+                        <Text type="secondary">Resolved:</Text>{' '}
+                        {selectedAlert.resolvedAt.toDate().toLocaleString()}
+                      </div>
+                    )}
+                  </Space>
+                </Card>
+
+                {/* Notifications Sent */}
+                {selectedAlert.notificationsSent && selectedAlert.notificationsSent.length > 0 && (
+                  <Card size="small" title="Notifications Sent">
+                    <Badge
+                      count={selectedAlert.notificationsSent.length}
+                      style={{ backgroundColor: token.colorSuccess }}
+                    >
+                      <Text>{selectedAlert.notificationsSent.length} users notified</Text>
+                    </Badge>
+                  </Card>
+                )}
+
+                <Divider />
+
+                {/* Resolve Alert Form */}
+                {selectedAlert.status !== 'Resolved' && (
+                  <Card size="small" title="Resolve Alert">
+                    <Form
+                      layout="vertical"
+                      onFinish={(values) => resolveAlert(selectedAlert.alertId, values.notes)}
+                    >
+                      <Form.Item
+                        name="notes"
+                        label="Resolution Notes (optional)"
+                      >
+                        <TextArea
+                          rows={4}
+                          placeholder="Enter any notes about how this alert was resolved..."
+                        />
+                      </Form.Item>
+                      <Form.Item>
+                        <Button
+                          type="primary"
+                          htmlType="submit"
+                          icon={<CheckCircleOutlined />}
+                          block
+                        >
+                          Mark as Resolved
+                        </Button>
+                      </Form.Item>
+                    </Form>
+                  </Card>
+                )}
+              </Space>
+            </div>
+          )}
+        </Drawer>
+      </div>
     </AdminLayout>
   );
 }

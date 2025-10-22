@@ -204,30 +204,30 @@ export const getParameterName = (parameter: WaterParameter): string => {
   }
 };
 
-// Helper function to get severity color
+// Helper function to get severity color (using theme colors)
 export const getSeverityColor = (severity: AlertSeverity): string => {
   switch (severity) {
     case 'Critical':
-      return '#ff4d4f'; // error red
+      return 'error'; // Uses Ant Design's colorError token
     case 'Warning':
-      return '#faad14'; // warning orange
+      return 'warning'; // Uses Ant Design's colorWarning token
     case 'Advisory':
-      return '#1890ff'; // info blue
+      return 'processing'; // Uses Ant Design's colorInfo token
     default:
-      return '#d9d9d9';
+      return 'default';
   }
 };
 
-// Helper function to get status color
+// Helper function to get status color (using theme colors)
 export const getStatusColor = (status: AlertStatus): string => {
   switch (status) {
     case 'Active':
-      return '#ff4d4f'; // error red
+      return 'error'; // Uses Ant Design's colorError token
     case 'Acknowledged':
-      return '#faad14'; // warning orange
+      return 'warning'; // Uses Ant Design's colorWarning token
     case 'Resolved':
-      return '#52c41a'; // success green
+      return 'success'; // Uses Ant Design's colorSuccess token
     default:
-      return '#d9d9d9';
+      return 'default';
   }
 };
