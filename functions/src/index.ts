@@ -149,6 +149,49 @@ interface NotificationPreferences {
   quietHoursEnd?: string;
 }
 
+// Daily Analytics Types
+interface DeviceReportSummary {
+  totalDevices: number;
+  onlineDevices: number;
+  offlineDevices: number;
+  healthScore: number;
+}
+
+interface DeviceReport {
+  summary: DeviceReportSummary;
+  devices: Array<Record<string, unknown>>;
+}
+
+interface AlertData {
+  id: string;
+  severity: AlertSeverity;
+  deviceId: string;
+  deviceName?: string;
+  parameter: WaterParameter;
+  currentValue?: number;
+  createdAt?: admin.firestore.Timestamp;
+}
+
+interface DeviceSummary {
+  deviceId: string;
+  name: string;
+  location?: DeviceLocation;
+  status: DeviceStatus;
+  lastSeen: admin.firestore.FieldValue;
+  reading: {
+    turbidity: number;
+    tds: number;
+    ph: number;
+    timestamp: number;
+  };
+}
+
+interface AlertCounts {
+  Critical: number;
+  Warning: number;
+  Advisory: number;
+}
+
 // Device Types
 type DeviceStatus = "online" | "offline" | "error" | "maintenance";
 
@@ -1591,27 +1634,35 @@ export const sendDailyAnalyticsEmail = onSchedule(
         .limit(20)
         .get();
 
-      const recentAlerts = alertsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const recentAlerts: AlertData[] = alertsSnapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          severity: data.severity as AlertSeverity,
+          deviceId: data.deviceId,
+          deviceName: data.deviceName,
+          parameter: data.parameter as WaterParameter,
+          currentValue: data.currentValue,
+          createdAt: data.createdAt,
+        };
+      });
 
       // Count alerts by severity
-      const alertCounts = {
+      const alertCounts: AlertCounts = {
         Critical: 0,
         Warning: 0,
         Advisory: 0,
       };
 
-      recentAlerts.forEach((alert: any) => {
+      recentAlerts.forEach((alert: AlertData) => {
         if (alert.severity in alertCounts) {
-          alertCounts[alert.severity as keyof typeof alertCounts]++;
+          alertCounts[alert.severity]++;
         }
       });
 
       // Get water quality summary for all devices
       const devicesSnapshot = await db.collection("devices").get();
-      const deviceSummaries: Array<any> = [];
+      const deviceSummaries: DeviceSummary[] = [];
 
       for (const deviceDoc of devicesSnapshot.docs) {
         const deviceId = deviceDoc.id;
@@ -1647,14 +1698,17 @@ export const sendDailyAnalyticsEmail = onSchedule(
         try {
           await sendDailyAnalyticsEmailToUser(
             prefs,
-            deviceReport as any,
+            deviceReport,
             recentAlerts,
             alertCounts,
             deviceSummaries
           );
           logger.info(`Daily analytics sent to ${prefs.email}`);
         } catch (error) {
-          logger.error(`Failed to send daily analytics to ${prefs.email}:`, error);
+          logger.error(
+            `Failed to send daily analytics to ${prefs.email}:`,
+            error
+          );
         }
       }
 
@@ -1668,13 +1722,19 @@ export const sendDailyAnalyticsEmail = onSchedule(
 
 /**
  * Send daily analytics email to a single user
+ * @param {NotificationPreferences} recipient - User notification preferences
+ * @param {DeviceReport} deviceReport - Device status report
+ * @param {AlertData[]} recentAlerts - Recent alerts from last 24 hours
+ * @param {AlertCounts} alertCounts - Count of alerts by severity
+ * @param {DeviceSummary[]} deviceSummaries - Summary of all devices
+ * @return {Promise<void>} Promise that resolves when email is sent
  */
 async function sendDailyAnalyticsEmailToUser(
   recipient: NotificationPreferences,
-  deviceReport: any,
-  recentAlerts: any[],
-  alertCounts: {Critical: number; Warning: number; Advisory: number},
-  deviceSummaries: any[]
+  deviceReport: DeviceReport,
+  recentAlerts: AlertData[],
+  alertCounts: AlertCounts,
+  deviceSummaries: DeviceSummary[]
 ): Promise<void> {
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -1688,22 +1748,29 @@ async function sendDailyAnalyticsEmailToUser(
 
   const deviceStatusRows = deviceSummaries
     .map(
-      (dev) => `
+      (dev) => {
+        const bgColor = dev.status === "online" ? "#e6f7e6" : "#fee";
+        const textColor = dev.status === "online" ? "#2d662d" : "#c00";
+        return `
     <tr style="border-bottom: 1px solid #e0e0e0;">
       <td style="padding: 12px; font-weight: 500;">${dev.name}</td>
       <td style="padding: 12px;">
-        <span style="display: inline-block; padding: 4px 12px; border-radius: 12px; 
-          background: ${dev.status === "online" ? "#e6f7e6" : "#fee"}; 
-          color: ${dev.status === "online" ? "#2d662d" : "#c00"}; 
-          font-size: 12px; font-weight: 600;">
+        <span style="display: inline-block; padding: 4px 12px;
+          border-radius: 12px; background: ${bgColor};
+          color: ${textColor}; font-size: 12px; font-weight: 600;">
           ${dev.status.toUpperCase()}
         </span>
       </td>
-      <td style="padding: 12px;">${dev.reading.turbidity.toFixed(2)} NTU</td>
-      <td style="padding: 12px;">${dev.reading.tds.toFixed(0)} ppm</td>
+      <td style="padding: 12px;">
+        ${dev.reading.turbidity.toFixed(2)} NTU
+      </td>
+      <td style="padding: 12px;">
+        ${dev.reading.tds.toFixed(0)} ppm
+      </td>
       <td style="padding: 12px;">${dev.reading.ph.toFixed(2)}</td>
     </tr>
-  `
+  `;
+      }
     )
     .join("");
 
@@ -1724,16 +1791,24 @@ async function sendDailyAnalyticsEmailToUser(
         return `
     <tr style="border-bottom: 1px solid #e0e0e0;">
       <td style="padding: 12px;">
-        <span style="display: inline-block; padding: 4px 12px; border-radius: 12px; 
-          background: ${severityColor}20; color: ${severityColor}; 
-          font-size: 12px; font-weight: 600;">
+        <span style="display: inline-block; padding: 4px 12px;
+          border-radius: 12px; background: ${severityColor}20;
+          color: ${severityColor}; font-size: 12px; font-weight: 600;">
           ${alert.severity}
         </span>
       </td>
-      <td style="padding: 12px;">${alert.deviceName || alert.deviceId}</td>
-      <td style="padding: 12px;">${getParameterName(alert.parameter)}</td>
-      <td style="padding: 12px;">${alert.currentValue?.toFixed(2) || "N/A"}</td>
-      <td style="padding: 12px; font-size: 12px; color: #666;">${timestamp}</td>
+      <td style="padding: 12px;">
+        ${alert.deviceName || alert.deviceId}
+      </td>
+      <td style="padding: 12px;">
+        ${getParameterName(alert.parameter)}
+      </td>
+      <td style="padding: 12px;">
+        ${alert.currentValue?.toFixed(2) || "N/A"}
+      </td>
+      <td style="padding: 12px; font-size: 12px; color: #666;">
+        ${timestamp}
+      </td>
     </tr>
   `;
       }
@@ -1751,19 +1826,27 @@ async function sendDailyAnalyticsEmailToUser(
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
       </head>
-      <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f5f5f5;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 20px 0;">
+      <body style="margin: 0; padding: 0; font-family: Arial, sans-serif;
+        background-color: #f5f5f5;">
+        <table width="100%" cellpadding="0" cellspacing="0"
+          style="background-color: #f5f5f5; padding: 20px 0;">
           <tr>
             <td align="center">
-              <table width="600" cellpadding="0" cellspacing="0" style="background-color: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+              <table width="600" cellpadding="0" cellspacing="0"
+                style="background-color: white; border-radius: 8px;
+                overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                 
                 <!-- Header -->
                 <tr>
-                  <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center;">
-                    <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 700;">
+                  <td style="background: linear-gradient(135deg,
+                    #667eea 0%, #764ba2 100%);
+                    padding: 30px; text-align: center;">
+                    <h1 style="margin: 0; color: white;
+                      font-size: 28px; font-weight: 700;">
                       📊 Daily Water Quality Report
                     </h1>
-                    <p style="margin: 10px 0 0 0; color: rgba(255,255,255,0.9); font-size: 16px;">
+                    <p style="margin: 10px 0 0 0;
+                      color: rgba(255,255,255,0.9); font-size: 16px;">
                       ${today}
                     </p>
                   </td>
@@ -1774,25 +1857,44 @@ async function sendDailyAnalyticsEmailToUser(
                   <td style="padding: 30px 30px 20px 30px;">
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
-                        <td width="32%" style="background: #e6f7ff; padding: 20px; border-radius: 8px; text-align: center;">
-                          <div style="font-size: 32px; font-weight: 700; color: #1890ff; margin-bottom: 5px;">
+                        <td width="32%" style="background: #e6f7ff;
+                          padding: 20px; border-radius: 8px;
+                          text-align: center;">
+                          <div style="font-size: 32px; font-weight: 700;
+                            color: #1890ff; margin-bottom: 5px;">
                             ${deviceReport.summary.totalDevices}
                           </div>
-                          <div style="color: #666; font-size: 14px;">Total Devices</div>
+                          <div style="color: #666; font-size: 14px;">
+                            Total Devices
+                          </div>
                         </td>
                         <td width="2%"></td>
-                        <td width="32%" style="background: ${totalAlerts > 0 ? "#fff7e6" : "#f6ffed"}; padding: 20px; border-radius: 8px; text-align: center;">
-                          <div style="font-size: 32px; font-weight: 700; color: ${totalAlerts > 0 ? "#faad14" : "#52c41a"}; margin-bottom: 5px;">
+                        <td width="32%" style="background: ${
+  totalAlerts > 0 ? "#fff7e6" : "#f6ffed"
+};
+                          padding: 20px; border-radius: 8px;
+                          text-align: center;">
+                          <div style="font-size: 32px; font-weight: 700;
+                            color: ${
+  totalAlerts > 0 ? "#faad14" : "#52c41a"
+}; margin-bottom: 5px;">
                             ${totalAlerts}
                           </div>
-                          <div style="color: #666; font-size: 14px;">Alerts (24h)</div>
+                          <div style="color: #666; font-size: 14px;">
+                            Alerts (24h)
+                          </div>
                         </td>
                         <td width="2%"></td>
-                        <td width="32%" style="background: #f0f5ff; padding: 20px; border-radius: 8px; text-align: center;">
-                          <div style="font-size: 32px; font-weight: 700; color: #597ef7; margin-bottom: 5px;">
+                        <td width="32%" style="background: #f0f5ff;
+                          padding: 20px; border-radius: 8px;
+                          text-align: center;">
+                          <div style="font-size: 32px; font-weight: 700;
+                            color: #597ef7; margin-bottom: 5px;">
                             ${deviceReport.summary.healthScore}%
                           </div>
-                          <div style="color: #666; font-size: 14px;">Health Score</div>
+                          <div style="color: #666; font-size: 14px;">
+                            Health Score
+                          </div>
                         </td>
                       </tr>
                     </table>
@@ -1805,21 +1907,41 @@ async function sendDailyAnalyticsEmailToUser(
     `
                 <tr>
                   <td style="padding: 0 30px 20px 30px;">
-                    <div style="background: #fafafa; padding: 15px; border-radius: 8px; border-left: 4px solid #faad14;">
-                      <div style="font-weight: 600; margin-bottom: 10px; color: #333;">Alert Breakdown:</div>
+                    <div style="background: #fafafa; padding: 15px;
+                      border-radius: 8px;
+                      border-left: 4px solid #faad14;">
+                      <div style="font-weight: 600;
+                        margin-bottom: 10px; color: #333;">
+                        Alert Breakdown:
+                      </div>
                       <table width="100%" cellpadding="0" cellspacing="0">
                         <tr>
                           <td width="33%" style="text-align: center;">
-                            <div style="font-size: 24px; font-weight: 700; color: #ff4d4f;">${alertCounts.Critical}</div>
-                            <div style="font-size: 12px; color: #666;">Critical</div>
+                            <div style="font-size: 24px;
+                              font-weight: 700; color: #ff4d4f;">
+                              ${alertCounts.Critical}
+                            </div>
+                            <div style="font-size: 12px; color: #666;">
+                              Critical
+                            </div>
                           </td>
                           <td width="33%" style="text-align: center;">
-                            <div style="font-size: 24px; font-weight: 700; color: #faad14;">${alertCounts.Warning}</div>
-                            <div style="font-size: 12px; color: #666;">Warning</div>
+                            <div style="font-size: 24px;
+                              font-weight: 700; color: #faad14;">
+                              ${alertCounts.Warning}
+                            </div>
+                            <div style="font-size: 12px; color: #666;">
+                              Warning
+                            </div>
                           </td>
                           <td width="33%" style="text-align: center;">
-                            <div style="font-size: 24px; font-weight: 700; color: #1890ff;">${alertCounts.Advisory}</div>
-                            <div style="font-size: 12px; color: #666;">Advisory</div>
+                            <div style="font-size: 24px;
+                              font-weight: 700; color: #1890ff;">
+                              ${alertCounts.Advisory}
+                            </div>
+                            <div style="font-size: 12px; color: #666;">
+                              Advisory
+                            </div>
                           </td>
                         </tr>
                       </table>
@@ -1833,21 +1955,48 @@ async function sendDailyAnalyticsEmailToUser(
                 <!-- Device Status Section -->
                 <tr>
                   <td style="padding: 0 30px 20px 30px;">
-                    <h2 style="margin: 0 0 15px 0; color: #333; font-size: 20px; border-bottom: 2px solid #667eea; padding-bottom: 10px;">
+                    <h2 style="margin: 0 0 15px 0; color: #333;
+                      font-size: 20px; border-bottom: 2px solid #667eea;
+                      padding-bottom: 10px;">
                       📱 Device Status & Latest Readings
                     </h2>
-                    <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                    <table width="100%" cellpadding="0" cellspacing="0"
+                      style="border: 1px solid #e0e0e0;
+                      border-radius: 8px; overflow: hidden;">
                       <thead>
                         <tr style="background: #fafafa;">
-                          <th style="padding: 12px; text-align: left; font-weight: 600; color: #666; font-size: 13px;">Device</th>
-                          <th style="padding: 12px; text-align: left; font-weight: 600; color: #666; font-size: 13px;">Status</th>
-                          <th style="padding: 12px; text-align: left; font-weight: 600; color: #666; font-size: 13px;">Turbidity</th>
-                          <th style="padding: 12px; text-align: left; font-weight: 600; color: #666; font-size: 13px;">TDS</th>
-                          <th style="padding: 12px; text-align: left; font-weight: 600; color: #666; font-size: 13px;">pH</th>
+                          <th style="padding: 12px; text-align: left;
+                            font-weight: 600; color: #666;
+                            font-size: 13px;">
+                            Device
+                          </th>
+                          <th style="padding: 12px; text-align: left;
+                            font-weight: 600; color: #666;
+                            font-size: 13px;">
+                            Status
+                          </th>
+                          <th style="padding: 12px; text-align: left;
+                            font-weight: 600; color: #666;
+                            font-size: 13px;">
+                            Turbidity
+                          </th>
+                          <th style="padding: 12px; text-align: left;
+                            font-weight: 600; color: #666;
+                            font-size: 13px;">
+                            TDS
+                          </th>
+                          <th style="padding: 12px; text-align: left;
+                            font-weight: 600; color: #666;
+                            font-size: 13px;">
+                            pH
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
-                        ${deviceStatusRows || "<tr><td colspan=\"5\" style=\"padding: 20px; text-align: center; color: #999;\">No devices found</td></tr>"}
+                        ${deviceStatusRows ||
+  `<tr><td colspan="5" style="padding: 20px;
+  text-align: center; color: #999;">
+  No devices found</td></tr>`}
                       </tbody>
                     </table>
                   </td>
@@ -1859,17 +2008,42 @@ async function sendDailyAnalyticsEmailToUser(
     `
                 <tr>
                   <td style="padding: 0 30px 30px 30px;">
-                    <h2 style="margin: 0 0 15px 0; color: #333; font-size: 20px; border-bottom: 2px solid #667eea; padding-bottom: 10px;">
+                    <h2 style="margin: 0 0 15px 0; color: #333;
+                      font-size: 20px;
+                      border-bottom: 2px solid #667eea;
+                      padding-bottom: 10px;">
                       🔔 Recent Alerts (Last 24 Hours)
                     </h2>
-                    <table width="100%" cellpadding="0" cellspacing="0" style="border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;">
+                    <table width="100%" cellpadding="0" cellspacing="0"
+                      style="border: 1px solid #e0e0e0;
+                      border-radius: 8px; overflow: hidden;">
                       <thead>
                         <tr style="background: #fafafa;">
-                          <th style="padding: 12px; text-align: left; font-weight: 600; color: #666; font-size: 13px;">Severity</th>
-                          <th style="padding: 12px; text-align: left; font-weight: 600; color: #666; font-size: 13px;">Device</th>
-                          <th style="padding: 12px; text-align: left; font-weight: 600; color: #666; font-size: 13px;">Parameter</th>
-                          <th style="padding: 12px; text-align: left; font-weight: 600; color: #666; font-size: 13px;">Value</th>
-                          <th style="padding: 12px; text-align: left; font-weight: 600; color: #666; font-size: 13px;">Time</th>
+                          <th style="padding: 12px; text-align: left;
+                            font-weight: 600; color: #666;
+                            font-size: 13px;">
+                            Severity
+                          </th>
+                          <th style="padding: 12px; text-align: left;
+                            font-weight: 600; color: #666;
+                            font-size: 13px;">
+                            Device
+                          </th>
+                          <th style="padding: 12px; text-align: left;
+                            font-weight: 600; color: #666;
+                            font-size: 13px;">
+                            Parameter
+                          </th>
+                          <th style="padding: 12px; text-align: left;
+                            font-weight: 600; color: #666;
+                            font-size: 13px;">
+                            Value
+                          </th>
+                          <th style="padding: 12px; text-align: left;
+                            font-weight: 600; color: #666;
+                            font-size: 13px;">
+                            Time
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1882,10 +2056,19 @@ async function sendDailyAnalyticsEmailToUser(
     `
                 <tr>
                   <td style="padding: 0 30px 30px 30px;">
-                    <div style="background: #f6ffed; border: 2px solid #b7eb8f; border-radius: 8px; padding: 20px; text-align: center;">
-                      <div style="font-size: 48px; margin-bottom: 10px;">✅</div>
-                      <div style="color: #52c41a; font-weight: 600; font-size: 18px; margin-bottom: 5px;">No Alerts in the Last 24 Hours</div>
-                      <div style="color: #666; font-size: 14px;">All systems operating normally</div>
+                    <div style="background: #f6ffed;
+                      border: 2px solid #b7eb8f; border-radius: 8px;
+                      padding: 20px; text-align: center;">
+                      <div style="font-size: 48px; margin-bottom: 10px;">
+                        ✅
+                      </div>
+                      <div style="color: #52c41a; font-weight: 600;
+                        font-size: 18px; margin-bottom: 5px;">
+                        No Alerts in the Last 24 Hours
+                      </div>
+                      <div style="color: #666; font-size: 14px;">
+                        All systems operating normally
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -1894,12 +2077,16 @@ async function sendDailyAnalyticsEmailToUser(
 
                 <!-- Footer -->
                 <tr>
-                  <td style="background: #fafafa; padding: 20px 30px; text-align: center; border-top: 1px solid #e0e0e0;">
+                  <td style="background: #fafafa; padding: 20px 30px;
+                    text-align: center; border-top: 1px solid #e0e0e0;">
                     <p style="margin: 0; color: #999; font-size: 12px;">
-                      This is an automated daily report from PureTrack Water Quality Monitoring System
+                      This is an automated daily report from
+                      PureTrack Water Quality Monitoring System
                     </p>
-                    <p style="margin: 10px 0 0 0; color: #999; font-size: 12px;">
-                      You're receiving this because email notifications are enabled in your settings
+                    <p style="margin: 10px 0 0 0; color: #999;
+                      font-size: 12px;">
+                      You're receiving this because email notifications
+                      are enabled in your settings
                     </p>
                   </td>
                 </tr>
@@ -2145,7 +2332,11 @@ async function generateWaterQualityReport(
 /**
  * Device Status Report - Operational health overview
  */
-async function generateDeviceStatusReport(): Promise<unknown> {
+/**
+ * Device Status Report - Monitor active/inactive devices
+ * @return {Promise<DeviceReport>} The device status report
+ */
+async function generateDeviceStatusReport(): Promise<DeviceReport> {
   const devicesSnapshot = await db.collection("devices").get();
 
   const statusSummary: Record<string, number> = {
@@ -2178,18 +2369,18 @@ async function generateDeviceStatusReport(): Promise<unknown> {
     };
   });
 
+  const healthScore = devices.length > 0 ?
+    Math.round((statusSummary.online / devices.length) * 100) :
+    0;
+
   return {
-    title: "Device Status Report",
-    generatedAt: Date.now(),
     summary: {
       totalDevices: devices.length,
-      statusBreakdown: statusSummary,
-      healthScore: devices.length > 0 ?
-        ((statusSummary.online / devices.length) * 100).toFixed(1) :
-        "0.0",
+      onlineDevices: statusSummary.online,
+      offlineDevices: statusSummary.offline,
+      healthScore,
     },
     devices,
-    recommendations: generateDeviceRecommendations(devices),
   };
 }
 
@@ -2515,12 +2706,19 @@ function calculateUptime(lastSeenTimestamp: number): string {
  * @param {Array<Record<string, unknown>>} devices - Array of device objects
  * @return {Array<string>} Array of recommendation strings
  */
-function generateDeviceRecommendations(devices: Array<Record<string, unknown>>): Array<string> {
+// @ts-expect-error - Reserved for future use
+// eslint-disable-next-line @typescript-eslint/no-unused-vars, require-jsdoc
+function generateDeviceRecommendations(
+  devices: Array<Record<string, unknown>>
+): Array<string> {
   const recommendations: Array<string> = [];
-  const offlineCount = devices.filter((d) => d.connectivity === "inactive").length;
+  const offlineCount =
+    devices.filter((d) => d.connectivity === "inactive").length;
 
   if (offlineCount > 0) {
-    recommendations.push(`${offlineCount} device(s) are offline - check connectivity`);
+    recommendations.push(
+      `${offlineCount} device(s) are offline - check connectivity`
+    );
   }
 
   return recommendations;
