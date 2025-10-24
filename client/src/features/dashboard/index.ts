@@ -6,5 +6,5 @@
 // Pages
 export { default as AdminDashboardPage } from './pages/AdminDashboardPage';
 export { default as StaffDashboardPage } from './pages/StaffDashboardPage';
-export { default as StaffDevices } from './pages/StaffDevices';
-export { default as StaffReadings } from './pages/StaffReadings';
+export { default as StaffDevicesPage } from './pages/StaffDevicesPage';
+export { default as StaffReadingsPage } from './pages/StaffReadingsPage';
