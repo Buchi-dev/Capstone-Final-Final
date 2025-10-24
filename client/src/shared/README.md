@@ -10,30 +10,50 @@ shared/
 ├── constants/      # Shared constants and configuration values
 ├── utils/          # Utility functions
 ├── hooks/          # Custom React hooks (to be added in Phase 4)
-├── services/       # Shared services (to be added in Phase 2)
+├── services/       # Shared services (HTTP client, storage, etc.)
 └── components/     # Shared UI components (to be added in Phase 4)
 ```
 
-## Phase 1 Complete ✅
+## Refactoring Status
+
+### Phase 1: Foundation ✅ COMPLETE
 
 The foundation layer has been established with:
 
-### Types (`shared/types/`)
+#### Types (`shared/types/`)
 - **common.types.ts** - Generic types (Pagination, Sort, Filters, etc.)
 - **api.types.ts** - API request/response types
 - **domain.types.ts** - Domain entities (User, Device, Alert, Report, etc.)
 - **ui.types.ts** - UI-specific types (Layout, Modal, Form, Table, etc.)
 - **index.ts** - Central export for all types
 
-### Constants (`shared/constants/`)
+#### Constants (`shared/constants/`)
 - **apiEndpoints.constants.ts** - API endpoint URLs and configuration
 - **messages.constants.ts** - User-facing messages (success, error, warning, info)
 - **validation.constants.ts** - Validation rules, patterns, and constraints
 - **index.ts** - Central export for all constants
 
-### Utils (`shared/utils/`)
+#### Utils (`shared/utils/`)
 - **alert.utils.ts** - Helper functions for working with alerts
 - **index.ts** - Central export for all utilities
+
+### Phase 2: Core Services ✅ COMPLETE
+
+#### HTTP Services (`shared/services/http/`)
+- **httpClient.ts** - Centralized Axios instances with configuration
+  - Device management client (10s timeout)
+  - Report generation client (60s timeout)
+  - Generic HTTP client
+  - Factory for custom clients
+- **httpError.ts** - Comprehensive error handling
+  - Error parsing from Axios errors
+  - User-friendly error messages
+  - Error type checking utilities
+  - Error logging for debugging
+- **httpInterceptor.ts** - Request/response interceptors
+  - Automatic request timing
+  - Development logging
+  - Error transformation
 
 ## Usage
 
@@ -64,6 +84,15 @@ import { getParameterUnit, getSeverityColor } from '@/shared/utils';
 import { getParameterUnit } from '@/shared/utils/alert.utils';
 ```
 
+### Using HTTP Clients
+```typescript
+// Import HTTP clients
+import { deviceHttpClient, reportHttpClient } from '@/shared/services/http';
+
+// Use in API clients
+const response = await deviceHttpClient.post('/endpoint', data);
+```
+
 ## Naming Conventions
 
 For detailed naming conventions, refer to `/NAMING_CONVENTIONS.md` in the root directory.
@@ -77,12 +106,59 @@ For detailed naming conventions, refer to `/NAMING_CONVENTIONS.md` in the root d
 - **Types**: PascalCase (e.g., `Device`, `UserProfile`)
 - **Interfaces**: PascalCase (e.g., `DeviceMetadata`)
 
+## Refactoring Impact
+
+### Before Refactoring
+- Types scattered across multiple files
+- API configuration duplicated
+- No centralized error handling
+- No request/response logging
+- Mixed concerns in single files
+
+### After Phases 1 & 2
+- ✅ All types centralized in `shared/types/`
+- ✅ All constants in `shared/constants/`
+- ✅ HTTP client abstraction with interceptors
+- ✅ Consistent error handling
+- ✅ Development logging
+- ✅ Feature-based API clients
+- ✅ Backward compatible
+
+## Feature-Based API Clients
+
+API clients have been organized by feature:
+
+### Device Management (`features/device-management/services/`)
+- **deviceApiClient.ts** - All device-related API operations
+
+### Reports (`features/reports/services/`)
+- **reportApiClient.ts** - All report generation operations
+
+## Migration Guide
+
+### For Existing Code
+The refactoring maintains backward compatibility. Existing imports continue to work:
+
+```typescript
+// This still works
+import { deviceApi, reportApi } from '../services/api';
+```
+
+### For New Code
+Use the new structure for better organization:
+
+```typescript
+// Recommended for new code
+import { deviceApiClient } from '../features/device-management/services/deviceApiClient';
+import { reportApiClient } from '../features/reports/services/reportApiClient';
+```
+
 ## Next Steps (Future Phases)
 
-- **Phase 2**: Add `services/http/` for HTTP client abstraction
-- **Phase 3**: Add feature-specific API clients
-- **Phase 4**: Add `hooks/` for custom React hooks
-- **Phase 4**: Add `components/` for shared UI components
+- **Phase 3**: Folder restructuring - organize pages/components by feature
+- **Phase 4**: Component organization - separate shared from feature-specific
+- **Phase 5**: Naming improvements - rename files for consistency
+- **Phase 6**: Testing & validation - ensure all functionality works
 
 ## Contributing
 
@@ -94,3 +170,4 @@ When adding new shared resources:
 4. Add utility functions to relevant util files or create new ones
 5. Export new resources from the appropriate index.ts file
 6. Update this README if adding new categories
+7. Ensure backward compatibility when refactoring existing code
