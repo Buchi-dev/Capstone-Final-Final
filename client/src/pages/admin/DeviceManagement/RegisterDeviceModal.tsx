@@ -1,10 +1,11 @@
-import { Modal, Form, Input, Space, Typography, Divider, Alert } from 'antd';
+import { Modal, Form, Input, Select, Space, Typography, Divider, Alert } from 'antd';
 import { useEffect } from 'react';
 import type { Device } from '../../../schemas';
 import { EnvironmentOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useThemeToken } from '../../../theme';
 
 const { TextArea } = Input;
+const { Option } = Select;
 const { Text } = Typography;
 
 interface RegisterDeviceModalProps {
@@ -118,14 +119,19 @@ export const RegisterDeviceModal = ({
               name="floor"
               rules={[
                 { required: true, message: 'Floor is required for registration' },
-                { min: 1, message: 'Floor must be specified' },
               ]}
               tooltip="Floor level where the device is located"
             >
-              <Input 
-                placeholder="e.g., Ground Floor, 2nd Floor, Basement" 
+              <Select 
+                placeholder="Select floor" 
                 size="large"
-              />
+              >
+                <Option value="1st Floor">1st Floor</Option>
+                <Option value="2nd Floor">2nd Floor</Option>
+                <Option value="3rd Floor">3rd Floor</Option>
+                <Option value="4th Floor">4th Floor</Option>
+                <Option value="5th Floor">5th Floor</Option>
+              </Select>
             </Form.Item>
 
             <Form.Item
