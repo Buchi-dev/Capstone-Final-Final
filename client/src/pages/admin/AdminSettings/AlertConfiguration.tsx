@@ -25,8 +25,78 @@ import {
 } from '@ant-design/icons';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
-import { DEFAULT_THRESHOLDS } from '../../../types/alerts';
-import type { AlertThresholds, NotificationPreferences } from '../../../types/alerts';
+
+// --- Inlined from alerts.ts ---
+export interface AlertThresholds {
+  tds: {
+    warningMin: number;
+    warningMax: number;
+    criticalMin: number;
+    criticalMax: number;
+    unit: string;
+  };
+  ph: {
+    warningMin: number;
+    warningMax: number;
+    criticalMin: number;
+    criticalMax: number;
+    unit: string;
+  };
+  turbidity: {
+    warningMin: number;
+    warningMax: number;
+    criticalMin: number;
+    criticalMax: number;
+    unit: string;
+  };
+  trendDetection: {
+    enabled: boolean;
+    thresholdPercentage: number;
+    timeWindowMinutes: number;
+  };
+}
+export interface NotificationPreferences {
+  userId: string;
+  email: string;
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  alertSeverities: ('Advisory' | 'Warning' | 'Critical')[];
+  parameters: ('tds' | 'ph' | 'turbidity')[];
+  devices: string[];
+  quietHoursEnabled: boolean;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
+  updatedAt: Timestamp;
+}
+export const DEFAULT_THRESHOLDS: AlertThresholds = {
+  tds: {
+    warningMin: 0,
+    warningMax: 500,
+    criticalMin: 0,
+    criticalMax: 1000,
+    unit: 'ppm',
+  },
+  ph: {
+    warningMin: 6.0,
+    warningMax: 8.5,
+    criticalMin: 5.5,
+    criticalMax: 9.0,
+    unit: '',
+  },
+  turbidity: {
+    warningMin: 0,
+    warningMax: 5,
+    criticalMin: 0,
+    criticalMax: 10,
+    unit: 'NTU',
+  },
+  trendDetection: {
+    enabled: true,
+    thresholdPercentage: 15,
+    timeWindowMinutes: 30,
+  },
+};
+// --- End inlined section ---
 
 const { Title, Text } = Typography;
 

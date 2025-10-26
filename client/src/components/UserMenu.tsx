@@ -14,7 +14,50 @@ import {
   IdcardOutlined,
 } from "@ant-design/icons";
 import { useAuth } from "../contexts/AuthContext";
-import { logout, getUserDisplayName, getUserInitials, getStatusColor } from "../utils/authUtils";
+// --- Inlined from authUtils.ts ---
+import { signOut } from "firebase/auth";
+import { auth } from "../config/firebase";
+
+async function logout(): Promise<void> {
+  try {
+    await signOut(auth);
+    console.log("✓ User signed out successfully");
+  } catch (error) {
+    console.error("Error signing out:", error);
+    throw error;
+  }
+}
+
+function getUserDisplayName(profile: { firstname?: string; lastname?: string } | null): string {
+  if (!profile) return "User";
+  const { firstname, lastname } = profile;
+  if (firstname && lastname) {
+    return `${firstname} ${lastname}`;
+  }
+  return firstname || lastname || "User";
+}
+
+function getUserInitials(profile: { firstname?: string; lastname?: string } | null): string {
+  if (!profile) return "U";
+  const { firstname, lastname } = profile;
+  const firstInitial = firstname?.charAt(0)?.toUpperCase() || "";
+  const lastInitial = lastname?.charAt(0)?.toUpperCase() || "";
+  return `${firstInitial}${lastInitial}` || "U";
+}
+
+function getStatusColor(status: "Pending" | "Approved" | "Suspended"): string {
+  switch (status) {
+    case "Approved":
+      return "green";
+    case "Pending":
+      return "orange";
+    case "Suspended":
+      return "red";
+    default:
+      return "default";
+  }
+}
+// --- End inlined section ---
 
 const { Text } = Typography;
 

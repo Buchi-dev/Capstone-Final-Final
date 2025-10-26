@@ -55,7 +55,42 @@ import {
   Tooltip, 
   ResponsiveContainer 
 } from 'recharts';
-import type { WaterQualityAlert, AlertSeverity } from '../../../types/alerts';
+// --- Inlined from alerts.ts ---
+import type { Timestamp } from 'firebase/firestore';
+export type AlertSeverity = 'Advisory' | 'Warning' | 'Critical';
+export type AlertStatus = 'Active' | 'Acknowledged' | 'Resolved';
+export type WaterParameter = 'tds' | 'ph' | 'turbidity';
+export type TrendDirection = 'increasing' | 'decreasing' | 'stable';
+export type AlertType = 'threshold' | 'trend';
+export interface WaterQualityAlert {
+  alertId: string;
+  deviceId: string;
+  deviceName?: string;
+  deviceBuilding?: string;
+  deviceFloor?: string;
+  parameter: WaterParameter;
+  alertType: AlertType;
+  severity: AlertSeverity;
+  status: AlertStatus;
+  currentValue: number;
+  thresholdValue?: number;
+  trendDirection?: TrendDirection;
+  message: string;
+  recommendedAction: string;
+  createdAt: Timestamp;
+  acknowledgedAt?: Timestamp;
+  acknowledgedBy?: string;
+  resolvedAt?: Timestamp;
+  resolvedBy?: string;
+  notificationsSent: string[];
+  metadata?: {
+    previousValue?: number;
+    changeRate?: number;
+    location?: string;
+    [key: string]: any;
+  };
+}
+// --- End inlined section ---
 import type { SensorReading } from '../../../schemas';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
