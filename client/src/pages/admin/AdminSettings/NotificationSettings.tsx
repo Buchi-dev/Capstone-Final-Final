@@ -9,7 +9,6 @@ import {
   message,
   Spin,
   Typography,
-  Divider,
   Alert,
   Space,
   Tag,
@@ -31,7 +30,7 @@ import {
 import { useAuth } from '../../../contexts/AuthContext';
 import dayjs from 'dayjs';
 
-const { Title, Text, Paragraph } = Typography;
+const { Text, Paragraph } = Typography;
 const { Option } = Select;
 
 interface NotificationPreferences {
