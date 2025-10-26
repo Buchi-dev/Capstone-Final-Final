@@ -11,7 +11,7 @@
 // client/src/pages/admin/AdminDashboard.tsx with this code
 // ============================================================================
 
-import { AdminLayout } from '../../components/layouts/AdminLayout';
+import { AdminLayout } from '../../../components/layouts/AdminLayout';
 import {
   Card,
   Row,
@@ -38,12 +38,12 @@ import {
   SearchOutlined,
   FilterOutlined,
 } from '@ant-design/icons';
-import { useThemeToken } from '../../theme';
+import { useThemeToken } from '../../../theme';
 import { useState, useEffect, useMemo } from 'react';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { ref, onValue, off } from 'firebase/database';
 import { getDatabase } from 'firebase/database';
-import { db } from '../../config/firebase';
+import { db } from '../../../config/firebase';
 import { 
   LineChart, 
   Line, 
@@ -55,8 +55,8 @@ import {
   Tooltip, 
   ResponsiveContainer 
 } from 'recharts';
-import type { WaterQualityAlert, AlertSeverity } from '../../types/alerts';
-import type { SensorReading } from '../../schemas';
+import type { WaterQualityAlert, AlertSeverity } from '../../../types/alerts';
+import type { SensorReading } from '../../../schemas';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 

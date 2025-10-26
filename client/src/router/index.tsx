@@ -7,15 +7,15 @@ import { PublicRoute, ApprovedRoute, AdminRoute } from '../components/ProtectedR
 import { RootRedirect } from '../components/RootRedirect';
 
 // Admin Pages
-import AdminDashboard from '../pages/admin/AdminDashboard';
-import { DeviceManagement } from '../pages/admin/DeviceManagement';
-import { DeviceReadings } from '../pages/admin/DeviceReadings';
-import { DataManagement } from '../pages/admin/DataManagement';
-import { ManageReports } from '../pages/admin/ManageReports';
-import ManageAlerts from '../pages/admin/ManageAlerts';
-import Analytics from '../pages/admin/Analytics/Analytics';
-import UserManagement from '../pages/admin/UserManagement/UserManagement';
-import Settings from '../pages/admin/Settings';
+import AdminDashboard from '../pages/admin/AdminDashboard/AdminDashboard';
+import { DeviceManagement } from '../pages/admin/AdminDeviceManagement';
+import { DeviceReadings } from '../pages/admin/AdminDeviceReadings';
+import { DataManagement } from '../pages/admin/AdminDataManagement';
+import { ManageReports } from '../pages/admin/AdminReports';
+import ManageAlerts from '../pages/admin/AdminAlerts';
+import Analytics from '../pages/admin/AdminAnalytics/Analytics';
+import UserManagement from '../pages/admin/AdminUserManagement/UserManagement';
+import Settings from '../pages/admin/AdminSettings/AdminSettings';
 
 // Staff Pages
 import { StaffDashboard, StaffDevices, StaffReadings, StaffAnalytics } from '../pages/staff';

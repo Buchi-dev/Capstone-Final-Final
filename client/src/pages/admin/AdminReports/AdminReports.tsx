@@ -82,7 +82,7 @@ const calculateDataCompleteness = (totalReadings: number, startDate?: number, en
   return `${completeness.toFixed(1)}%`;
 };
 
-const ManageReports = () => {
+export const AdminReports = () => {
   const token = useThemeToken();
   const [devices, setDevices] = useState<Device[]>([]);
   const [selectedType, setSelectedType] = useState<ReportType>('water_quality');
@@ -1402,5 +1402,3 @@ const ManageReports = () => {
     </AdminLayout>
   );
 };
-
-export default ManageReports;

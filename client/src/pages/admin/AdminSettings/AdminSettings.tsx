@@ -1,13 +1,13 @@
-import { AdminLayout } from '../../components/layouts';
+import { AdminLayout } from '../../../components/layouts';
 import { Card, Typography, Space, Tabs } from 'antd';
 import { SettingOutlined, BellOutlined, SafetyOutlined, LockOutlined, ControlOutlined } from '@ant-design/icons';
-import AlertConfiguration from './Settings/AlertConfiguration';
-import NotificationSettings from './Settings/NotificationSettings';
+import AlertConfiguration from './AlertConfiguration';
+import NotificationSettings from './NotificationSettings';
 
 const { Title, Paragraph } = Typography;
 const { TabPane } = Tabs;
 
-const Settings = () => {
+export const AdminSettings = () => {
   return (
     <AdminLayout>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -53,4 +53,3 @@ const Settings = () => {
   );
 };
 
-export default Settings;
