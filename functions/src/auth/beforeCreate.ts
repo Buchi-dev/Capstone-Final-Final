@@ -1,4 +1,4 @@
-import {beforeUserCreated} from "firebase-functions/v2/identity";
+import {beforeUserCreated, HttpsError} from "firebase-functions/v2/identity";
 import * as admin from "firebase-admin";
 import {db} from "../config/firebase";
 import type {UserProfile} from "../types";
@@ -8,6 +8,7 @@ import type {UserProfile} from "../types";
  * Triggered when a user signs in for the first time via Google OAuth
  *
  * This function:
+ * - Restricts account creation to @smu.edu.ph domain only
  * - Creates user profile in Firestore with default values
  * - Sets initial Role = "Staff" and Status = "Pending"
  * - Extracts name from Google displayName
@@ -24,6 +25,18 @@ export const beforeCreate = beforeUserCreated(
     if (!user) {
       console.error("User data is undefined in beforeCreate");
       return;
+    }
+
+    // Restrict to smu.edu.ph domain only
+    const email = (user.email || "").toLowerCase();
+    const allowedDomain = "@smu.edu.ph";
+
+    if (!email.endsWith(allowedDomain)) {
+      console.warn(`Blocked account creation for ${email}: Not an SMU account`);
+      throw new HttpsError(
+        "permission-denied",
+        "Only Saint Mary's University (smu.edu.ph) accounts are allowed."
+      );
     }
 
     console.log(`Creating new user profile for: ${user.email}`);

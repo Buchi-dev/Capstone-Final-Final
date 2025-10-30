@@ -8,6 +8,7 @@ import type {UserProfile, LoginLog} from "../types";
  * Triggered on every sign-in attempt (including first sign-in after creation)
  *
  * This function:
+ * - Restricts login to @smu.edu.ph domain only
  * - Checks if user exists in Firestore
  * - Logs all sign-in attempts to login_logs collection
  * - Allows sign-in for all user statuses (Pending, Approved, Suspended)
@@ -25,6 +26,30 @@ export const beforeSignIn = beforeUserSignedIn(
     if (!user) {
       console.error("User data is undefined in beforeSignIn");
       throw new HttpsError("internal", "User data is missing");
+    }
+
+    // Restrict to smu.edu.ph domain only
+    const email = (user.email || "").toLowerCase();
+    const allowedDomain = "@smu.edu.ph";
+
+    if (!email.endsWith(allowedDomain)) {
+      console.warn(`Blocked sign-in attempt for ${email}: Not an SMU account`);
+
+      // Log rejected attempt
+      await db.collection("login_logs").add({
+        uid: user.uid,
+        email: user.email || "",
+        displayName: user.displayName || "",
+        statusAttempted: "Pending",
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        result: "rejected",
+        message: "Sign-in blocked: Not an SMU email address",
+      } as LoginLog);
+
+      throw new HttpsError(
+        "permission-denied",
+        "Only Saint Mary's University (smu.edu.ph) accounts are allowed."
+      );
     }
 
     console.log(`Sign-in attempt by: ${user.email}`);
