@@ -5,3 +5,6 @@
 
 // Export authentication functions
 export * from "./auth";
+
+// Export callable functions
+export * from "./callable";

@@ -30,18 +30,6 @@ if (!admin.apps.length) {
  */
 export const db = admin.firestore();
 
-/**
- * Realtime database instance
- * Used for real-time data synchronization
- */
-export const rtdb = admin.database();
-
-/**
- * Firebase Auth instance
- * Used for authentication operations
- */
-export const auth = admin.auth();
-
 // ===========================
 // GLOBAL FUNCTION SETTINGS
 // ===========================

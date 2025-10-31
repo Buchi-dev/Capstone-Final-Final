@@ -20,51 +20,32 @@ export const ALLOWED_EMAIL_DOMAIN = "@smu.edu.ph";
  */
 const ORGANIZATION_NAME = "Saint Mary's University";
 
-// ===========================
-// USER ROLE CONSTANTS
-// ===========================
+// Import user status and role from userManagement constants (single source of truth)
+import type {UserStatus, UserRole} from "./userManagement.constants";
 
-/**
- * Available user roles in the system
- */
-export const USER_ROLES = {
-  STAFF: "Staff",
-  ADMIN: "Admin",
-} as const;
+// ===========================
+// DEFAULT USER VALUES
+// ===========================
 
 /**
  * Default role assigned to new user accounts
  */
-export const DEFAULT_USER_ROLE = USER_ROLES.STAFF;
-
-// ===========================
-// USER STATUS CONSTANTS
-// ===========================
+export const DEFAULT_USER_ROLE: UserRole = "Staff";
 
 /**
- * Available user account statuses
+ * Default status assigned to new user accounts  
  */
-export const USER_STATUSES = {
-  PENDING: "Pending",
-  APPROVED: "Approved",
-  SUSPENDED: "Suspended",
-} as const;
-
-/**
- * Default status assigned to new user accounts
- */
-export const DEFAULT_USER_STATUS = USER_STATUSES.PENDING;
+export const DEFAULT_USER_STATUS: UserStatus = "Pending";
 
 // ===========================
 // AUTHENTICATION PROVIDER CONSTANTS
 // ===========================
 
 /**
- * Supported authentication providers
+ * Google authentication provider identifier
  */
 export const AUTH_PROVIDERS = {
   GOOGLE: "google.com",
-  EMAIL: "password",
 } as const;
 
 // ===========================
@@ -76,13 +57,6 @@ export const AUTH_PROVIDERS = {
  */
 export const AUTH_ACTIONS = {
   USER_CREATED: "user_account_created",
-  USER_SIGNED_IN: "user_signed_in",
-  USER_APPROVED: "user_approved",
-  USER_SUSPENDED: "user_suspended",
-  USER_ROLE_CHANGED: "user_role_changed",
-  USER_STATUS_CHANGED: "user_status_changed",
-  SIGN_IN_BLOCKED: "sign_in_blocked",
-  ACCOUNT_CREATION_BLOCKED: "account_creation_blocked",
 } as const;
 
 /**
@@ -104,9 +78,7 @@ export const LOGIN_RESULTS = {
 export const AUTH_ERROR_MESSAGES = {
   DOMAIN_NOT_ALLOWED: `Only ${ORGANIZATION_NAME} (${ALLOWED_EMAIL_DOMAIN}) accounts are allowed.`,
   USER_NOT_FOUND: "User profile not found. Please contact the system administrator.",
-  USER_DATA_MISSING: "User data is missing from authentication event",
   SIGN_IN_ERROR: "An unexpected error occurred during sign-in. Please try again.",
-  PROFILE_CREATION_ERROR: "Failed to create user profile. Please try again.",
 } as const;
 
 // ===========================
@@ -123,5 +95,4 @@ export const LOG_PREFIXES = {
   ERROR: "[ERROR]",
   SIGN_IN: "[SIGN-IN]",
   AUTHENTICATED: "[AUTHENTICATED]",
-  WARNING: "[WARNING]",
 } as const;

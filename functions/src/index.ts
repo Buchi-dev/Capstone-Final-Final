@@ -28,3 +28,10 @@ export {sendAlertDigests} from "./scheduler/sendAlertDigests";
 
 // HTTP Functions - Alert Management
 export {acknowledgeDigest} from "./http/acknowledgeDigest";
+
+// HTTP Functions - User Management
+export {
+  updateUserStatus,
+  updateUser,
+  listUsers,
+} from "./http/userManagement";

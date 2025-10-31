@@ -36,10 +36,9 @@ import {
   PhoneOutlined,
   CalendarOutlined,
 } from '@ant-design/icons';
-import { collection, query, getDocs, doc, updateDoc, orderBy, Timestamp } from 'firebase/firestore';
-import { db } from '../../../config/firebase';
 import type { UserProfile, UserStatus, UserRole } from '../../../contexts';
 import type { ColumnsType } from 'antd/es/table';
+import { userManagementService } from '../../../services/userManagement.Service';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -60,40 +59,23 @@ export const AdminUserManagement = () => {
   const [editStatus, setEditStatus] = useState<UserStatus>('Pending');
   const [editRole, setEditRole] = useState<UserRole>('Staff');
 
-  // Fetch users from Firestore
+  // Fetch users using User Management Service
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, orderBy('createdAt', 'desc'));
-      const querySnapshot = await getDocs(q);
+      const result = await userManagementService.listUsers();
       
-      const usersList: UserWithId[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        usersList.push({
-          id: doc.id,
-          uuid: data.uuid,
-          firstname: data.firstname || '',
-          lastname: data.lastname || '',
-          middlename: data.middlename || '',
-          department: data.department || '',
-          phoneNumber: data.phoneNumber || '',
-          email: data.email,
-          role: data.role,
-          status: data.status,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate(),
-          lastLogin: data.lastLogin?.toDate(),
-        });
-      });
+      // Data already has dates converted by the service
+      const usersList: UserWithId[] = result.users.map((user: any) => ({
+        ...user,
+      }));
 
       setUsers(usersList);
       filterUsers(usersList, activeTab, searchText);
-      message.success(`Loaded ${usersList.length} users`);
-    } catch (error) {
+      message.success(`Loaded ${result.count} users`);
+    } catch (error: any) {
       console.error('Error fetching users:', error);
-      message.error('Failed to load users');
+      message.error(error.message || 'Failed to load users');
     } finally {
       setLoading(false);
     }
@@ -126,41 +108,42 @@ export const AdminUserManagement = () => {
     setFilteredUsers(filtered);
   };
 
-  // Update user status
-  const updateUserStatus = async (userId: string, newStatus: UserStatus) => {
+  // Update user status using User Management Service
+  const updateUserStatusHandler = async (userId: string, newStatus: UserStatus) => {
     try {
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        status: newStatus,
-        updatedAt: Timestamp.now(),
-      });
-
-      message.success(`User status updated to ${newStatus}`);
-      fetchUsers(); // Refresh the list
-    } catch (error) {
+      setLoading(true);
+      const result = await userManagementService.updateUserStatus(userId, newStatus);
+      
+      message.success(result.message);
+      await fetchUsers(); // Refresh the list
+    } catch (error: any) {
       console.error('Error updating user status:', error);
-      message.error('Failed to update user status');
+      message.error(error.message || 'Failed to update user status');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Handle edit user
+  // Handle edit user using User Management Service
   const handleEditUser = async () => {
     if (!selectedUser) return;
 
     try {
-      const userRef = doc(db, 'users', selectedUser.id);
-      await updateDoc(userRef, {
-        status: editStatus,
-        role: editRole,
-        updatedAt: Timestamp.now(),
-      });
+      setLoading(true);
+      const result = await userManagementService.updateUser(
+        selectedUser.id,
+        editStatus,
+        editRole
+      );
 
-      message.success('User updated successfully');
+      message.success(result.message);
       setEditModalVisible(false);
-      fetchUsers();
-    } catch (error) {
+      await fetchUsers();
+    } catch (error: any) {
       console.error('Error updating user:', error);
-      message.error('Failed to update user');
+      message.error(error.message || 'Failed to update user');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -280,7 +263,7 @@ export const AdminUserManagement = () => {
             <Popconfirm
               title="Approve this user?"
               description="This will grant the user access to the system."
-              onConfirm={() => updateUserStatus(record.id, 'Approved')}
+              onConfirm={() => updateUserStatusHandler(record.id, 'Approved')}
               okText="Approve"
               cancelText="Cancel"
             >
@@ -299,7 +282,7 @@ export const AdminUserManagement = () => {
             <Popconfirm
               title="Suspend this user?"
               description="This will revoke the user's access."
-              onConfirm={() => updateUserStatus(record.id, 'Suspended')}
+              onConfirm={() => updateUserStatusHandler(record.id, 'Suspended')}
               okText="Suspend"
               cancelText="Cancel"
               okButtonProps={{ danger: true }}
@@ -319,7 +302,7 @@ export const AdminUserManagement = () => {
             <Popconfirm
               title="Reactivate this user?"
               description="This will restore the user's access."
-              onConfirm={() => updateUserStatus(record.id, 'Approved')}
+              onConfirm={() => updateUserStatusHandler(record.id, 'Approved')}
               okText="Reactivate"
               cancelText="Cancel"
             >
