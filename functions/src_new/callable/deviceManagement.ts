@@ -6,7 +6,7 @@
  * @module callable/deviceManagement
  */
 
-import {HttpsError} from "firebase-functions/v2/https";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
 import type {CallableRequest} from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import {db, rtdb, pubsub} from "../config/firebase";
@@ -366,13 +366,15 @@ const handlers: ActionHandlers<DeviceManagementRequest, DeviceManagementResponse
   getSensorHistory: handleGetSensorHistory,
 };
 
-export const deviceManagement = createRoutedFunction<
+export const deviceManagement = onCall<
   DeviceManagementRequest,
-  DeviceManagementResponse
+  Promise<DeviceManagementResponse>
 >(
-  handlers,
-  {
-    requireAuth: true,
-    requireAdmin: true,
-  }
+  createRoutedFunction<DeviceManagementRequest, DeviceManagementResponse>(
+    handlers,
+    {
+      requireAuth: true,
+      requireAdmin: true,
+    }
+  )
 );

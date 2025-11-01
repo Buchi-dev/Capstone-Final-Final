@@ -14,6 +14,7 @@ import {onCall, HttpsError} from "firebase-functions/v2/https";
 import type {CallableRequest} from "firebase-functions/v2/https";
 import {db} from "../config/firebase";
 import {FieldValue} from "firebase-admin/firestore";
+import type * as FirebaseFirestore from "firebase-admin/firestore";
 import {
   ALERT_MANAGEMENT_ERRORS,
   ALERT_MANAGEMENT_MESSAGES,

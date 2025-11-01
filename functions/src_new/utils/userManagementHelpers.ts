@@ -16,31 +16,6 @@ import {
 } from "../constants/userManagement.constants";
 
 // ===========================
-// AUTHORIZATION FUNCTIONS
-// ===========================
-
-/**
- * Verifies that the caller has admin privileges
- * @param {any} auth - Authentication context from callable function
- * @throws {HttpsError} If user is not authenticated or not an admin
- */
-export function requireAdmin(auth: any): void {
-  if (!auth) {
-    throw new HttpsError(
-      "unauthenticated",
-      USER_MANAGEMENT_ERRORS.UNAUTHENTICATED
-    );
-  }
-
-  if (auth.token.role !== "Admin") {
-    throw new HttpsError(
-      "permission-denied",
-      USER_MANAGEMENT_ERRORS.PERMISSION_DENIED
-    );
-  }
-}
-
-// ===========================
 // VALIDATION FUNCTIONS
 // ===========================
 

@@ -60,6 +60,16 @@ export const AUTH_ACTIONS = {
 } as const;
 
 /**
+ * User status constants for logging purposes
+ * Maps to UserStatus type from userManagement constants
+ */
+export const USER_STATUSES = {
+  PENDING: "Pending" as UserStatus,
+  APPROVED: "Approved" as UserStatus,
+  SUSPENDED: "Suspended" as UserStatus,
+} as const;
+
+/**
  * Login result types
  */
 export const LOGIN_RESULTS = {

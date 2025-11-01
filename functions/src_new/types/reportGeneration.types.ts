@@ -14,11 +14,6 @@
  */
 export type ReportType = "water_quality" | "device_status" | "data_summary" | "compliance";
 
-/**
- * Report format
- */
-export type ReportFormat = "json" | "pdf" | "excel";
-
 // ===========================
 // SHARED TYPES
 // ===========================

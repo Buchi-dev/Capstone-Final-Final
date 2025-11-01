@@ -22,8 +22,3 @@ export const COLLECTIONS = {
   DEVICES: "devices",
   SENSOR_READINGS: "sensor_readings",
 } as const;
-
-/**
- * Type-safe collection names
- */
-export type CollectionName = typeof COLLECTIONS[keyof typeof COLLECTIONS];

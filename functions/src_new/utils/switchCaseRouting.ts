@@ -98,7 +98,7 @@ export type ActionHandlers<TRequest = any, TResponse = any> = {
  *   });
  * });
  */
-export async function routeAction<TRequest = any, TResponse = any>(
+async function routeAction<TRequest = any, TResponse = any>(
   request: CallableRequest<TRequest>,
   handlers: ActionHandlers<TRequest, TResponse>,
   actionField = "action"
