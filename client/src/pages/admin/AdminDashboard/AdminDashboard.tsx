@@ -40,10 +40,10 @@ import {
 } from '@ant-design/icons';
 import { useThemeToken } from '../../../theme';
 import { useState, useEffect, useMemo } from 'react';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { ref, onValue, off } from 'firebase/database';
 import { getDatabase } from 'firebase/database';
-import { db } from '../../../config/firebase';
+import { alertsService } from '../../../services/alerts.Service';
+import { deviceManagementService } from '../../../services/deviceManagement.Service';
 import { 
   LineChart, 
   Line, 
@@ -152,7 +152,7 @@ interface DeviceSensorData {
   deviceId: string;
   deviceName: string;
   latestReading: SensorReading | null;
-  status: 'online' | 'offline';
+  status: 'online' | 'offline' | 'error' | 'maintenance';
   location?: string;
 }
 
@@ -174,76 +174,81 @@ export const AdminDashboard = () => {
   const [selectedDevice, setSelectedDevice] = useState<string>('all');
 
   // ============================================================================
-  // EFFECT: Fetch recent alerts from Firestore
+  // EFFECT: Fetch recent alerts using service layer
   // ============================================================================
   useEffect(() => {
-    const alertsQuery = query(
-      collection(db, 'alerts'),
-      orderBy('createdAt', 'desc'),
-      limit(20)
-    );
-
-    const unsubscribe = onSnapshot(
-      alertsQuery,
-      (snapshot) => {
-        const alertsData = snapshot.docs.map((doc) => ({
-          alertId: doc.id,
-          ...doc.data(),
-        })) as WaterQualityAlert[];
-        setAlerts(alertsData);
+    const fetchAlerts = async () => {
+      try {
+        setLoading(true);
+        const alertsData = await alertsService.listAlerts();
+        // Get only the 20 most recent alerts
+        const recentAlerts = alertsData
+          .sort((a, b) => {
+            const aTime = a.createdAt?.toMillis?.() || 0;
+            const bTime = b.createdAt?.toMillis?.() || 0;
+            return bTime - aTime;
+          })
+          .slice(0, 20);
+        setAlerts(recentAlerts);
         setLoading(false);
-      },
-      (error) => {
+      } catch (error) {
         console.error('Error fetching alerts:', error);
         setLoading(false);
       }
-    );
+    };
 
-    return () => unsubscribe();
+    fetchAlerts();
+    
+    // Poll for updates every 30 seconds
+    const intervalId = setInterval(fetchAlerts, 30000);
+    
+    return () => clearInterval(intervalId);
   }, []);
 
   // ============================================================================
   // EFFECT: Fetch devices and setup real-time sensor data listeners
   // ============================================================================
   useEffect(() => {
-    const devicesQuery = query(collection(db, 'devices'));
-
-    const unsubscribe = onSnapshot(devicesQuery, (snapshot) => {
-      const devicesData = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          deviceId: data.deviceId,
-          deviceName: data.name || data.deviceId,
+    const fetchDevices = async () => {
+      try {
+        const devicesData = await deviceManagementService.listDevices();
+        
+        const formattedDevices: DeviceSensorData[] = devicesData.map((device) => ({
+          deviceId: device.deviceId,
+          deviceName: device.name || device.deviceId,
           latestReading: null,
-          status: data.status || 'offline',
-          location: data.metadata?.location
-            ? `${data.metadata.location.building || ''}, ${data.metadata.location.floor || ''}`
+          status: device.status || 'offline',
+          location: device.metadata?.location
+            ? `${device.metadata.location.building || ''}, ${device.metadata.location.floor || ''}`
             : undefined,
-        };
-      });
+        }));
 
-      setDevices(devicesData);
+        setDevices(formattedDevices);
 
-      // Set up real-time listeners for each device
-      devicesData.forEach((device) => {
-        const sensorRef = ref(rtdb, `sensorReadings/${device.deviceId}/latest`);
-        onValue(sensorRef, (snapshot) => {
-          const reading = snapshot.val();
-          if (reading) {
-            setDevices((prev) =>
-              prev.map((d) =>
-                d.deviceId === device.deviceId
-                  ? { ...d, latestReading: reading, status: 'online' }
-                  : d
+        // Set up real-time listeners for each device
+        formattedDevices.forEach((device) => {
+          const sensorRef = ref(rtdb, `sensorReadings/${device.deviceId}/latest`);
+          onValue(sensorRef, (snapshot) => {
+            const reading = snapshot.val();
+            if (reading) {
+              setDevices((prev) =>
+                prev.map((d) =>
+                  d.deviceId === device.deviceId
+                    ? { ...d, latestReading: reading, status: 'online' }
+                    : d
               )
             );
           }
         });
       });
-    });
+      } catch (error) {
+        console.error('Error fetching devices:', error);
+      }
+    };
+
+    fetchDevices();
 
     return () => {
-      unsubscribe();
       // Clean up RTDB listeners
       devices.forEach((device) => {
         const sensorRef = ref(rtdb, `sensorReadings/${device.deviceId}/latest`);

@@ -37,8 +37,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
-import { db } from '../../../config/firebase';
+import type { Timestamp } from 'firebase/firestore';
 import { alertsService } from '../../../services/alerts.Service';
 import type {
   WaterQualityAlert,
@@ -78,37 +77,22 @@ export const AdminAlerts = () => {
     advisory: 0,
   });
 
-  // Load alerts from Firestore using real-time listener (READ ONLY)
-  // This is the correct pattern for displaying live data
-  const loadAlerts = () => {
+  // Load alerts using service layer
+  const loadAlerts = async () => {
     setLoading(true);
     
-    const alertsRef = collection(db, 'alerts');
-    const q = query(alertsRef, orderBy('createdAt', 'desc'));
-    
-    // Set up real-time listener for live updates
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const alertsData = snapshot.docs.map((doc) => ({
-          ...doc.data(),
-          alertId: doc.id,
-          createdAt: doc.data().createdAt as Timestamp,
-        })) as WaterQualityAlert[];
+    try {
+      const alertsData = await alertsService.listAlerts();
 
-        setAlerts(alertsData);
-        setFilteredAlerts(alertsData);
-        calculateStats(alertsData);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Error loading alerts:', error);
-        message.error('Failed to load alerts');
-        setLoading(false);
-      }
-    );
-
-    return unsubscribe;
+      setAlerts(alertsData);
+      setFilteredAlerts(alertsData);
+      calculateStats(alertsData);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading alerts:', error);
+      message.error('Failed to load alerts');
+      setLoading(false);
+    }
   };
 
   // Calculate statistics
@@ -169,7 +153,8 @@ export const AdminAlerts = () => {
     try {
       await alertsService.acknowledgeAlert(alertId);
       message.success('Alert acknowledged');
-      // Real-time listener will automatically update the UI
+      // Reload alerts to reflect changes
+      await loadAlerts();
     } catch (error: any) {
       console.error('Error acknowledging alert:', error);
       message.error(error.message || 'Failed to acknowledge alert');
@@ -182,7 +167,8 @@ export const AdminAlerts = () => {
       await alertsService.resolveAlert(alertId, notes);
       message.success('Alert resolved');
       setDetailsVisible(false);
-      // Real-time listener will automatically update the UI
+      // Reload alerts to reflect changes
+      await loadAlerts();
     } catch (error: any) {
       console.error('Error resolving alert:', error);
       message.error(error.message || 'Failed to resolve alert');
@@ -195,14 +181,14 @@ export const AdminAlerts = () => {
     setDetailsVisible(true);
   };
 
-  // Set up real-time listener for alerts (READ ONLY - correct pattern)
+  // Load alerts on mount and set up polling for updates
   useEffect(() => {
-    const unsubscribe = loadAlerts();
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
+    loadAlerts();
+    
+    // Poll for updates every 30 seconds
+    const intervalId = setInterval(loadAlerts, 30000);
+    
+    return () => clearInterval(intervalId);
   }, []);
 
   // Table columns

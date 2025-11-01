@@ -38,6 +38,13 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { useThemeToken } from '../../../theme';
 
+// Type extension for jsPDF with autoTable plugin
+interface jsPDFWithAutoTable extends jsPDF {
+  lastAutoTable?: {
+    finalY: number;
+  };
+}
+
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { TextArea } = Input;
@@ -245,7 +252,7 @@ export const AdminReports = () => {
             },
           });
 
-          yPos = (doc as any).lastAutoTable.finalY + 10;
+          yPos = (doc as jsPDFWithAutoTable).lastAutoTable?.finalY ?? yPos + 10;
         }
 
         // Alerts from backend
@@ -344,7 +351,7 @@ export const AdminReports = () => {
           alternateRowStyles: { fillColor: [245, 245, 245] },
         });
 
-        yPos = (doc as any).lastAutoTable.finalY + 10;
+        yPos = (doc as jsPDFWithAutoTable).lastAutoTable?.finalY ?? yPos + 10;
       }
     }
 
@@ -476,7 +483,7 @@ export const AdminReports = () => {
         alternateRowStyles: { fillColor: [245, 245, 245] },
       });
 
-      yPos = (doc as any).lastAutoTable.finalY + 10;
+      yPos = (doc as jsPDFWithAutoTable).lastAutoTable?.finalY ?? yPos + 10;
     }
 
     // Statistical analysis from backend
@@ -517,7 +524,7 @@ export const AdminReports = () => {
           alternateRowStyles: { fillColor: [245, 245, 245] },
         });
         
-        yPos = (doc as any).lastAutoTable.finalY + 10;
+        yPos = (doc as jsPDFWithAutoTable).lastAutoTable?.finalY ?? yPos + 10;
       }
     } else if (reportData.devices && reportData.devices.length > 0) {
       // Fallback: Calculate statistics from device readings if no backend statistics available
@@ -564,7 +571,7 @@ export const AdminReports = () => {
           alternateRowStyles: { fillColor: [245, 245, 245] },
         });
         
-        yPos = (doc as any).lastAutoTable.finalY + 10;
+        yPos = (doc as jsPDFWithAutoTable).lastAutoTable?.finalY ?? yPos + 10;
       } else {
         doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
@@ -659,7 +666,7 @@ export const AdminReports = () => {
         alternateRowStyles: { fillColor: [245, 245, 245] },
       });
 
-      yPos = (doc as any).lastAutoTable.finalY + 10;
+      yPos = (doc as jsPDFWithAutoTable).lastAutoTable?.finalY ?? yPos + 10;
     }
 
     // Device compliance details from backend
@@ -711,7 +718,7 @@ export const AdminReports = () => {
             },
           });
 
-          yPos = (doc as any).lastAutoTable.finalY + 8;
+          yPos = (doc as jsPDFWithAutoTable).lastAutoTable?.finalY ?? yPos + 8;
         }
       }
     }
@@ -813,35 +820,26 @@ export const AdminReports = () => {
             throw new Error(`Unsupported report type: ${selectedType}`);
         }
 
-        console.log('✅ Backend report data received:', reportData);
-
       } catch (apiError) {
         console.warn('❌ Backend API failed, falling back to local sensor data:', apiError);
         message.warning('Using local data - backend report service unavailable');
         
         // Fallback: Load sensor data directly for basic report generation
-        console.log('🔄 Loading sensor data from Firebase for', config.deviceIds.length, 'devices...');
-        
         for (const deviceId of config.deviceIds) {
           try {
             // Get more data for better statistics (500 readings instead of 100)
             const data = await deviceManagementService.getSensorHistory(deviceId, 500);
-            console.log(`📈 Loaded ${data.length} readings for device ${deviceId}`);
             allSensorData.push(...data);
           } catch (sensorError) {
             console.warn(`❌ Failed to fetch sensor data for device ${deviceId}:`, sensorError);
           }
         }
         
-        console.log(`📊 Total sensor readings loaded: ${allSensorData.length}`);
-
         // Filter by date range if specified
         if (config.dateRange) {
-          const beforeFilter = allSensorData.length;
           allSensorData = allSensorData.filter(
             d => d.timestamp >= startDate! && d.timestamp <= endDate!
           );
-          console.log(`📅 Date filter applied: ${beforeFilter} -> ${allSensorData.length} readings`);
         }
         
         if (allSensorData.length === 0) {
@@ -894,10 +892,15 @@ export const AdminReports = () => {
               // Find device info
               const device = devices.find(d => d.deviceId === deviceId);
               
+              // Extract location from device metadata
+              const location = device?.metadata?.location 
+                ? `${device.metadata.location.building || ''}, ${device.metadata.location.floor || ''}`.trim().replace(/^,\s*|,\s*$/g, '') || 'Unknown Location'
+                : 'Unknown Location';
+              
               return {
                 deviceId,
                 deviceName: device?.name || `Device ${deviceId}`,
-                location: (device as any)?.location || 'Unknown Location',
+                location,
                 readings: deviceReadings,
                 metrics: {
                   avgTurbidity: deviceTurbidity.reduce((sum, val) => sum + val, 0) / deviceTurbidity.length,
@@ -1060,14 +1063,6 @@ export const AdminReports = () => {
               }))
             };
         }
-        
-        console.log('📊 Fallback report data created:', {
-          type: selectedType,
-          totalReadings: allSensorData.length,
-          devices: config.deviceIds.length,
-          hasStatistics: !!reportData.statistics,
-          hasSummary: !!reportData.summary
-        });
       }
 
       let doc: jsPDF;
