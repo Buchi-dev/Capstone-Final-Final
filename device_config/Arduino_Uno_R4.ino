@@ -48,10 +48,11 @@
 #define PH_PIN A1           // pH Sensor
 #define TURBIDITY_PIN A2    // Turbidity Sensor
 
-// Timing Configuration
-#define SENSOR_READ_INTERVAL 2000   // Read sensors every 2 seconds (allows for 30-sample averaging)
-#define MQTT_PUBLISH_INTERVAL 10000 // Publish to MQTT every 10 seconds
-#define HEARTBEAT_INTERVAL 30000    // Send status every 30 seconds
+// Timing Configuration - Phase 3 Optimization
+#define SENSOR_READ_INTERVAL 30000   // Read sensors every 30 seconds
+#define MQTT_PUBLISH_INTERVAL 300000 // Publish batch to MQTT every 5 minutes (300 seconds)
+#define HEARTBEAT_INTERVAL 300000    // Send status every 5 minutes (aligned with batch)
+#define BATCH_SIZE 10                // Buffer 10 readings before sending (5 minutes worth)
 
 // ===========================
 // GLOBAL OBJECTS
@@ -75,6 +76,17 @@ float ph = 0.0;
 
 bool mqttConnected = false;
 bool sendToMQTT = false;  // Control flag for MQTT publishing
+
+// Phase 3: Batch buffer for readings
+struct SensorReading {
+  float turbidity;
+  float tds;
+  float ph;
+  unsigned long timestamp;
+};
+SensorReading readingBuffer[BATCH_SIZE];
+int bufferIndex = 0;
+bool bufferReady = false;
 
 // Constants for sensor reading
 const int SENSOR_SAMPLES = 100;  // Increased for more stable readings
@@ -141,19 +153,41 @@ void loop() {
   
   mqttClient.poll();
   
+  // Read sensors every 30 seconds and buffer the reading
   if (currentMillis - lastSensorRead >= SENSOR_READ_INTERVAL) {
     lastSensorRead = currentMillis;
     readSensors();
     printSensorData();
-  }
-  
-  if (currentMillis - lastMqttPublish >= MQTT_PUBLISH_INTERVAL) {
-    lastMqttPublish = currentMillis;
-    if (sendToMQTT) {
-      publishSensorData();
+    
+    // Store reading in buffer (Phase 3 Batching)
+    readingBuffer[bufferIndex].turbidity = turbidity;
+    readingBuffer[bufferIndex].tds = tds;
+    readingBuffer[bufferIndex].ph = ph;
+    readingBuffer[bufferIndex].timestamp = currentMillis;
+    
+    bufferIndex++;
+    Serial.print(F("📦 Buffered reading "));
+    Serial.print(bufferIndex);
+    Serial.print(F("/"));
+    Serial.println(BATCH_SIZE);
+    
+    // Mark buffer as ready when full
+    if (bufferIndex >= BATCH_SIZE) {
+      bufferReady = true;
+      bufferIndex = 0;  // Reset for next batch
     }
   }
   
+  // Publish batch every 5 minutes when buffer is ready
+  if (currentMillis - lastMqttPublish >= MQTT_PUBLISH_INTERVAL) {
+    lastMqttPublish = currentMillis;
+    if (sendToMQTT && bufferReady) {
+      publishSensorDataBatch();
+      bufferReady = false;
+    }
+  }
+  
+  // Send heartbeat every 5 minutes (aligned with batch)
   if (currentMillis - lastHeartbeat >= HEARTBEAT_INTERVAL) {
     lastHeartbeat = currentMillis;
     if (sendToMQTT) {
@@ -294,6 +328,20 @@ void handleCommand(JsonDocument& doc) {
   } else if (strcmp(command, "READ_SENSORS") == 0) {
     readSensors();
     publishSensorData();
+  } else if (strcmp(command, "PUBLISH_BATCH") == 0) {
+    // Force publish current buffer (for testing)
+    if (bufferIndex > 0) {
+      Serial.print(F("Force publishing partial batch ("));
+      Serial.print(bufferIndex);
+      Serial.println(F(" readings)"));
+      // Temporarily adjust batch size for partial send
+      int originalBatchSize = bufferIndex;
+      publishSensorDataBatch();
+      bufferIndex = 0;
+      bufferReady = false;
+    } else {
+      Serial.println(F("No readings in buffer"));
+    }
   } else if (strcmp(command, "START_MQTT") == 0) {
     sendToMQTT = true;
     Serial.println(F("✓ MQTT publishing ENABLED"));
@@ -526,6 +574,47 @@ void publishSensorData() {
   
   Serial.print(F("✓ Published sensor data to: "));
   Serial.println(TOPIC_SENSOR_DATA);
+}
+
+// Phase 3: Publish batch of sensor readings
+void publishSensorDataBatch() {
+  if (!mqttConnected) {
+    Serial.println(F("Cannot publish batch - MQTT not connected"));
+    return;
+  }
+  
+  if (!sendToMQTT) {
+    return;  // Silent skip
+  }
+  
+  Serial.println(F("\n📦 Publishing batch of readings..."));
+  
+  // Create JSON document with readings array
+  StaticJsonDocument<1024> doc;
+  JsonArray readings = doc.createNestedArray("readings");
+  
+  for (int i = 0; i < BATCH_SIZE; i++) {
+    JsonObject reading = readings.createNestedObject();
+    reading["turbidity"] = readingBuffer[i].turbidity;
+    reading["tds"] = readingBuffer[i].tds;
+    reading["ph"] = readingBuffer[i].ph;
+    reading["timestamp"] = readingBuffer[i].timestamp;
+  }
+  
+  String payload;
+  serializeJson(doc, payload);
+  
+  mqttClient.beginMessage(TOPIC_SENSOR_DATA);
+  mqttClient.print(payload);
+  mqttClient.endMessage();
+  
+  Serial.print(F("✓ Published batch ("));
+  Serial.print(BATCH_SIZE);
+  Serial.print(F(" readings) to: "));
+  Serial.println(TOPIC_SENSOR_DATA);
+  Serial.print(F("   Payload size: "));
+  Serial.print(payload.length());
+  Serial.println(F(" bytes"));
 }
 
 void publishStatus(const char* status) {

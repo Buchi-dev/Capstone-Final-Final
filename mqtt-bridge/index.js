@@ -23,7 +23,57 @@ const TOPIC_MAPPINGS = {
 // Reverse mappings: Pub/Sub → MQTT (for commands)
 const COMMAND_SUBSCRIPTION = 'device-commands-sub';
 
+// Phase 3: Message buffering configuration
+const BUFFER_INTERVAL_MS = 60000; // Buffer messages for 60 seconds
+const messageBuffer = {
+  'iot-sensor-readings': [],
+  'iot-device-registration': [],
+  'iot-device-status': []
+};
+
 let mqttClient = null;
+let bufferFlushTimer = null;
+
+// Phase 3: Flush buffered messages to Pub/Sub
+async function flushMessageBuffer() {
+  for (const [pubsubTopicName, messages] of Object.entries(messageBuffer)) {
+    if (messages.length === 0) continue;
+    
+    console.log(`\n📤 Flushing ${messages.length} messages to ${pubsubTopicName}...`);
+    
+    try {
+      const topic = pubsub.topic(pubsubTopicName);
+      
+      // Publish all buffered messages in batch
+      const publishPromises = messages.map(message => 
+        topic.publishMessage(message)
+      );
+      
+      await Promise.all(publishPromises);
+      
+      console.log(`✓ Successfully published ${messages.length} messages to ${pubsubTopicName}`);
+      
+      // Clear buffer after successful publish
+      messageBuffer[pubsubTopicName] = [];
+    } catch (error) {
+      console.error(`Error flushing buffer for ${pubsubTopicName}:`, error);
+      // Keep messages in buffer for retry on next flush
+    }
+  }
+}
+
+// Start periodic buffer flushing
+function startBufferFlushTimer() {
+  if (bufferFlushTimer) {
+    clearInterval(bufferFlushTimer);
+  }
+  
+  bufferFlushTimer = setInterval(async () => {
+    await flushMessageBuffer();
+  }, BUFFER_INTERVAL_MS);
+  
+  console.log(`✓ Buffer flush timer started (${BUFFER_INTERVAL_MS / 1000}s interval)`);
+}
 
 // Connect to MQTT Broker
 function connectMQTT() {
@@ -52,6 +102,9 @@ function connectMQTT() {
         }
       });
     });
+    
+    // Phase 3: Start buffer flush timer
+    startBufferFlushTimer();
   });
 
   mqttClient.on('message', async (topic, message) => {
@@ -71,17 +124,33 @@ function connectMQTT() {
       // Extract device ID from topic (e.g., device/sensordata/arduino_uno_r4_001)
       const deviceId = extractDeviceId(topic);
 
-      // Publish to Pub/Sub with metadata
-      await pubsub.topic(pubsubTopic).publishMessage({
-        json: payload,
-        attributes: {
-          mqtt_topic: topic,
-          device_id: deviceId,
-          timestamp: Date.now().toString(),
-        },
-      });
-
-      console.log(`✓ Forwarded to Pub/Sub topic: ${pubsubTopic}`);
+      // Phase 3: Buffer messages for batch publishing
+      // Registration and status messages should be immediate (low frequency)
+      const shouldBufferMessage = pubsubTopic === 'iot-sensor-readings';
+      
+      if (shouldBufferMessage) {
+        // Add to buffer
+        messageBuffer[pubsubTopic].push({
+          json: payload,
+          attributes: {
+            mqtt_topic: topic,
+            device_id: deviceId,
+            timestamp: Date.now().toString(),
+          },
+        });
+        console.log(`📦 Buffered message for ${pubsubTopic} (${messageBuffer[pubsubTopic].length} in buffer)`);
+      } else {
+        // Publish immediately for registration and status
+        await pubsub.topic(pubsubTopic).publishMessage({
+          json: payload,
+          attributes: {
+            mqtt_topic: topic,
+            device_id: deviceId,
+            timestamp: Date.now().toString(),
+          },
+        });
+        console.log(`✓ Forwarded immediately to Pub/Sub topic: ${pubsubTopic}`);
+      }
     } catch (error) {
       console.error('Error processing MQTT message:', error);
     }
@@ -170,11 +239,21 @@ app.get('/health', (req, res) => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully...');
+  
+  // Phase 3: Flush remaining buffered messages before shutdown
+  if (bufferFlushTimer) {
+    clearInterval(bufferFlushTimer);
+  }
+  
+  console.log('Flushing remaining messages...');
+  await flushMessageBuffer();
+  
   if (mqttClient) {
     mqttClient.end();
   }
+  
   process.exit(0);
 });
 

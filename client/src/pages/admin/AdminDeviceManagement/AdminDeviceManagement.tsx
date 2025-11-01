@@ -29,7 +29,7 @@ import {
   EnvironmentOutlined,
   InfoCircleOutlined,
 } from '@ant-design/icons';
-import { api } from '../../../services/api';
+import { deviceManagementService } from '../../../services/deviceManagement.Service';
 import type { Device, DeviceStatus } from '../../../schemas';
 import { isDeviceRegistered } from '../../../schemas';
 import { AdminLayout } from '../../../components/layouts';
@@ -113,7 +113,7 @@ export const AdminDeviceManagement = () => {
   const loadDevices = async () => {
     setLoading(true);
     try {
-      const data = await api.listDevices();
+      const data = await deviceManagementService.listDevices();
       setDevices(data);
       message.success('Devices loaded successfully');
     } catch (error) {
@@ -134,7 +134,7 @@ export const AdminDeviceManagement = () => {
       cancelText: 'Cancel',
       onOk: async () => {
         try {
-          await api.deleteDevice(device.deviceId);
+          await deviceManagementService.deleteDevice(device.deviceId);
           message.success('Device deleted successfully');
           loadDevices();
         } catch (error) {
@@ -172,10 +172,10 @@ export const AdminDeviceManagement = () => {
   const handleSave = async (deviceData: Partial<Device>) => {
     try {
       if (modalMode === 'add') {
-        await api.addDevice(deviceData.deviceId!, deviceData);
+        await deviceManagementService.addDevice(deviceData.deviceId!, deviceData);
         message.success('Device added successfully');
       } else {
-        await api.updateDevice(selectedDevice!.deviceId, deviceData);
+        await deviceManagementService.updateDevice(selectedDevice!.deviceId, deviceData);
         message.success('Device updated successfully');
       }
       handleModalClose();
@@ -198,26 +198,13 @@ export const AdminDeviceManagement = () => {
     locationData: { building: string; floor: string; notes?: string }
   ) => {
     try {
-      // Get the current device data
-      const device = devices.find((d) => d.deviceId === deviceId);
-      if (!device) {
-        message.error('Device not found');
-        return;
-      }
-
-      // Update device with location data
-      const updatedMetadata = {
-        ...device.metadata,
-        location: {
-          building: locationData.building,
-          floor: locationData.floor,
-          notes: locationData.notes || '',
-        },
-      };
-
-      await api.updateDevice(deviceId, {
-        metadata: updatedMetadata,
-      });
+      // Use the convenient registerDevice method from service
+      await deviceManagementService.registerDevice(
+        deviceId,
+        locationData.building,
+        locationData.floor,
+        locationData.notes
+      );
 
       message.success('Device registered successfully!');
       setIsRegisterModalVisible(false);

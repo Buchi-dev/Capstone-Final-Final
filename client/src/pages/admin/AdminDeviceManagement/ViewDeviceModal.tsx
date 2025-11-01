@@ -31,7 +31,7 @@ import {
 } from '@ant-design/icons';
 import type { Device, DeviceStatus, SensorReading } from '../../../schemas';
 import { isDeviceRegistered } from '../../../schemas';
-import { api } from '../../../services/api';
+import { deviceManagementService } from '../../../services/deviceManagement.Service';
 import { useThemeToken } from '../../../theme';
 
 const { Text } = Typography;
@@ -67,7 +67,7 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
     
     setLoading(true);
     try {
-      const data = await api.getSensorReadings(device.deviceId);
+      const data = await deviceManagementService.getSensorReadings(device.deviceId);
       setSensorData(data);
     } catch (error) {
       console.error('Error loading sensor data:', error);
@@ -80,7 +80,7 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
     if (!device) return;
     
     try {
-      const history = await api.getSensorHistory(device.deviceId, 10);
+      const history = await deviceManagementService.getSensorHistory(device.deviceId, 10);
       setSensorHistory(history);
     } catch (error) {
       console.error('Error loading sensor history:', error);

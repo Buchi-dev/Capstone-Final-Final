@@ -4,3 +4,4 @@
  */
 
 export {userManagement} from "./userManagement";
+export {deviceManagement} from "./deviceManagement";
