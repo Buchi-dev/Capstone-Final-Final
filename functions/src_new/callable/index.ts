@@ -5,3 +5,5 @@
 
 export {userManagement} from "./userManagement";
 export {deviceManagement} from "./deviceManagement";
+export {alertManagement} from "./alertManagement";
+export {notificationPreferences} from "./notificationPreferences";

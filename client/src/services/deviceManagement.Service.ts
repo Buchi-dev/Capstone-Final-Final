@@ -455,46 +455,49 @@ export class DeviceManagementService {
   // ============================================================================
 
   /**
-   * Handle and format errors from Firebase Functions
+   * Handle errors from Firebase Functions
    * 
-   * @param error - Error object from Firebase
-   * @param defaultMessage - Default error message
-   * @returns Formatted error object
+   * Transforms Firebase Function errors into a consistent ErrorResponse format.
+   * 
    * @private
+   * @param {any} error - The error from Firebase Functions
+   * @param {string} defaultMessage - Default message if error doesn't have one
+   * 
+   * @returns {ErrorResponse} Formatted error response
    */
   private handleError(error: any, defaultMessage: string): ErrorResponse {
     console.error('DeviceManagementService error:', error);
 
-    // Firebase Functions error
-    if (error.code) {
-      const errorMessages: Record<string, string> = {
-        'unauthenticated': 'Please log in to perform this action',
-        'permission-denied': 'You do not have permission to perform this action',
-        'not-found': 'Device not found',
-        'already-exists': 'Device already exists',
-        'invalid-argument': 'Invalid request parameters',
-        'internal': 'An internal error occurred. Please try again',
-        'unavailable': 'Service temporarily unavailable. Please try again',
-      };
+    // Extract error details from Firebase Functions error
+    const code = error.code || 'unknown';
+    const message = error.message || defaultMessage;
+    const details = error.details || undefined;
 
-      return {
-        code: error.code,
-        message: errorMessages[error.code] || error.message || defaultMessage,
-        details: error.details,
-      };
-    }
+    // Map Firebase error codes to user-friendly messages
+    const errorMessages: Record<string, string> = {
+      'functions/unauthenticated': 'Please log in to perform this action',
+      'functions/permission-denied': 'You do not have permission to perform this action',
+      'functions/not-found': 'Device not found',
+      'functions/already-exists': 'Device already exists',
+      'functions/invalid-argument': 'Invalid request parameters',
+      'functions/failed-precondition': message, // Use original message
+      'functions/internal': 'An internal error occurred. Please try again',
+      'functions/unavailable': 'Service temporarily unavailable. Please try again',
+      'functions/deadline-exceeded': 'Request timeout. Please try again',
+    };
 
-    // Generic error
+    const friendlyMessage = errorMessages[code] || message;
+
     return {
-      code: 'unknown',
-      message: error.message || defaultMessage,
-      details: error,
+      code,
+      message: friendlyMessage,
+      details,
     };
   }
 }
 
 // ============================================================================
-// SINGLETON EXPORT
+// SINGLETON INSTANCE EXPORT
 // ============================================================================
 
 /**
@@ -504,6 +507,18 @@ export class DeviceManagementService {
  * @example
  * import { deviceManagementService } from './services/deviceManagement.Service';
  * 
+ * // List devices
  * const devices = await deviceManagementService.listDevices();
+ * 
+ * // Get sensor readings
+ * const readings = await deviceManagementService.getSensorReadings('arduino_001');
+ * 
+ * // Send command
+ * await deviceManagementService.sendCommand('arduino_001', 'CALIBRATE');
  */
 export const deviceManagementService = new DeviceManagementService();
+
+/**
+ * Default export for convenience
+ */
+export default deviceManagementService;

@@ -11,3 +11,9 @@ export * from "./auth.types";
 
 // Export user management types
 export * from "./userManagement.types";
+
+// Export alert management types
+export * from "./alertManagement.types";
+
+// Export notification preferences types
+export * from "./notificationPreferences.types";

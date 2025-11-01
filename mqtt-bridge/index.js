@@ -227,7 +227,7 @@ async function startCommandListener() {
 
 // Health check endpoint for Cloud Run
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = 8080;
 
 app.get('/health', (req, res) => {
   const status = mqttClient && mqttClient.connected ? 'healthy' : 'unhealthy';

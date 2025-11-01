@@ -28,6 +28,8 @@ import {
   CheckCircleOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../../../contexts/AuthContext';
+import { notificationPreferencesService } from '../../../services/notificationPreferences.Service';
+import { deviceManagementService } from '../../../services/deviceManagement.Service';
 import dayjs from 'dayjs';
 
 const { Text, Paragraph } = Typography;
@@ -54,8 +56,6 @@ const NotificationSettings: React.FC = () => {
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
   const [devices, setDevices] = useState<any[]>([]);
 
-  const CLOUD_FUNCTIONS_URL = 'https://us-central1-my-app-da530.cloudfunctions.net';
-
   useEffect(() => {
     loadPreferences();
     loadDevices();
@@ -67,43 +67,37 @@ const NotificationSettings: React.FC = () => {
     try {
       setLoading(true);
       
-      // Try to get existing preferences
-      const response = await fetch(`${CLOUD_FUNCTIONS_URL}/listNotificationPreferences`);
-      const data = await response.json();
+      // Get user preferences using service layer
+      const userPrefs = await notificationPreferencesService.getUserPreferences(user.uid);
 
-      if (data.success && data.data) {
-        // Find preferences for current user
-        const userPrefs = data.data.find((p: any) => p.userId === user.uid);
-
-        if (userPrefs) {
-          setPreferences(userPrefs);
-          form.setFieldsValue({
-            emailNotifications: userPrefs.emailNotifications,
-            pushNotifications: userPrefs.pushNotifications,
-            alertSeverities: userPrefs.alertSeverities || [],
-            parameters: userPrefs.parameters || [],
-            devices: userPrefs.devices || [],
-            quietHoursEnabled: userPrefs.quietHoursEnabled,
-            quietHours: userPrefs.quietHoursStart && userPrefs.quietHoursEnd ? [
-              dayjs(userPrefs.quietHoursStart, 'HH:mm'),
-              dayjs(userPrefs.quietHoursEnd, 'HH:mm'),
-            ] : undefined,
-          });
-        } else {
-          // Set defaults for new user
-          form.setFieldsValue({
-            emailNotifications: true,
-            pushNotifications: false,
-            alertSeverities: ['Critical', 'Warning', 'Advisory'],
-            parameters: [],
-            devices: [],
-            quietHoursEnabled: false,
-          });
-        }
+      if (userPrefs) {
+        setPreferences(userPrefs);
+        form.setFieldsValue({
+          emailNotifications: userPrefs.emailNotifications,
+          pushNotifications: userPrefs.pushNotifications,
+          alertSeverities: userPrefs.alertSeverities || [],
+          parameters: userPrefs.parameters || [],
+          devices: userPrefs.devices || [],
+          quietHoursEnabled: userPrefs.quietHoursEnabled,
+          quietHours: userPrefs.quietHoursStart && userPrefs.quietHoursEnd ? [
+            dayjs(userPrefs.quietHoursStart, 'HH:mm'),
+            dayjs(userPrefs.quietHoursEnd, 'HH:mm'),
+          ] : undefined,
+        });
+      } else {
+        // Set defaults for new user
+        form.setFieldsValue({
+          emailNotifications: true,
+          pushNotifications: false,
+          alertSeverities: ['Critical', 'Warning', 'Advisory'],
+          parameters: [],
+          devices: [],
+          quietHoursEnabled: false,
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading preferences:', error);
-      message.error('Failed to load notification preferences');
+      message.error(error.message || 'Failed to load notification preferences');
     } finally {
       setLoading(false);
     }
@@ -111,24 +105,17 @@ const NotificationSettings: React.FC = () => {
 
   const loadDevices = async () => {
     try {
-      const response = await fetch(`${CLOUD_FUNCTIONS_URL}/deviceManagement`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'LIST_DEVICES' }),
-      });
-
-      const data = await response.json();
-
-      if (data.success && data.devices) {
-        setDevices(data.devices);
-      }
-    } catch (error) {
+      // Get devices using service layer
+      const devicesList = await deviceManagementService.listDevices();
+      setDevices(devicesList);
+    } catch (error: any) {
       console.error('Error loading devices:', error);
+      // Don't show error message as devices are optional
     }
   };
 
   const handleSave = async (values: any) => {
-    if (!user) return;
+    if (!user || !user.email) return;
 
     try {
       setSaving(true);
@@ -141,7 +128,8 @@ const NotificationSettings: React.FC = () => {
         ? values.quietHours[1].format('HH:mm')
         : undefined;
 
-      const requestBody = {
+      // Save preferences using service layer
+      const savedPreferences = await notificationPreferencesService.setupPreferences({
         userId: user.uid,
         email: user.email,
         emailNotifications: values.emailNotifications,
@@ -152,22 +140,10 @@ const NotificationSettings: React.FC = () => {
         quietHoursEnabled: values.quietHoursEnabled,
         quietHoursStart,
         quietHoursEnd,
-      };
-
-      const response = await fetch(`${CLOUD_FUNCTIONS_URL}/setupNotificationPreferences`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
       });
 
-      const data = await response.json();
-
-      if (data.success) {
-        message.success('Notification preferences saved successfully');
-        setPreferences(data.data);
-      } else {
-        throw new Error(data.error || 'Failed to save preferences');
-      }
+      message.success('Notification preferences saved successfully');
+      setPreferences(savedPreferences);
     } catch (error: any) {
       console.error('Error saving preferences:', error);
       message.error(error.message || 'Failed to save notification preferences');

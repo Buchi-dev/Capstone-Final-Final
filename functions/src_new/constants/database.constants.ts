@@ -17,6 +17,8 @@ export const COLLECTIONS = {
   USERS: "users",
   LOGIN_LOGS: "login_logs",
   BUSINESS_LOGS: "business_logs",
+  ALERTS: "alerts",
+  NOTIFICATION_PREFERENCES: "notification_preferences",
 } as const;
 
 /**

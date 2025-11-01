@@ -389,6 +389,41 @@ export const EmailTemplateSchema = z.object({
   updatedAt: z.date().optional(),
 });
 
+// ===========================
+// WATER QUALITY ALERT SCHEMAS (Document)
+// ===========================
+
+export const WaterQualityAlertStatusSchema = z.enum(['Active', 'Acknowledged', 'Resolved']);
+export const WaterQualityAlertSeveritySchema = z.enum(['Advisory', 'Warning', 'Critical']);
+export const WaterQualityParameterSchema = z.enum(['tds', 'ph', 'turbidity']);
+export const TrendDirectionSchema = z.enum(['increasing', 'decreasing', 'stable']);
+export const WaterQualityAlertTypeSchema = z.enum(['threshold', 'trend']);
+
+export const WaterQualityAlertSchema = z.object({
+  alertId: z.string(),
+  deviceId: z.string(),
+  deviceName: z.string().optional(),
+  deviceBuilding: z.string().optional(),
+  deviceFloor: z.string().optional(),
+  parameter: WaterQualityParameterSchema,
+  alertType: WaterQualityAlertTypeSchema,
+  severity: WaterQualityAlertSeveritySchema,
+  status: WaterQualityAlertStatusSchema,
+  currentValue: z.number(),
+  thresholdValue: z.number().optional(),
+  trendDirection: TrendDirectionSchema.optional(),
+  message: z.string(),
+  recommendedAction: z.string(),
+  createdAt: z.date(),
+  acknowledgedAt: z.date().optional(),
+  acknowledgedBy: z.string().optional(),
+  resolvedAt: z.date().optional(),
+  resolvedBy: z.string().optional(),
+  resolutionNotes: z.string().optional(),
+  notificationsSent: z.array(z.string()),
+  metadata: z.record(z.any()).optional(),
+});
+
 // Export Alert-related types
 export type AlertCondition = z.infer<typeof AlertConditionSchema>;
 export type AlertParameter = z.infer<typeof AlertParameterSchema>; 
@@ -399,6 +434,14 @@ export type EmailNotification = z.infer<typeof EmailNotificationSchema>;
 export type EmailSettings = z.infer<typeof EmailSettingsSchema>;
 export type AlertTrigger = z.infer<typeof AlertTriggerSchema>;
 export type EmailTemplate = z.infer<typeof EmailTemplateSchema>;
+
+// Water Quality Alert types
+export type WaterQualityAlertStatus = z.infer<typeof WaterQualityAlertStatusSchema>;
+export type WaterQualityAlertSeverity = z.infer<typeof WaterQualityAlertSeveritySchema>;
+export type WaterQualityParameter = z.infer<typeof WaterQualityParameterSchema>;
+export type TrendDirection = z.infer<typeof TrendDirectionSchema>;
+export type WaterQualityAlertType = z.infer<typeof WaterQualityAlertTypeSchema>;
+export type WaterQualityAlert = z.infer<typeof WaterQualityAlertSchema>;
 
 // Safe parsing (returns success/error instead of throwing) 
 // Only include functions that are actually used in the codebase

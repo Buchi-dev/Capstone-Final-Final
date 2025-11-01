@@ -37,8 +37,9 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { collection, query, orderBy, getDocs, doc, updateDoc, onSnapshot, Timestamp } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
+import { alertsService } from '../../../services/alerts.Service';
 
 // --- Inlined from alerts.ts ---
 // Timestamp is imported above as a value
@@ -159,29 +160,37 @@ export const AdminAlerts = () => {
     advisory: 0,
   });
 
-  // Load alerts from Firestore
-  const loadAlerts = async () => {
+  // Load alerts from Firestore using real-time listener (READ ONLY)
+  // This is the correct pattern for displaying live data
+  const loadAlerts = () => {
     setLoading(true);
-    try {
-      const alertsRef = collection(db, 'alerts');
-      const q = query(alertsRef, orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
+    
+    const alertsRef = collection(db, 'alerts');
+    const q = query(alertsRef, orderBy('createdAt', 'desc'));
+    
+    // Set up real-time listener for live updates
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const alertsData = snapshot.docs.map((doc) => ({
+          ...doc.data(),
+          alertId: doc.id,
+          createdAt: doc.data().createdAt as Timestamp,
+        })) as WaterQualityAlert[];
 
-      const alertsData = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        alertId: doc.id,
-        createdAt: doc.data().createdAt as Timestamp,
-      })) as WaterQualityAlert[];
+        setAlerts(alertsData);
+        setFilteredAlerts(alertsData);
+        calculateStats(alertsData);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error loading alerts:', error);
+        message.error('Failed to load alerts');
+        setLoading(false);
+      }
+    );
 
-      setAlerts(alertsData);
-      setFilteredAlerts(alertsData);
-      calculateStats(alertsData);
-    } catch (error) {
-      console.error('Error loading alerts:', error);
-      message.error('Failed to load alerts');
-    } finally {
-      setLoading(false);
-    }
+    return unsubscribe;
   };
 
   // Calculate statistics
@@ -237,39 +246,28 @@ export const AdminAlerts = () => {
     message.info('Filters cleared');
   };
 
-  // Acknowledge alert
+  // Acknowledge alert - Uses service layer (business logic in Firebase Function)
   const acknowledgeAlert = async (alertId: string) => {
     try {
-      const alertRef = doc(db, 'alerts', alertId);
-      await updateDoc(alertRef, {
-        status: 'Acknowledged',
-        acknowledgedAt: Timestamp.now(),
-        acknowledgedBy: 'current-user-id', // Replace with actual user ID
-      });
+      await alertsService.acknowledgeAlert(alertId);
       message.success('Alert acknowledged');
-      loadAlerts();
-    } catch (error) {
+      // Real-time listener will automatically update the UI
+    } catch (error: any) {
       console.error('Error acknowledging alert:', error);
-      message.error('Failed to acknowledge alert');
+      message.error(error.message || 'Failed to acknowledge alert');
     }
   };
 
-  // Resolve alert
+  // Resolve alert - Uses service layer (business logic in Firebase Function)
   const resolveAlert = async (alertId: string, notes?: string) => {
     try {
-      const alertRef = doc(db, 'alerts', alertId);
-      await updateDoc(alertRef, {
-        status: 'Resolved',
-        resolvedAt: Timestamp.now(),
-        resolvedBy: 'current-user-id', // Replace with actual user ID
-        'metadata.resolutionNotes': notes || '',
-      });
+      await alertsService.resolveAlert(alertId, notes);
       message.success('Alert resolved');
       setDetailsVisible(false);
-      loadAlerts();
-    } catch (error) {
+      // Real-time listener will automatically update the UI
+    } catch (error: any) {
       console.error('Error resolving alert:', error);
-      message.error('Failed to resolve alert');
+      message.error(error.message || 'Failed to resolve alert');
     }
   };
 
@@ -279,26 +277,14 @@ export const AdminAlerts = () => {
     setDetailsVisible(true);
   };
 
+  // Set up real-time listener for alerts (READ ONLY - correct pattern)
   useEffect(() => {
-    loadAlerts();
-
-    // Set up real-time listener
-    const alertsRef = collection(db, 'alerts');
-    const q = query(alertsRef, orderBy('createdAt', 'desc'));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const alertsData = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        alertId: doc.id,
-        createdAt: doc.data().createdAt as Timestamp,
-      })) as WaterQualityAlert[];
-
-      setAlerts(alertsData);
-      setFilteredAlerts(alertsData);
-      calculateStats(alertsData);
-    });
-
-    return () => unsubscribe();
+    const unsubscribe = loadAlerts();
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   // Table columns

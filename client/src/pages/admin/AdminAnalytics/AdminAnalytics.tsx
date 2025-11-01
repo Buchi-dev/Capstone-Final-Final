@@ -48,7 +48,7 @@ import {
   Radar,
 } from 'recharts';
 import { useThemeToken } from '../../../theme';
-import axios from 'axios';
+import { reportsService } from '../../../services/reports.Service';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -126,20 +126,11 @@ export const AdminAnalytics = () => {
   const fetchAnalyticsData = async () => {
     setLoading(true);
     try {
-      // Fetch water quality report
-      const waterQualityResponse = await axios.post(
-        'https://us-central1-my-app-da530.cloudfunctions.net/generateReport',
-        { reportType: 'water_quality' }
-      );
+      // Fetch water quality report using service layer
+      const waterQuality = await reportsService.generateWaterQualityReport();
 
-      // Fetch device status report
-      const deviceStatusResponse = await axios.post(
-        'https://us-central1-my-app-da530.cloudfunctions.net/generateReport',
-        { reportType: 'device_status' }
-      );
-
-      const waterQuality = waterQualityResponse.data.data;
-      const deviceStatus = deviceStatusResponse.data.data;
+      // Fetch device status report using service layer
+      const deviceStatus = await reportsService.generateDeviceStatusReport();
 
       setWaterQualityData(waterQuality);
       setDeviceStatusData(deviceStatus.summary);

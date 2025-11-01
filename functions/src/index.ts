@@ -9,6 +9,7 @@ export {beforeSignIn} from "./auth/beforeSignIn";
 // HTTP Functions
 export {deviceManagement} from "./http/deviceManagement";
 export {generateReport} from "./http/generateReport";
+export {alertManagement} from "./http/alertManagement";
 export {
   listNotificationPreferences,
   setupNotificationPreferences,

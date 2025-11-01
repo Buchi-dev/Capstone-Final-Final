@@ -33,7 +33,7 @@ import {
   FireOutlined,
 } from '@ant-design/icons';
 import { AdminLayout } from '../../../components/layouts';
-import { api } from '../../../services/api';
+import { deviceManagementService } from '../../../services/deviceManagement.Service';
 import type { Device, SensorReading } from '../../../schemas';
 import { Line } from '@ant-design/plots';
 
@@ -91,7 +91,7 @@ export const AdminDeviceReadings = () => {
   const loadDevices = async () => {
     setLoading(true);
     try {
-      const data = await api.listDevices();
+      const data = await deviceManagementService.listDevices();
       setDevices(data);
       
       // Auto-select first online device
@@ -114,8 +114,8 @@ export const AdminDeviceReadings = () => {
 
     try {
       const [readings, history] = await Promise.all([
-        api.getSensorReadings(deviceId),
-        api.getSensorHistory(deviceId, 50),
+        deviceManagementService.getSensorReadings(deviceId),
+        deviceManagementService.getSensorHistory(deviceId, 50),
       ]);
 
       if (readings) {

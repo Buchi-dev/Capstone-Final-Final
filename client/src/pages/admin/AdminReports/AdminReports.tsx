@@ -30,7 +30,8 @@ import {
   HistoryOutlined,
 } from '@ant-design/icons';
 import { AdminLayout } from '../../../components/layouts';
-import { api } from '../../../services/api';
+import { deviceManagementService } from '../../../services/deviceManagement.Service';
+import { reportsService } from '../../../services/reports.Service';
 import type { Device, SensorReading, ReportType, ReportConfig, ReportHistory } from '../../../schemas';
 import dayjs from 'dayjs';
 import jsPDF from 'jspdf';
@@ -99,7 +100,7 @@ export const AdminReports = () => {
   const loadDevices = async () => {
     setLoading(true);
     try {
-      const data = await api.listDevices();
+      const data = await deviceManagementService.listDevices();
       setDevices(data);
     } catch (error) {
       message.error('Failed to load devices');
@@ -772,27 +773,12 @@ export const AdminReports = () => {
         // Fetch backend report data based on type
         switch (selectedType) {
           case 'water_quality':
-            if (config.deviceIds.length === 1) {
-              // Single device report
-              reportData = await api.reports.generateWaterQualityReport(
-                config.deviceIds[0],
-                startDate,
-                endDate,
-                config.includeCharts
-              );
-            } else {
-              // Multi-device report - fetch each device separately and combine
-              const reports = await Promise.all(
-                config.deviceIds.map(deviceId =>
-                  api.reports.generateWaterQualityReport(deviceId, startDate, endDate, false)
-                )
-              );
-              reportData = {
-                title: 'Multi-Device Water Quality Analysis Report',
-                period: { start: startDate || Date.now() - 7 * 24 * 60 * 60 * 1000, end: endDate || Date.now() },
-                devices: reports.flatMap(report => report.devices || [])
-              };
-            }
+            // Use service layer for report generation
+            reportData = await reportsService.generateWaterQualityReport(
+              config.deviceIds,
+              startDate,
+              endDate
+            );
             
             // Extract sensor data for PDF generation
             if (reportData.devices) {
@@ -801,41 +787,26 @@ export const AdminReports = () => {
             break;
 
           case 'device_status':
-            reportData = await api.reports.generateDeviceStatusReport();
+            // Use service layer for device status report
+            reportData = await reportsService.generateDeviceStatusReport(config.deviceIds);
             break;
 
           case 'data_summary':
-            if (config.deviceIds.length === 1) {
-              reportData = await api.reports.generateDataSummaryReport(
-                config.deviceIds[0],
-                startDate,
-                endDate
-              );
-            } else {
-              // Multi-device data summary - use no specific device ID
-              reportData = await api.reports.generateDataSummaryReport(
-                undefined,
-                startDate,
-                endDate
-              );
-            }
+            // Use service layer for data summary report
+            reportData = await reportsService.generateDataSummaryReport(
+              config.deviceIds,
+              startDate,
+              endDate
+            );
             break;
 
           case 'compliance':
-            if (config.deviceIds.length === 1) {
-              reportData = await api.reports.generateComplianceReport(
-                config.deviceIds[0],
-                startDate,
-                endDate
-              );
-            } else {
-              // Multi-device compliance - use no specific device ID
-              reportData = await api.reports.generateComplianceReport(
-                undefined,
-                startDate,
-                endDate
-              );
-            }
+            // Use service layer for compliance report
+            reportData = await reportsService.generateComplianceReport(
+              config.deviceIds,
+              startDate,
+              endDate
+            );
             break;
 
           default:
@@ -854,7 +825,7 @@ export const AdminReports = () => {
         for (const deviceId of config.deviceIds) {
           try {
             // Get more data for better statistics (500 readings instead of 100)
-            const data = await api.getSensorHistory(deviceId, 500);
+            const data = await deviceManagementService.getSensorHistory(deviceId, 500);
             console.log(`📈 Loaded ${data.length} readings for device ${deviceId}`);
             allSensorData.push(...data);
           } catch (sensorError) {
