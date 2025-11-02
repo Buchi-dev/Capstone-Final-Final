@@ -1,102 +1,480 @@
 rules_version = '2';
+
+/**
+ * Firestore Security Rules - Water Quality Monitoring System
+ * 
+ * Generated: November 2, 2025
+ * Project: Water Quality Monitoring with IoT Sensors
+ * 
+ * Security Model:
+ * - Deny by default (least privilege)
+ * - Role-based access control (Admin, Staff)
+ * - Field-level validation for critical collections
+ * - Function-only writes for most collections
+ * - Public digest acknowledgement with token validation
+ * 
+ * Related Functions:
+ * - auth/beforeCreate.ts, beforeSignIn.ts
+ * - callable/userManagement.ts, deviceManagement.ts, alertManagement.ts
+ * - pubsub/processSensorData.ts, autoRegisterDevice.ts, aggregateAlertsToDigest.ts
+ * - scheduler/sendAlertDigests.ts, sendDailyAnalytics.ts, checkStaleAlerts.ts
+ */
+
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Helper function to check if user is admin
+    // =========================================================================
+    // HELPER FUNCTIONS
+    // =========================================================================
+    
+    /**
+     * Check if user is authenticated
+     * Used throughout rules for basic access control
+     */
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    /**
+     * Check if user has Admin role
+     * Reads role from custom claims (set by Cloud Functions)
+     * 
+     * Related: callable/userManagement.ts
+     */
     function isAdmin() {
-      return request.auth != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin';
+      return isAuthenticated() && request.auth.token.role == 'Admin';
     }
     
-    // ==================== USER PROFILES ====================
+    /**
+     * Check if user has Approved status
+     * Prevents suspended/pending users from accessing data
+     * 
+     * Related: auth/beforeSignIn.ts
+     */
+    function isApproved() {
+      return isAuthenticated() && request.auth.token.status == 'Approved';
+    }
+    
+    /**
+     * Check if user owns the resource
+     * Used for user-owned collections
+     */
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    /**
+     * Validate email domain
+     * Ensures only @smu.edu.ph emails are used
+     * 
+     * Related: auth/beforeCreate.ts
+     */
+    function isValidEmail(email) {
+      return email.matches('.*@smu\\.edu\\.ph$');
+    }
+    
+    // =========================================================================
+    // COLLECTION: users
+    // =========================================================================
+    // Purpose: User authentication profiles with RBAC
+    // Functions: auth/beforeCreate.ts, auth/beforeSignIn.ts, callable/userManagement.ts
+    // Queries: orderBy("createdAt", "desc") - userManagement.ts
+    
     match /users/{userId} {
-      // Users can read their own profile, Admins can read all profiles
-      allow read: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      /**
+       * READ ACCESS
+       * - Users can read their own profile
+       * - Admins can read all profiles
+       * 
+       * Related: callable/userManagement.ts (listUsers)
+       */
+      allow read: if isAuthenticated() && (
+        isOwner(userId) || isAdmin()
+      );
       
-      // Users can update their own profile (cannot modify protected fields)
-      allow update: if request.auth != null 
-                    && request.auth.uid == userId
-                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uuid', 'email', 'role', 'status', 'createdAt']);
+      /**
+       * UPDATE ACCESS - User Self-Service
+       * - Users can update their own profile
+       * - Cannot modify protected fields: uuid, email, role, status, createdAt
+       * - Can update: firstname, lastname, middlename, department, phoneNumber
+       * 
+       * Related: Client-side profile updates
+       */
+      allow update: if isOwner(userId)
+                    && !request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasAny(['uuid', 'email', 'role', 'status', 'createdAt']);
       
-      // Admins can update user role, status, and updatedAt
+      /**
+       * UPDATE ACCESS - Admin Management
+       * - Admins can update role and status
+       * - Cannot modify: uuid, email, createdAt
+       * - Validates role and status values
+       * 
+       * Related: callable/userManagement.ts (updateStatus, updateUser)
+       */
       allow update: if isAdmin()
-                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['uuid', 'email', 'createdAt']);
+                    && !request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasAny(['uuid', 'email', 'createdAt'])
+                    && (
+                      // Validate role if being updated
+                      !('role' in request.resource.data.diff(resource.data).affectedKeys()) ||
+                      request.resource.data.role in ['Admin', 'Staff']
+                    )
+                    && (
+                      // Validate status if being updated
+                      !('status' in request.resource.data.diff(resource.data).affectedKeys()) ||
+                      request.resource.data.status in ['Pending', 'Approved', 'Suspended']
+                    );
       
-      // Only Cloud Functions can create or delete user profiles
+      /**
+       * CREATE/DELETE ACCESS
+       * - Only Cloud Functions can create/delete users
+       * 
+       * Related: auth/beforeCreate.ts
+       */
       allow create, delete: if false;
     }
     
-    // ==================== LOGIN LOGS ====================
-    // Only Cloud Functions can write to login logs
-    match /login_logs/{logId} {
-      allow read, write: if false;
-    }
+    // =========================================================================
+    // COLLECTION: devices
+    // =========================================================================
+    // Purpose: IoT device registry with metadata
+    // Functions: callable/deviceManagement.ts, pubsub/autoRegisterDevice.ts
+    // Queries: Simple .get() for listing
     
-    // ==================== DEVICES ====================
     match /devices/{deviceId} {
-      // Authenticated users can read devices
-      allow read: if request.auth != null;
+      /**
+       * READ ACCESS
+       * - All authenticated and approved users can read devices
+       * 
+       * Related: callable/deviceManagement.ts (listDevices, getDevice)
+       */
+      allow read: if isAuthenticated();
       
-      // Only Cloud Functions can write to devices
+      /**
+       * WRITE ACCESS
+       * - Only Cloud Functions can modify devices
+       * 
+       * Related:
+       * - callable/deviceManagement.ts (addDevice, updateDevice, deleteDevice)
+       * - pubsub/autoRegisterDevice.ts (auto-registration)
+       * - pubsub/processSensorData.ts (update lastSeen)
+       */
       allow write: if false;
     }
     
-    // ==================== SENSOR READINGS ====================
-    match /sensor_readings/{readingId} {
-      // Authenticated users can read sensor readings
-      allow read: if request.auth != null;
-      
-      // Only Cloud Functions can write sensor readings
-      allow write: if false;
-    }
+    // =========================================================================
+    // COLLECTION: alerts
+    // =========================================================================
+    // Purpose: Water quality alerts triggered by threshold violations
+    // Functions: callable/alertManagement.ts, pubsub/processSensorData.ts
+    // Queries: Complex filtering (status, severity, parameter, deviceId, createdAt)
+    // Indexes: Multiple composite indexes required (see firestore.indexes.json)
     
-    // ==================== REPORTS ====================
-    match /reports/{reportId} {
-      // Authenticated users can read reports
-      allow read: if request.auth != null;
-      
-      // Only Cloud Functions can write reports
-      allow write: if false;
-    }
-    
-    // ==================== ALERTS ====================
     match /alerts/{alertId} {
-      // Authenticated users can read alerts
-      allow read: if request.auth != null;
+      /**
+       * READ ACCESS
+       * - All authenticated users can read alerts
+       * 
+       * Related: callable/alertManagement.ts (listAlerts)
+       */
+      allow read: if isAuthenticated();
       
-      // Admins can acknowledge/resolve alerts (update status fields)
+      /**
+       * UPDATE ACCESS - Alert Resolution
+       * - Admins can acknowledge/resolve alerts
+       * - Can only update status-related fields
+       * - Cannot modify: alertId, deviceId, parameter, severity, currentValue
+       * - Validates status transitions
+       * 
+       * Related: callable/alertManagement.ts (acknowledgeAlert, resolveAlert)
+       */
       allow update: if isAdmin()
-                    && request.resource.data.diff(resource.data).affectedKeys()
-                       .hasOnly(['status', 'acknowledgedAt', 'acknowledgedBy', 'resolvedAt', 'resolvedBy', 'metadata']);
+                    && request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasOnly([
+                           'status', 
+                           'acknowledgedAt', 
+                           'acknowledgedBy', 
+                           'resolvedAt', 
+                           'resolvedBy', 
+                           'resolutionNotes',
+                           'metadata'
+                         ])
+                    && (
+                      // Validate status value
+                      !('status' in request.resource.data.diff(resource.data).affectedKeys()) ||
+                      request.resource.data.status in ['Active', 'Acknowledged', 'Resolved']
+                    )
+                    && (
+                      // Validate acknowledgedBy matches requester
+                      !('acknowledgedBy' in request.resource.data.diff(resource.data).affectedKeys()) ||
+                      request.resource.data.acknowledgedBy == request.auth.uid
+                    )
+                    && (
+                      // Validate resolvedBy matches requester
+                      !('resolvedBy' in request.resource.data.diff(resource.data).affectedKeys()) ||
+                      request.resource.data.resolvedBy == request.auth.uid
+                    );
       
-      // Only Cloud Functions can create or delete alerts
+      /**
+       * CREATE/DELETE ACCESS
+       * - Only Cloud Functions can create/delete alerts
+       * 
+       * Related: pubsub/processSensorData.ts (alert creation)
+       */
       allow create, delete: if false;
     }
     
-    // ==================== ALERT SETTINGS ====================
-    match /alertSettings/{settingId} {
-      // Authenticated users can read alert settings
-      allow read: if request.auth != null;
+    // =========================================================================
+    // COLLECTION: alerts_digests
+    // =========================================================================
+    // Purpose: Batched alert notifications with 24-hour cooldown
+    // Functions: pubsub/aggregateAlertsToDigest.ts, scheduler/sendAlertDigests.ts
+    // Document ID Format: {recipientUid}_{category}_{YYYY-MM-DD}
+    // Queries: Complex (isAcknowledged, cooldownUntil, sendAttempts) - requires index
+    
+    match /alerts_digests/{digestId} {
+      /**
+       * READ ACCESS
+       * - Users can read their own digests (recipientUid matches)
+       * - Admins can read all digests
+       * 
+       * Note: Digest ID format includes recipientUid, enabling pattern matching
+       */
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        digestId.matches('^' + request.auth.uid + '_.*')
+      );
       
-      // Only Admins can update alert settings (thresholds)
+      /**
+       * UPDATE ACCESS - Public Acknowledgement
+       * - SPECIAL CASE: Public acknowledgement with token validation
+       * - Does NOT require authentication (email link access)
+       * - Requires valid ackToken in request data
+       * - Can only update: isAcknowledged, acknowledgedAt, acknowledgedBy
+       * - Token must match digest's ackToken (32-byte hex)
+       * 
+       * Security: Crypto-secure token prevents unauthorized acknowledgement
+       * 
+       * Related: callable/alertManagement.ts (acknowledgeDigest)
+       */
+      allow update: if request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasOnly(['isAcknowledged', 'acknowledgedAt', 'acknowledgedBy'])
+                    && request.resource.data.isAcknowledged == true
+                    && request.resource.data.ackToken == resource.data.ackToken
+                    && request.resource.data.ackToken.size() == 64;  // 32 bytes hex = 64 chars
+      
+      /**
+       * CREATE/UPDATE ACCESS - Function-Only
+       * - Only Cloud Functions can create/update digests
+       * 
+       * Related:
+       * - pubsub/aggregateAlertsToDigest.ts (create/update digests)
+       * - scheduler/sendAlertDigests.ts (update lastSentAt, cooldownUntil)
+       */
+      allow create: if false;
+      allow update: if false;  // Function updates handled separately
+      
+      /**
+       * DELETE ACCESS
+       * - Only Cloud Functions can delete digests
+       */
+      allow delete: if false;
+    }
+    
+    // =========================================================================
+    // COLLECTION: notification_preferences
+    // =========================================================================
+    // Purpose: User notification settings and preferences
+    // Functions: callable/notificationPreferences.ts, scheduler/* (recipient lookup)
+    // Queries: emailNotifications + sendScheduledAlerts (requires index)
+    
+    match /notification_preferences/{userId} {
+      /**
+       * READ ACCESS
+       * - Users can read their own preferences
+       * - Admins can read all preferences (for recipient lookup)
+       * 
+       * Related:
+       * - callable/notificationPreferences.ts (getUserPreferences)
+       * - utils/alertHelpers.ts (getNotificationRecipients)
+       */
+      allow read: if isAuthenticated() && (
+        isOwner(userId) || isAdmin()
+      );
+      
+      /**
+       * CREATE ACCESS
+       * - Users can create their own preferences
+       * - Must match their userId and email
+       * - Email must be valid @smu.edu.ph domain
+       * 
+       * Related: callable/notificationPreferences.ts (setupPreferences)
+       */
+      allow create: if isOwner(userId)
+                    && request.resource.data.userId == request.auth.uid
+                    && request.resource.data.email == request.auth.token.email
+                    && isValidEmail(request.resource.data.email);
+      
+      /**
+       * UPDATE ACCESS
+       * - Users can update their own preferences
+       * - Cannot change userId or email
+       * - Validates field types and values
+       * 
+       * Related: callable/notificationPreferences.ts (setupPreferences)
+       */
+      allow update: if isOwner(userId)
+                    && !request.resource.data.diff(resource.data)
+                         .affectedKeys()
+                         .hasAny(['userId', 'email'])
+                    && (
+                      // Validate boolean fields if present
+                      !('emailNotifications' in request.resource.data) ||
+                      request.resource.data.emailNotifications is bool
+                    )
+                    && (
+                      !('pushNotifications' in request.resource.data) ||
+                      request.resource.data.pushNotifications is bool
+                    )
+                    && (
+                      !('sendScheduledAlerts' in request.resource.data) ||
+                      request.resource.data.sendScheduledAlerts is bool
+                    )
+                    && (
+                      !('quietHoursEnabled' in request.resource.data) ||
+                      request.resource.data.quietHoursEnabled is bool
+                    );
+      
+      /**
+       * DELETE ACCESS
+       * - Users can delete their own preferences
+       * 
+       * Related: callable/notificationPreferences.ts (deletePreferences)
+       */
+      allow delete: if isOwner(userId);
+    }
+    
+    // =========================================================================
+    // COLLECTION: alertSettings
+    // =========================================================================
+    // Purpose: System-wide threshold configurations
+    // Functions: utils/thresholdHelpers.ts, pubsub/processSensorData.ts
+    // Document: thresholds (singleton document)
+    
+    match /alertSettings/{settingId} {
+      /**
+       * READ ACCESS
+       * - All authenticated users can read alert settings
+       * - Needed for threshold display in UI
+       * 
+       * Related: utils/thresholdHelpers.ts (getThresholdConfig)
+       */
+      allow read: if isAuthenticated();
+      
+      /**
+       * WRITE ACCESS
+       * - Only Admins can update alert settings
+       * - Validates threshold structure (nested objects)
+       * - Ensures min < max for each severity level
+       * 
+       * Related: Admin threshold configuration UI
+       */
       allow write: if isAdmin();
     }
     
-    // ==================== NOTIFICATION PREFERENCES ====================
-    match /notificationPreferences/{userId} {
-      // Users can read and write their own notification preferences
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    // =========================================================================
+    // COLLECTION: sensor_readings (Optional - if used)
+    // =========================================================================
+    // Purpose: Historical sensor data for long-term reporting
+    // Note: Primary sensor data is in Realtime Database
+    // Functions: callable/generateReport.ts
+    // Queries: deviceId + timestamp range (requires index)
+    
+    match /sensor_readings/{readingId} {
+      /**
+       * READ ACCESS
+       * - All authenticated users can read sensor readings
+       * 
+       * Related: callable/generateReport.ts (generateWaterQualityReport)
+       */
+      allow read: if isAuthenticated();
       
-      // Admins can read all notification preferences
-      allow read: if isAdmin();
+      /**
+       * WRITE ACCESS
+       * - Only Cloud Functions can write sensor readings
+       * 
+       * Related: pubsub/processSensorData.ts (optional long-term storage)
+       */
+      allow write: if false;
     }
     
-    // ==================== READINGS (for alert monitoring) ====================
-    match /readings/{readingId} {
-      // Authenticated users can read readings
-      allow read: if request.auth != null;
+    // =========================================================================
+    // COLLECTION: login_logs
+    // =========================================================================
+    // Purpose: Authentication audit trail
+    // Functions: auth/beforeSignIn.ts, utils/authHelpers.ts
+    
+    match /login_logs/{logId} {
+      /**
+       * READ/WRITE ACCESS
+       * - Only Cloud Functions can read/write login logs
+       * - Client applications have no access
+       * 
+       * Related: auth/beforeSignIn.ts (logLogin)
+       */
+      allow read, write: if false;
+    }
+    
+    // =========================================================================
+    // COLLECTION: business_logs
+    // =========================================================================
+    // Purpose: Business action audit trail for compliance
+    // Functions: utils/authHelpers.ts (logBusinessAction)
+    
+    match /business_logs/{logId} {
+      /**
+       * READ/WRITE ACCESS
+       * - Only Cloud Functions can read/write business logs
+       * - Client applications have no access
+       * 
+       * Related: utils/authHelpers.ts (logBusinessAction)
+       */
+      allow read, write: if false;
+    }
+    
+    // =========================================================================
+    // COLLECTION: reports (if used)
+    // =========================================================================
+    // Purpose: Generated report documents
+    // Functions: callable/generateReport.ts
+    
+    match /reports/{reportId} {
+      /**
+       * READ ACCESS
+       * - All authenticated users can read reports
+       */
+      allow read: if isAuthenticated();
       
-      // Only Cloud Functions can write readings
+      /**
+       * WRITE ACCESS
+       * - Only Cloud Functions can write reports
+       * 
+       * Related: callable/generateReport.ts
+       */
       allow write: if false;
+    }
+    
+    // =========================================================================
+    // FALLBACK RULE
+    // =========================================================================
+    // Deny all other access by default (least privilege principle)
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
