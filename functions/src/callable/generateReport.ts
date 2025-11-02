@@ -406,7 +406,10 @@ function formatUptime(ms: number): string {
  * Single entry point for all report generation operations
  *
  * Uses createRoutedFunction for clean switch-case routing
- * Requires admin authentication for all operations
+ *
+ * Security:
+ * - Requires authentication
+ * - All report generation available to both Staff and Admin roles
  *
  * @example
  * // Generate water quality report
@@ -432,7 +435,7 @@ export const generateReport = onCall<ReportGenerationRequest, Promise<ReportResp
     },
     {
       requireAuth: true,
-      requireAdmin: true,
+      requireAdmin: false, // Staff can generate reports for monitoring purposes
     }
   )
 );

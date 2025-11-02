@@ -348,8 +348,10 @@ const handleGetSensorHistory: ActionHandler<
  * Device Management Callable Function
  * Uses createRoutedFunction for clean switch-case routing
  *
- * Security: requireAuth = true, requireAdmin = true
- * All device management operations require admin authentication
+ * Security:
+ * - All operations require authentication
+ * - Read operations (listDevices, getDevice, getSensorReadings, getSensorHistory): Staff + Admin
+ * - Write operations (addDevice, updateDevice, deleteDevice, sendCommand, discoverDevices): Admin only
  *
  * @example
  * // List all devices
@@ -381,6 +383,22 @@ const handlers: ActionHandlers<DeviceManagementRequest, DeviceManagementResponse
 export const deviceManagement = onCall<DeviceManagementRequest, Promise<DeviceManagementResponse>>(
   createRoutedFunction<DeviceManagementRequest, DeviceManagementResponse>(handlers, {
     requireAuth: true,
-    requireAdmin: true,
+    requireAdmin: false, // Staff can view devices; write operations checked per-action
+    beforeRoute: async (request: CallableRequest<DeviceManagementRequest>) => {
+      // Only admin can perform write operations
+      const writeActions = [
+        "addDevice",
+        "updateDevice",
+        "deleteDevice",
+        "sendCommand",
+        "discoverDevices",
+      ];
+      const action = request.data.action;
+      const role = request.auth?.token?.role;
+
+      if (writeActions.includes(action) && role !== "Admin") {
+        throw new HttpsError("permission-denied", "Admin privileges required for this operation");
+      }
+    },
   })
 );

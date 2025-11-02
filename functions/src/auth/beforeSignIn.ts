@@ -8,14 +8,14 @@
  * Responsibilities:
  * - Validates email domain (restricts to @smu.edu.ph)
  * - Verifies user profile exists in Firestore
+ * - Sets custom claims (role, status) in the authentication token
  * - Logs all sign-in attempts for security audit
  * - Updates last login timestamp
  * - Allows sign-in for all statuses (client handles routing)
  * - Blocks unauthorized domains
  *
- * Note: User status (Pending/Approved/Suspended) is checked client-side
- * for appropriate UI routing. This function focuses on authentication
- * and audit logging.
+ * Note: Custom claims enable backend authorization via request.auth.token.
+ * User status routing is also handled client-side based on these claims.
  *
  * @module auth/beforeSignIn
  */
@@ -123,9 +123,14 @@ export const beforeSignIn = beforeUserSignedIn(
       // Update last login timestamp
       await updateLastLogin(userInfo.uid);
 
-      // Allow sign-in to proceed
-      // Client-side routing will handle status-based redirects
-      return;
+      // Set custom claims for authorization
+      // This allows the token to carry role and status information
+      return {
+        customClaims: {
+          role: userProfile.role || "Staff",
+          status: userProfile.status || "Pending",
+        },
+      };
     } catch (error) {
       // Re-throw HttpsError instances (already handled)
       if (error instanceof HttpsError) {
