@@ -223,7 +223,8 @@ export const ComplianceReportDataSchema = z.object({
  * Generate Report Request Schema
  */
 export const GenerateReportRequestSchema = z.object({
-  reportType: ReportTypeSchema,
+  reportType: ReportTypeSchema.optional(),
+  action: z.string().optional(),
   deviceIds: z.array(z.string()).optional(),
   startDate: z.number().optional(),
   endDate: z.number().optional(),

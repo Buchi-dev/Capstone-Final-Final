@@ -173,8 +173,10 @@ async function handleGenerateWaterQualityReport(
 async function handleGenerateDeviceStatusReport(
   request: CallableRequest<ReportGenerationRequest>
 ): Promise<ReportResponse> {
+  console.log("handleGenerateDeviceStatusReport called");
   try {
     const { deviceIds } = request.data;
+    console.log("Device IDs:", deviceIds);
 
     // Query devices
     let devicesQuery: FirebaseFirestore.Query = db.collection(COLLECTIONS.DEVICES);
@@ -213,11 +215,27 @@ async function handleGenerateDeviceStatusReport(
         uptime = formatUptime(uptimeMs);
       }
 
+      // Safely format lastSeen timestamp
+      let lastSeenFormatted = "Unknown";
+      if (deviceData.lastSeen) {
+        try {
+          const lastSeenDate = new Date(deviceData.lastSeen);
+          if (!isNaN(lastSeenDate.getTime())) {
+            lastSeenFormatted = lastSeenDate.toISOString();
+          }
+        } catch (error) {
+          console.warn(
+            `Invalid lastSeen value for device ${deviceData.deviceId}:`,
+            deviceData.lastSeen
+          );
+        }
+      }
+
       devices.push({
         deviceId: deviceData.deviceId,
         deviceName: deviceData.name || deviceData.deviceId,
         status,
-        lastSeen: deviceData.lastSeen ? new Date(deviceData.lastSeen).toISOString() : "Unknown",
+        lastSeen: lastSeenFormatted,
         uptime,
       });
     }
@@ -425,7 +443,7 @@ function formatUptime(ms: number): string {
  *   reportType: 'device_status'
  * });
  */
-export const generateReport = onCall<ReportGenerationRequest, Promise<ReportResponse>>(
+export const generateReport = onCall(
   createRoutedFunction<ReportGenerationRequest, ReportResponse>(
     {
       generateWaterQualityReport: handleGenerateWaterQualityReport,

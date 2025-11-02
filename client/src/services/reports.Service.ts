@@ -76,7 +76,7 @@ export class ReportsService {
       );
 
       const result = await callable({
-        reportType: 'water_quality',
+        action: 'generateWaterQualityReport',
         deviceIds,
         startDate,
         endDate,
@@ -116,7 +116,7 @@ export class ReportsService {
       );
 
       const result = await callable({
-        reportType: 'device_status',
+        action: 'generateDeviceStatusReport',
         deviceIds,
       });
 
@@ -157,7 +157,7 @@ export class ReportsService {
       );
 
       const result = await callable({
-        reportType: 'data_summary',
+        action: 'generateDataSummaryReport',
         deviceIds,
         startDate,
         endDate,
@@ -200,7 +200,7 @@ export class ReportsService {
       );
 
       const result = await callable({
-        reportType: 'compliance',
+        action: 'generateComplianceReport',
         deviceIds,
         startDate,
         endDate,
@@ -237,16 +237,35 @@ export class ReportsService {
    */
   async generateReport(request: GenerateReportRequest): Promise<any> {
     try {
-      const callable = httpsCallable<GenerateReportRequest, ReportResponse<any>>(
+      const callable = httpsCallable<any, ReportResponse<any>>(
         this.functions,
         this.functionName
       );
 
-      const result = await callable(request);
+      // Map reportType to action name for backend routing
+      const actionMap: Record<string, string> = {
+        'water_quality': 'generateWaterQualityReport',
+        'device_status': 'generateDeviceStatusReport',
+        'data_summary': 'generateDataSummaryReport',
+        'compliance': 'generateComplianceReport',
+      };
+
+      const reportType = request.reportType || 'water_quality';
+      const action = actionMap[reportType];
+      if (!action) {
+        throw new Error(`Unknown report type: ${reportType}`);
+      }
+
+      const result = await callable({
+        action,
+        deviceIds: request.deviceIds,
+        startDate: request.startDate,
+        endDate: request.endDate,
+      });
 
       return result.data.data;
     } catch (error: any) {
-      throw this.handleError(error, `Failed to generate ${request.reportType} report`);
+      throw this.handleError(error, `Failed to generate ${request.reportType || 'report'}`);
     }
   }
 

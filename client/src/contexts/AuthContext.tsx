@@ -61,6 +61,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(firebaseUser);
 
       if (firebaseUser) {
+        // Force refresh ID token to get latest custom claims (role, status)
+        // This ensures the token includes claims set by beforeSignIn blocking function
+        try {
+          await firebaseUser.getIdToken(true);
+        } catch (error) {
+          console.error("Error refreshing token:", error);
+        }
+
         // Subscribe to user profile changes in Firestore
         const userDocRef = doc(db, "users", firebaseUser.uid);
         

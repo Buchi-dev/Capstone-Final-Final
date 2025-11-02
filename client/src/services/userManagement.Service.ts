@@ -9,6 +9,7 @@
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { UserStatus, UserRole } from '../contexts';
+import { refreshUserToken } from '../utils/authHelpers';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -127,12 +128,12 @@ export class UserManagementService {
    * }
    */
   async listUsers(): Promise<ListUsersResponse> {
-    try {
-      const callable = httpsCallable<{ action: string }, ListUsersResponse>(
-        this.functions,
-        this.functionName
-      );
+    const callable = httpsCallable<{ action: string }, ListUsersResponse>(
+      this.functions,
+      this.functionName
+    );
 
+    try {
       const result = await callable({ action: 'listUsers' });
 
       // Convert ISO string dates back to Date objects
@@ -148,6 +149,27 @@ export class UserManagementService {
         users,
       };
     } catch (error: any) {
+      // If permission denied, try refreshing token and retry once
+      if (error.code === 'functions/permission-denied') {
+        try {
+          await refreshUserToken();
+          const retryResult = await callable({ action: 'listUsers' });
+          
+          const users = retryResult.data.users.map((user) => ({
+            ...user,
+            createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
+            updatedAt: user.updatedAt ? new Date(user.updatedAt) : undefined,
+            lastLogin: user.lastLogin ? new Date(user.lastLogin) : undefined,
+          }));
+
+          return {
+            ...retryResult.data,
+            users,
+          };
+        } catch (retryError: any) {
+          throw this.handleError(retryError, 'Failed to list users');
+        }
+      }
       throw this.handleError(error, 'Failed to list users');
     }
   }
