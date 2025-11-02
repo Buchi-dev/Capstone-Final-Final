@@ -211,92 +211,82 @@ export async function sendStaleAlertEmail(data: StaleAlertEmailData): Promise<vo
 
   const htmlContent = `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Stale Critical Alerts Warning</title>
+  <style>
+    body { margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    .container { max-width: 600px; margin: 0 auto; }
+    .header { background: #dc2626; color: white; padding: 24px; text-align: center; }
+    .content { background: white; padding: 24px; }
+    .alert-box { background: #fef2f2; border-left: 4px solid #dc2626; padding: 16px; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th { background: #f9fafb; padding: 12px; text-align: left; font-weight: 600; border-bottom: 2px solid #e5e7eb; }
+    td { padding: 12px; border-bottom: 1px solid #e5e7eb; }
+    .btn { background: #dc2626; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; display: inline-block; margin: 16px 0; }
+    .footer { background: #f9fafb; padding: 16px; text-align: center; font-size: 12px; color: #6b7280; }
+    @media only screen and (max-width: 600px) {
+      .container { width: 100% !important; }
+      table { font-size: 12px; }
+      th, td { padding: 8px; }
+    }
+  </style>
 </head>
-<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f3f4f6;">
-  <div style="max-width: 800px; margin: 0 auto; padding: 20px;">
-    <!-- Header -->
-    <div style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); padding: 30px; border-radius: 10px 10px 0 0;">
-      <h1 style="color: white; margin: 0; font-size: 24px;">⚠️ Stale Critical Alerts Warning</h1>
-      <p style="color: #fee2e2; margin: 10px 0 0 0;">Water Quality Monitoring System</p>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1 style="margin: 0; font-size: 24px;">⚠️ Critical Alert Warning</h1>
+      <p style="margin: 8px 0 0 0; opacity: 0.9;">Water Quality Monitoring System</p>
     </div>
     
-    <!-- Content -->
-    <div style="background-color: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-      <p style="color: #374151; font-size: 16px; line-height: 1.6; margin-top: 0;">
-        Hello <strong>${recipientName}</strong>,
-      </p>
+    <div class="content">
+      <p style="margin-top: 0;">Hello <strong>${recipientName}</strong>,</p>
       
-      <p style="color: #374151; font-size: 16px; line-height: 1.6;">
-        The system has detected <strong style="color: #dc2626;">${totalCount} critical alert(s)</strong> 
-        that have been active for more than 2 hours without acknowledgment or resolution.
-      </p>
+      <p><strong style="color: #dc2626;">${totalCount} critical alert(s)</strong> have been active for more than 2 hours without action.</p>
       
-      <div style="background-color: #fef2f2; border-left: 4px solid #dc2626; padding: 15px; margin: 20px 0;">
-        <p style="color: #991b1b; margin: 0; font-weight: 600;">
-          ⚠️ Immediate Action Required
-        </p>
-        <p style="color: #7f1d1d; margin: 10px 0 0 0; font-size: 14px;">
-          Critical alerts indicate potentially dangerous water quality conditions that require urgent attention.
-        </p>
+      <div class="alert-box">
+        <p style="margin: 0; font-weight: 600; color: #991b1b;">⚠️ Immediate Action Required</p>
+        <p style="margin: 8px 0 0 0; font-size: 14px; color: #7f1d1d;">Critical alerts indicate potentially dangerous water quality conditions.</p>
       </div>
       
-      <!-- Alerts Table -->
-      <div style="margin: 25px 0; overflow-x: auto;">
-        <table style="width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb;">
-          <thead>
-            <tr style="background-color: #f9fafb;">
-              <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">Severity</th>
-              <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">Device</th>
-              <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">Parameter</th>
-              <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">Value</th>
-              <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">Created At</th>
-              <th style="padding: 12px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb;">Time Stale</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${alertRows}
-          </tbody>
-        </table>
-      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Severity</th>
+            <th>Device</th>
+            <th>Parameter</th>
+            <th>Value</th>
+            <th>Time Stale</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${alertRows}
+        </tbody>
+      </table>
       
-      <!-- Action Button -->
-      <div style="text-align: center; margin: 30px 0;">
-        <a href="${process.env.APP_URL || "https://your-app-url.com"}/dashboard/alerts" 
-           style="background-color: #dc2626; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: 600; display: inline-block;">
+      <div style="text-align: center;">
+        <a href="${process.env.APP_URL || "https://your-app-url.com"}/dashboard/alerts" class="btn">
           View Alerts Dashboard →
         </a>
       </div>
       
-      <!-- Footer Info -->
-      <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 30px;">
-        <p style="color: #6b7280; font-size: 14px; margin: 5px 0;">
-          <strong>Next Steps:</strong>
-        </p>
-        <ul style="color: #6b7280; font-size: 14px; line-height: 1.8; margin: 10px 0;">
-          <li>Log into the dashboard to review alert details</li>
-          <li>Acknowledge each alert to indicate you're investigating</li>
-          <li>Take corrective action based on alert severity</li>
-          <li>Resolve alerts once the issue is addressed</li>
+      <div style="border-top: 1px solid #e5e7eb; padding-top: 16px; margin-top: 24px;">
+        <p style="font-weight: 600; margin: 0 0 8px 0;">Next Steps:</p>
+        <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6;">
+          <li>Review alert details in the dashboard</li>
+          <li>Acknowledge alerts to indicate investigation</li>
+          <li>Take corrective action based on severity</li>
+          <li>Resolve alerts once issue is addressed</li>
         </ul>
       </div>
-      
-      <!-- System Footer -->
-      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center;">
-        <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-          Water Quality Monitoring System - Automated Alert
-        </p>
-        <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-          This is an automated notification. Please do not reply to this email.
-        </p>
-        <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-          Generated at: ${new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" })} (Asia/Manila)
-        </p>
-      </div>
+    </div>
+    
+    <div class="footer">
+      <p style="margin: 4px 0;">Water Quality Monitoring System - Automated Alert</p>
+      <p style="margin: 4px 0;">This is an automated notification. Please do not reply.</p>
+      <p style="margin: 4px 0;">Generated: ${new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" })} (Asia/Manila)</p>
     </div>
   </div>
 </body>
