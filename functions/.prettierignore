@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+lib/
+dist/
+build/
+
+# Backup directories
+src_OLD_BACKUP_*/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment files
+.env
+.env.*
+
+# Cache
+.cache/
+.eslintcache
+
+# Coverage
+coverage/

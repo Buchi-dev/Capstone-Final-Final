@@ -1,89 +1,99 @@
-import {beforeUserCreated, HttpsError} from "firebase-functions/v2/identity";
-import * as admin from "firebase-admin";
-import {db} from "../config/firebase";
-import type {UserProfile} from "../types";
+/**
+ * Before User Creation Hook
+ * Authentication Blocking Function - Firebase Identity Platform
+ *
+ * Triggered when a user attempts to create an account for the first time
+ * via Google OAuth authentication.
+ *
+ * Responsibilities:
+ * - Validates email domain (restricts to @smu.edu.ph)
+ * - Creates initial user profile in Firestore
+ * - Sets default role (Staff) and status (Pending)
+ * - Logs account creation for audit trail
+ * - Blocks unauthorized domain registration
+ *
+ * @module auth/beforeCreate
+ */
+
+import { beforeUserCreated } from "firebase-functions/v2/identity";
+
+import {
+  DEFAULT_USER_ROLE,
+  DEFAULT_USER_STATUS,
+  AUTH_ACTIONS,
+  AUTH_ERROR_MESSAGES,
+  LOG_PREFIXES,
+  AUTH_PROVIDERS,
+} from "../constants/auth.constants";
+import {
+  validateUserData,
+  validateEmailDomain,
+  parseUserInfo,
+  createUserProfile,
+  logBusinessAction,
+  createPermissionDeniedError,
+} from "../utils/authHelpers";
 
 /**
- * beforeCreate — Initialize new user profile
- * Triggered when a user signs in for the first time via Google OAuth
+ * Before User Created - Account Registration Hook
  *
- * This function:
- * - Restricts account creation to @smu.edu.ph domain only
- * - Creates user profile in Firestore with default values
- * - Sets initial Role = "Staff" and Status = "Pending"
- * - Extracts name from Google displayName
- * - Allows user creation to proceed (they'll need approval before next sign-in)
+ * This blocking function intercepts user creation and validates
+ * domain restrictions before allowing account registration.
  */
 export const beforeCreate = beforeUserCreated(
   {
     region: "us-central1",
   },
   async (event) => {
-    const user = event.data;
+    const authUser = event.data;
 
-    // Guard clause for undefined user
-    if (!user) {
-      console.error("User data is undefined in beforeCreate");
-      return;
-    }
+    // Validate user data exists
+    validateUserData(authUser);
 
-    // Restrict to smu.edu.ph domain only
-    const email = (user.email || "").toLowerCase();
-    const allowedDomain = "@smu.edu.ph";
+    // Parse user information
+    const userInfo = parseUserInfo(authUser);
 
-    if (!email.endsWith(allowedDomain)) {
-      console.warn(`Blocked account creation for ${email}: Not an SMU account`);
-      throw new HttpsError(
-        "permission-denied",
-        "Only Saint Mary's University (smu.edu.ph) accounts are allowed."
+    // Validate email domain
+    const domainValidation = validateEmailDomain(userInfo.email);
+
+    if (!domainValidation.isValid) {
+      console.warn(
+        `${LOG_PREFIXES.BLOCKED} Account creation attempt rejected for ${userInfo.email} - Domain not allowed`
       );
+
+      throw createPermissionDeniedError(AUTH_ERROR_MESSAGES.DOMAIN_NOT_ALLOWED);
     }
 
-    console.log(`Creating new user profile for: ${user.email}`);
-
-    // Extract first and last name from displayName
-    const displayNameParts = (user.displayName || "").split(" ");
-    const firstname = displayNameParts[0] || "";
-    const lastname = displayNameParts.slice(1).join(" ") || "";
-
-    // Create user profile in Firestore
-    const userProfile: UserProfile = {
-      uuid: user.uid,
-      firstname,
-      lastname,
-      middlename: "",
-      department: "",
-      phoneNumber: user.phoneNumber || "",
-      email: user.email || "",
-      role: "Staff",
-      status: "Pending",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
+    console.log(`${LOG_PREFIXES.CREATING} Initializing user profile for: ${userInfo.email}`);
 
     try {
-      await db.collection("users").doc(user.uid).set(userProfile);
+      // Create user profile with default values
+      await createUserProfile(userInfo);
 
-      console.log(`User profile created for ${user.email} with status: Pending`);
+      console.log(
+        `${LOG_PREFIXES.SUCCESS} User profile created - Email: ${userInfo.email}, ` +
+          `Role: ${DEFAULT_USER_ROLE}, Status: ${DEFAULT_USER_STATUS}`
+      );
 
-      // Log the account creation
-      await db.collection("business_logs").add({
-        action: "user_created",
-        uid: user.uid,
-        email: user.email,
-        performedBy: "system",
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        details: {
-          role: "Staff",
-          status: "Pending",
-          provider: "google.com",
-        },
+      // Log account creation for audit trail
+      await logBusinessAction(AUTH_ACTIONS.USER_CREATED, userInfo.uid, userInfo.email, "system", {
+        role: DEFAULT_USER_ROLE,
+        status: DEFAULT_USER_STATUS,
+        provider: AUTH_PROVIDERS.GOOGLE,
+        firstname: userInfo.firstname,
+        lastname: userInfo.lastname,
       });
 
-      // Allow user creation - they'll be redirected to complete profile
+      // Allow user creation to proceed
       return;
     } catch (error) {
-      console.error("Error creating user profile:", error);
-      // Still allow creation - we can handle missing profile data gracefully
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      console.error(
+        `${LOG_PREFIXES.ERROR} Failed to create user profile for ${userInfo.email}: ${errorMessage}`
+      );
+
+      // Allow creation to proceed even if profile creation fails
+      // The user can complete their profile later through the UI
       return;
     }
   }

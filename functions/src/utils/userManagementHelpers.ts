@@ -6,228 +6,97 @@
  */
 
 import * as admin from "firebase-admin";
-import {HttpsError} from "firebase-functions/v2/https";
-import {db} from "../config/firebase";
+import { HttpsError } from "firebase-functions/v2/https";
+
+import type { UserStatus, UserRole } from "../constants/userManagement.constants";
 import {
-  USER_ROLES,
-  USER_STATUSES,
-  USER_MGMT_ERROR_MESSAGES,
-  LOG_PREFIXES,
-  USER_ACTIONS,
+  VALID_USER_STATUSES,
+  VALID_USER_ROLES,
+  USER_MANAGEMENT_ERRORS,
 } from "../constants/userManagement.constants";
-import type {
-  UserRole,
-  UserStatus,
-  UserValidationResult,
-  SelfModificationCheck,
-} from "../types";
-
-// ===========================
-// AUTHENTICATION & AUTHORIZATION
-// ===========================
-
-/**
- * Validates that the caller is authenticated and is an admin
- * @param {any} auth - Authentication context from callable function
- * @throws {HttpsError} If user is not authenticated or not an admin
- */
-export function requireAdmin(auth: any): void {
-  if (!auth) {
-    throw new HttpsError(
-      "unauthenticated",
-      USER_MGMT_ERROR_MESSAGES.UNAUTHENTICATED
-    );
-  }
-
-  if (auth.token.role !== USER_ROLES.ADMIN) {
-    throw new HttpsError(
-      "permission-denied",
-      USER_MGMT_ERROR_MESSAGES.PERMISSION_DENIED
-    );
-  }
-}
+import type { ListUserData } from "../types/userManagement.types";
 
 // ===========================
 // VALIDATION FUNCTIONS
 // ===========================
 
 /**
- * Validates if a status value is valid
+ * Validates user status input
  * @param {UserStatus} status - Status to validate
- * @return {UserValidationResult} Validation result
+ * @throws {HttpsError} If status is invalid
  */
-export function validateStatus(status: UserStatus): UserValidationResult {
-  const validStatuses = Object.values(USER_STATUSES);
-  const isValid = validStatuses.includes(status);
-
-  return {
-    isValid,
-    error: isValid ? undefined : USER_MGMT_ERROR_MESSAGES.INVALID_STATUS,
-  };
+export function validateStatus(status: UserStatus): void {
+  if (!VALID_USER_STATUSES.includes(status)) {
+    throw new HttpsError(
+      "invalid-argument",
+      USER_MANAGEMENT_ERRORS.INVALID_STATUS(VALID_USER_STATUSES)
+    );
+  }
 }
 
 /**
- * Validates if a role value is valid
+ * Validates user role input
  * @param {UserRole} role - Role to validate
- * @return {UserValidationResult} Validation result
+ * @throws {HttpsError} If role is invalid
  */
-export function validateRole(role: UserRole): UserValidationResult {
-  const validRoles = Object.values(USER_ROLES);
-  const isValid = validRoles.includes(role);
-
-  return {
-    isValid,
-    error: isValid ? undefined : USER_MGMT_ERROR_MESSAGES.INVALID_ROLE,
-  };
+export function validateRole(role: UserRole): void {
+  if (!VALID_USER_ROLES.includes(role)) {
+    throw new HttpsError("invalid-argument", USER_MANAGEMENT_ERRORS.INVALID_ROLE(VALID_USER_ROLES));
+  }
 }
 
+// ===========================
+// BUSINESS LOGIC VALIDATORS
+// ===========================
+
 /**
- * Checks if the operation is a self-modification and if it's allowed
- * @param {string} callerId - ID of the user making the request
+ * Validates that an admin is not trying to suspend their own account
+ * @param {string} currentUserId - ID of the user making the request
  * @param {string} targetUserId - ID of the user being modified
- * @param {UserStatus} [newStatus] - New status being set (if any)
- * @param {UserRole} [newRole] - New role being set (if any)
- * @return {SelfModificationCheck} Result of the check
+ * @param {UserStatus} newStatus - New status being set
+ * @throws {HttpsError} If admin tries to suspend themselves
  */
-export function checkSelfModification(
-  callerId: string,
+export function validateNotSuspendingSelf(
+  currentUserId: string,
   targetUserId: string,
-  newStatus?: UserStatus,
-  newRole?: UserRole
-): SelfModificationCheck {
-  const isSelf = callerId === targetUserId;
-
-  if (!isSelf) {
-    return {isSelf: false, isAllowed: true};
+  newStatus: UserStatus
+): void {
+  if (currentUserId === targetUserId && newStatus === "Suspended") {
+    throw new HttpsError("failed-precondition", USER_MANAGEMENT_ERRORS.CANNOT_SUSPEND_SELF);
   }
-
-  // Check for suspension of self
-  if (newStatus === USER_STATUSES.SUSPENDED) {
-    return {
-      isSelf: true,
-      isAllowed: false,
-      reason: USER_MGMT_ERROR_MESSAGES.CANNOT_SUSPEND_SELF,
-    };
-  }
-
-  // Check for role demotion of self
-  if (newRole === USER_ROLES.STAFF) {
-    return {
-      isSelf: true,
-      isAllowed: false,
-      reason: USER_MGMT_ERROR_MESSAGES.CANNOT_CHANGE_OWN_ROLE,
-    };
-  }
-
-  // Allow other self-modifications
-  return {isSelf: true, isAllowed: true};
-}
-
-// ===========================
-// DATABASE OPERATIONS
-// ===========================
-
-/**
- * Fetches a user document from Firestore
- * @param {string} userId - User document ID
- * @return {Promise<FirebaseFirestore.DocumentSnapshot>} User document
- * @throws {HttpsError} If user not found
- */
-export async function fetchUserDocument(
-  userId: string
-): Promise<FirebaseFirestore.DocumentSnapshot> {
-  const userRef = db.collection("users").doc(userId);
-  const userDoc = await userRef.get();
-
-  if (!userDoc.exists) {
-    throw new HttpsError("not-found", USER_MGMT_ERROR_MESSAGES.USER_NOT_FOUND);
-  }
-
-  return userDoc;
 }
 
 /**
- * Updates custom claims in Firebase Auth
- * @param {string} userId - User ID
- * @param {Partial<{status: UserStatus; role: UserRole}>} claims - Claims to update
- * @return {Promise<void>}
+ * Validates that an admin is not trying to change their own role
+ * @param {string} currentUserId - ID of the user making the request
+ * @param {string} targetUserId - ID of the user being modified
+ * @param {UserRole} newRole - New role being set
+ * @throws {HttpsError} If admin tries to change their own role
  */
-export async function updateUserClaims(
-  userId: string,
-  claims: Partial<{status: UserStatus; role: UserRole}>
-): Promise<void> {
-  await admin.auth().setCustomUserClaims(userId, claims);
-}
-
-/**
- * Builds update data object with metadata
- * @param {string} callerId - ID of user making the change
- * @param {Partial<{status: UserStatus; role: UserRole}>} updates - Fields to update
- * @return {any} Update data object
- */
-export function buildUpdateData(
-  callerId: string,
-  updates: Partial<{status: UserStatus; role: UserRole}>
-): any {
-  const updateData: any = {
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedBy: callerId,
-  };
-
-  if (updates.status) {
-    updateData.status = updates.status;
-  }
-
-  if (updates.role) {
-    updateData.role = updates.role;
-  }
-
-  return updateData;
-}
-
-// ===========================
-// LOGGING FUNCTIONS
-// ===========================
-
-/**
- * Logs a user management action for audit trail
- * @param {string} action - Action type
- * @param {string} targetUserId - User being affected
- * @param {string} performedBy - User performing the action
- * @param {any} metadata - Additional action metadata
- * @return {Promise<void>}
- */
-export async function logUserAction(
-  action: string,
+export function validateNotChangingOwnRole(
+  currentUserId: string,
   targetUserId: string,
-  performedBy: string,
-  metadata?: any
-): Promise<void> {
-  try {
-    await db.collection("business_logs").add({
-      action,
-      targetUserId,
-      performedBy,
-      metadata: metadata || {},
-      timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    });
-  } catch (error) {
-    // Don't throw - logging failure shouldn't break the operation
-    console.error(`${LOG_PREFIXES.ERROR} Failed to log action:`, error);
+  newRole: UserRole
+): void {
+  if (currentUserId === targetUserId && newRole === "Staff") {
+    throw new HttpsError("failed-precondition", USER_MANAGEMENT_ERRORS.CANNOT_CHANGE_OWN_ROLE);
   }
 }
 
 // ===========================
-// FORMATTING FUNCTIONS
+// DATA TRANSFORMATION FUNCTIONS
 // ===========================
 
 /**
- * Formats user data for list response
- * @param {string} docId - Document ID
- * @param {any} data - User data from Firestore
- * @return {any} Formatted user object
+ * Converts Firestore user document to list data format
+ * @param {string} docId - Firestore document ID
+ * @param {FirebaseFirestore.DocumentData} data - Document data
+ * @return {ListUserData} Formatted user data
  */
-export function formatUserForList(docId: string, data: any): any {
+export function transformUserDocToListData(
+  docId: string,
+  data: FirebaseFirestore.DocumentData
+): ListUserData {
   return {
     id: docId,
     uuid: data.uuid,
@@ -246,20 +115,54 @@ export function formatUserForList(docId: string, data: any): any {
 }
 
 // ===========================
-// ERROR HANDLING
+// FIRESTORE UPDATE HELPERS
 // ===========================
 
 /**
- * Wraps errors in HttpsError for consistent error responses
- * @param {any} error - Error to wrap
- * @param {string} defaultMessage - Default message if error is unknown
- * @return {HttpsError} Formatted error
+ * Builds update data object with standard metadata
+ * @param {string} performedBy - UID of user performing the update
+ * @param {Partial<{status: UserStatus; role: UserRole}>} updates - Fields to update
+ * @return {object} Update data with metadata
  */
-export function wrapError(error: any, defaultMessage: string): HttpsError {
-  if (error instanceof HttpsError) {
-    return error;
+export function buildUpdateData(
+  performedBy: string,
+  updates: Partial<{ status: UserStatus; role: UserRole }>
+): any {
+  const updateData: any = {
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedBy: performedBy,
+  };
+
+  if (updates.status) {
+    updateData.status = updates.status;
   }
 
-  const errorMessage = error instanceof Error ? error.message : defaultMessage;
-  return new HttpsError("internal", errorMessage);
+  if (updates.role) {
+    updateData.role = updates.role;
+  }
+
+  return updateData;
+}
+
+/**
+ * Updates custom claims for a user in Firebase Auth
+ * @param {string} userId - User ID
+ * @param {Partial<{status: UserStatus; role: UserRole}>} claims - Claims to update
+ * @return {Promise<void>}
+ */
+export async function updateUserCustomClaims(
+  userId: string,
+  claims: Partial<{ status: UserStatus; role: UserRole }>
+): Promise<void> {
+  const customClaims: any = {};
+
+  if (claims.status) {
+    customClaims.status = claims.status;
+  }
+
+  if (claims.role) {
+    customClaims.role = claims.role;
+  }
+
+  await admin.auth().setCustomUserClaims(userId, customClaims);
 }

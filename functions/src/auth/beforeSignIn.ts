@@ -1,133 +1,154 @@
-import {beforeUserSignedIn, HttpsError} from "firebase-functions/v2/identity";
-import * as admin from "firebase-admin";
-import {db} from "../config/firebase";
-import type {UserProfile, LoginLog} from "../types";
+/**
+ * Before User Sign-In Hook
+ * Authentication Blocking Function - Firebase Identity Platform
+ *
+ * Triggered on every sign-in attempt, including first sign-in after
+ * account creation.
+ *
+ * Responsibilities:
+ * - Validates email domain (restricts to @smu.edu.ph)
+ * - Verifies user profile exists in Firestore
+ * - Logs all sign-in attempts for security audit
+ * - Updates last login timestamp
+ * - Allows sign-in for all statuses (client handles routing)
+ * - Blocks unauthorized domains
+ *
+ * Note: User status (Pending/Approved/Suspended) is checked client-side
+ * for appropriate UI routing. This function focuses on authentication
+ * and audit logging.
+ *
+ * @module auth/beforeSignIn
+ */
+
+import { beforeUserSignedIn, HttpsError } from "firebase-functions/v2/identity";
+
+import {
+  USER_STATUSES,
+  LOGIN_RESULTS,
+  AUTH_ERROR_MESSAGES,
+  LOG_PREFIXES,
+} from "../constants/auth.constants";
+import {
+  validateUserData,
+  validateEmailDomain,
+  parseUserInfo,
+  getUserProfile,
+  updateLastLogin,
+  logSignInAttempt,
+  createPermissionDeniedError,
+  createNotFoundError,
+  createInternalError,
+} from "../utils/authHelpers";
 
 /**
- * beforeSignIn — Validate user status before allowing sign-in
- * Triggered on every sign-in attempt (including first sign-in after creation)
+ * Before User Signed In - Sign-In Validation Hook
  *
- * This function:
- * - Restricts login to @smu.edu.ph domain only
- * - Checks if user exists in Firestore
- * - Logs all sign-in attempts to login_logs collection
- * - Allows sign-in for all user statuses (Pending, Approved, Suspended)
- * - Client-side routing handles redirects based on user status
- * - Updates lastLogin timestamp on successful sign-in
+ * This blocking function intercepts sign-in attempts and validates
+ * user credentials and profile existence before granting access.
  */
 export const beforeSignIn = beforeUserSignedIn(
   {
     region: "us-central1",
   },
   async (event) => {
-    const user = event.data;
+    const authUser = event.data;
 
-    // Guard clause for undefined user
-    if (!user) {
-      console.error("User data is undefined in beforeSignIn");
-      throw new HttpsError("internal", "User data is missing");
-    }
+    // Validate user data exists
+    validateUserData(authUser);
 
-    // Restrict to smu.edu.ph domain only
-    const email = (user.email || "").toLowerCase();
-    const allowedDomain = "@smu.edu.ph";
+    // Parse user information
+    const userInfo = parseUserInfo(authUser);
 
-    if (!email.endsWith(allowedDomain)) {
-      console.warn(`Blocked sign-in attempt for ${email}: Not an SMU account`);
+    // Validate email domain
+    const domainValidation = validateEmailDomain(userInfo.email);
 
-      // Log rejected attempt
-      await db.collection("login_logs").add({
-        uid: user.uid,
-        email: user.email || "",
-        displayName: user.displayName || "",
-        statusAttempted: "Pending",
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        result: "rejected",
-        message: "Sign-in blocked: Not an SMU email address",
-      } as LoginLog);
-
-      throw new HttpsError(
-        "permission-denied",
-        "Only Saint Mary's University (smu.edu.ph) accounts are allowed."
+    if (!domainValidation.isValid) {
+      console.warn(
+        `${LOG_PREFIXES.BLOCKED} Sign-in attempt rejected for ${userInfo.email} - Domain not allowed`
       );
+
+      // Log rejected sign-in attempt
+      await logSignInAttempt(
+        userInfo.uid,
+        userInfo.email,
+        userInfo.displayName,
+        USER_STATUSES.PENDING,
+        LOGIN_RESULTS.REJECTED,
+        `Sign-in blocked: Email domain ${domainValidation.domain} not allowed`
+      );
+
+      throw createPermissionDeniedError(AUTH_ERROR_MESSAGES.DOMAIN_NOT_ALLOWED);
     }
 
-    console.log(`Sign-in attempt by: ${user.email}`);
+    console.log(`${LOG_PREFIXES.SIGN_IN} Authentication attempt by: ${userInfo.email}`);
 
     try {
-      // Get user profile from Firestore
-      const userDoc = await db.collection("users").doc(user.uid).get();
+      // Retrieve user profile from Firestore
+      const userProfile = await getUserProfile(userInfo.uid);
 
-      if (!userDoc.exists) {
-        // User record not found (shouldn't happen due to beforeCreate)
-        const errorLog: LoginLog = {
-          uid: user.uid,
-          email: user.email || "",
-          displayName: user.displayName || "",
-          statusAttempted: "Pending",
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-          result: "error",
-          message: "User record not found in database",
-        };
-
-        await db.collection("login_logs").add(errorLog);
-
-        throw new HttpsError(
-          "not-found",
-          "User record not found. Please contact administrator."
+      if (!userProfile) {
+        console.error(
+          `${LOG_PREFIXES.ERROR} User profile not found for ${userInfo.email} (UID: ${userInfo.uid})`
         );
+
+        // Log error for missing profile
+        await logSignInAttempt(
+          userInfo.uid,
+          userInfo.email,
+          userInfo.displayName,
+          USER_STATUSES.PENDING,
+          LOGIN_RESULTS.ERROR,
+          "User profile not found in database - possible sync issue"
+        );
+
+        throw createNotFoundError(AUTH_ERROR_MESSAGES.USER_NOT_FOUND);
       }
 
-      const userData = userDoc.data() as UserProfile;
-      const status = userData.status;
+      const userStatus = userProfile.status;
 
-      // Log the sign-in attempt
-      const loginLog: LoginLog = {
-        uid: user.uid,
-        email: user.email || "",
-        displayName: user.displayName || "",
-        statusAttempted: status,
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        result: "success",
-        message: `Sign-in allowed with status: ${status}`,
-      };
+      console.log(
+        `${LOG_PREFIXES.AUTHENTICATED} User ${userInfo.email} signed in - Status: ${userStatus}`
+      );
 
-      await db.collection("login_logs").add(loginLog);
+      // Log successful sign-in attempt
+      await logSignInAttempt(
+        userInfo.uid,
+        userInfo.email,
+        userInfo.displayName,
+        userStatus,
+        LOGIN_RESULTS.SUCCESS,
+        `Sign-in successful - User status: ${userStatus}`
+      );
 
       // Update last login timestamp
-      await db.collection("users").doc(user.uid).update({
-        lastLogin: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      const email = user.email || "unknown";
-      console.log(`Sign-in allowed for ${email} (Status: ${status})`);
+      await updateLastLogin(userInfo.uid);
 
       // Allow sign-in to proceed
+      // Client-side routing will handle status-based redirects
       return;
     } catch (error) {
-      // If it's already an HttpsError, re-throw it
+      // Re-throw HttpsError instances (already handled)
       if (error instanceof HttpsError) {
         throw error;
       }
 
-      // Log unexpected errors
-      console.error("Unexpected error in beforeSignIn:", error);
-
-      await db.collection("login_logs").add({
-        uid: user.uid,
-        email: user.email || "",
-        displayName: user.displayName || "",
-        statusAttempted: "Pending",
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        result: "error",
-        message: error instanceof Error ? error.message : "Unknown error",
-      });
-
-      throw new HttpsError(
-        "internal",
-        "An error occurred during sign-in. Please try again."
+      // Handle unexpected errors
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      console.error(
+        `${LOG_PREFIXES.ERROR} Unexpected error during sign-in for ${userInfo.email}: ${errorMessage}`
       );
+
+      // Log unexpected error
+      await logSignInAttempt(
+        userInfo.uid,
+        userInfo.email,
+        userInfo.displayName,
+        USER_STATUSES.PENDING,
+        LOGIN_RESULTS.ERROR,
+        `Unexpected error: ${errorMessage}`
+      );
+
+      throw createInternalError(AUTH_ERROR_MESSAGES.SIGN_IN_ERROR);
     }
   }
 );

@@ -1,35 +1,72 @@
 /**
- * Aggregate Alerts to Digest - Phase 2 Implementation
- * 
- * ANALYSIS INTEGRATION POINTS:
- * - Replaces immediate email sends from processSensorData.ts:145-158
- * - Reuses getNotificationRecipients from utils/helpers.ts:323
- * - Uses existing threshold logic from processSensorData.ts:94-144
- * 
+ * Aggregate Alerts to Digest - Firestore Trigger
+ *
+ * HIGH PRIORITY FUNCTION: Batches alerts into digests for periodic email sending
+ *
+ * @module pubsub/aggregateAlertsToDigest
+ *
+ * Functionality:
+ * - Triggered when alerts are created/updated in Firestore
+ * - Aggregates alerts into daily digests per recipient/category
+ * - Groups by recipient UID and alert category
+ * - Generates acknowledgement tokens for digest management
+ * - NO IMMEDIATE EMAILS - silent aggregation only
+ * - Digests are sent by scheduler (sendAlertDigests)
+ *
  * QUOTA OPTIMIZATION:
- * - Batches alerts silently (no immediate sends) → Saves 98% email quota
- * - Transaction-based writes prevent race conditions (fix for concurrent writes issue)
- * - Deduplicates by eventId to avoid retry duplicates (idempotency fix)
+ * - Batches alerts silently → Saves 98% email quota
+ * - Transaction-based writes prevent race conditions
+ * - Deduplicates by eventId for idempotency (retry safety)
+ *
+ * Migration Notes:
+ * - Ported from src/pubsub/aggregateAlertsToDigest.ts
+ * - Enhanced with modular types and constants
+ * - Uses existing digest types from types/digest.types.ts
+ * - Uses constants from constants/digest.constants.ts
  */
 
-import {onDocumentWritten} from "firebase-functions/v2/firestore";
-import {logger} from "firebase-functions/v2";
-import * as admin from "firebase-admin";
 import * as crypto from "crypto";
-import {db} from "../config/firebase";
-import {getNotificationRecipients, getThresholdConfig} from "../utils/helpers";
-import type {WaterQualityAlert, NotificationPreferences} from "../types";
-import type {AlertDigest, DigestAlertItem} from "../types/digest";
-import {categorizeAlert} from "../types/digest";
+
+import * as admin from "firebase-admin";
+import { logger } from "firebase-functions/v2";
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
+
+import { db } from "../config/firebase";
+import { COLLECTIONS } from "../constants/database.constants";
+import { DIGEST_COLLECTION, DIGEST_MAX_ITEMS } from "../constants/digest.constants";
+import type { WaterQualityAlert } from "../types/alertManagement.types";
+import type { AlertDigest, DigestAlertItem } from "../types/digest.types";
+import { categorizeAlert } from "../types/digest.types";
+import type { NotificationPreferences } from "../types/notificationPreferences.types";
+import { getNotificationRecipients } from "../utils/alertHelpers";
+import { getThresholdConfig } from "../utils/thresholdHelpers";
 
 /**
- * Triggered when alerts are created/updated
- * Aggregates alerts into daily digests per recipient/category
- * NO IMMEDIATE EMAILS - silent aggregation only
+ * Aggregate alerts into daily digests
+ *
+ * Trigger: Firestore document write to alerts/{alertId}
+ *
+ * Process:
+ * 1. Only process new alert creation (not updates)
+ * 2. Get threshold config for alert categorization
+ * 3. Determine alert category (e.g., "ph_high", "tds_critical")
+ * 4. Get notification recipients based on preferences
+ * 5. Create or update digest documents for each recipient
+ * 6. Use transactions to prevent race conditions
+ * 7. Deduplicate by eventId for idempotency
+ *
+ * Digest Document ID Format: {recipientUid}_{category}_{YYYY-MM-DD}
+ * Example: "user123_ph_high_2025-11-02"
+ *
+ * @param event - Firestore document event
+ *
+ * @example
+ * // Alert created in Firestore → Triggers this function
+ * // Function adds alert to digest → Scheduler sends digest later
  */
 export const aggregateAlertsToDigest = onDocumentWritten(
   {
-    document: "alerts/{alertId}",
+    document: `${COLLECTIONS.ALERTS}/{alertId}`,
     region: "us-central1",
     retry: false, // Disable retry to prevent duplicate aggregations
     minInstances: 0, // Cold start acceptable for aggregation
@@ -62,13 +99,9 @@ export const aggregateAlertsToDigest = onDocumentWritten(
     try {
       // Get threshold config for categorization
       const thresholds = await getThresholdConfig();
-      const category = categorizeAlert(
-        alertData.parameter,
-        alertData.currentValue,
-        thresholds
-      );
+      const category = categorizeAlert(alertData.parameter, alertData.currentValue, thresholds);
 
-      // Get recipients using existing RBAC logic (reuses utils/helpers.ts:323)
+      // Get recipients using existing RBAC logic
       const recipients = await getNotificationRecipients(alertData);
 
       if (recipients.length === 0) {
@@ -108,7 +141,20 @@ export const aggregateAlertsToDigest = onDocumentWritten(
 
 /**
  * Aggregate alert item to specific recipient's digest (transaction-safe)
- * Doc ID format: {recipientUid}_{category}_{YYYY-MM-DD} (UTC)
+ *
+ * Document ID Format: {recipientUid}_{category}_{YYYY-MM-DD}
+ * Example: "user123_ph_high_2025-11-02"
+ *
+ * Transaction Logic:
+ * 1. Check if digest exists for today
+ * 2. If exists, check for duplicate eventId (idempotency)
+ * 3. Add item to digest (max 10 items, FIFO)
+ * 4. If new, create digest with acknowledgement token
+ *
+ * @param recipient - Notification preferences for recipient
+ * @param category - Alert category for grouping
+ * @param item - Digest alert item to add
+ * @param eventId - Alert ID for deduplication
  */
 async function aggregateToRecipientDigest(
   recipient: NotificationPreferences,
@@ -118,7 +164,7 @@ async function aggregateToRecipientDigest(
 ): Promise<void> {
   const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD UTC
   const digestId = `${recipient.userId}_${category}_${today}`;
-  const digestRef = db.collection("alerts_digests").doc(digestId);
+  const digestRef = db.collection(DIGEST_COLLECTION).doc(digestId);
 
   try {
     await db.runTransaction(async (transaction) => {
@@ -128,21 +174,19 @@ async function aggregateToRecipientDigest(
         // Update existing digest
         const existingDigest = digestDoc.data() as AlertDigest;
 
-        // Check for duplicate eventId (idempotency - fixes retry issue from analysis)
+        // Check for duplicate eventId (idempotency - fixes retry issue)
         const isDuplicate = existingDigest.items.some(
           (existingItem) => existingItem.eventId === eventId
         );
 
         if (isDuplicate) {
-          logger.debug(
-            `Alert ${eventId} already in digest ${digestId}, skipping duplicate`
-          );
+          logger.debug(`Alert ${eventId} already in digest ${digestId}, skipping duplicate`);
           return; // Exit transaction silently
         }
 
-        // Maintain max 10 items (FIFO - remove oldest if at capacity)
+        // Maintain max items (FIFO - remove oldest if at capacity)
         const updatedItems = [...existingDigest.items, item];
-        if (updatedItems.length > 10) {
+        if (updatedItems.length > DIGEST_MAX_ITEMS) {
           updatedItems.shift(); // Remove oldest
           logger.info(`Digest ${digestId} at capacity, removed oldest alert`);
         }
@@ -155,7 +199,7 @@ async function aggregateToRecipientDigest(
         logger.debug(`Updated digest ${digestId} with alert ${item.eventId}`);
       } else {
         // Create new digest
-        const newDigest: AlertDigest = {
+        const newDigest: Partial<AlertDigest> = {
           recipientUid: recipient.userId,
           recipientEmail: recipient.email,
           category,
@@ -181,22 +225,25 @@ async function aggregateToRecipientDigest(
 
 /**
  * Generate human-readable summary for digest item
+ *
+ * Format: "{Severity}: {Parameter} {Value}{Unit}{Location}"
+ * Examples:
+ * - "Critical: pH 9.2 at Main Lab, Floor 2"
+ * - "Warning: TDS 850 ppm at Building A"
+ * - "Advisory: Turbidity 7.5 NTU"
+ *
+ * @param alert - Water quality alert data
+ * @return Formatted summary string
  */
 function generateAlertSummary(alert: WaterQualityAlert): string {
+  // Format parameter name
   const paramName =
-    alert.parameter === "ph"
-      ? "pH"
-      : alert.parameter === "tds"
-        ? "TDS"
-        : "Turbidity";
+    alert.parameter === "ph" ? "pH" : alert.parameter === "tds" ? "TDS" : "Turbidity";
 
-  const unit =
-    alert.parameter === "tds"
-      ? " ppm"
-      : alert.parameter === "turbidity"
-        ? " NTU"
-        : "";
+  // Add unit if applicable
+  const unit = alert.parameter === "tds" ? " ppm" : alert.parameter === "turbidity" ? " NTU" : "";
 
+  // Format location if available
   const location =
     alert.deviceBuilding && alert.deviceFloor
       ? ` at ${alert.deviceBuilding}, ${alert.deviceFloor}`

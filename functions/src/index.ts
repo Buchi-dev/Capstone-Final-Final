@@ -1,38 +1,22 @@
-﻿/**
- * Firebase Cloud Functions - Main Entry Point
+/**
+ * Firebase Functions Entry Point - src_new
+ * Main index file for exporting all Cloud Functions
+ *
+ * Function Categories:
+ * - Authentication: beforeCreate, beforeSignIn
+ * - Callable: userManagement, alertManagement, deviceManagement, etc.
+ * - Pub/Sub: processSensorData, aggregateAlertsToDigest, etc.
+ * - Schedulers: checkStaleAlerts, sendAlertDigests, analytics
  */
 
-// Authentication Functions
-export {beforeCreate} from "./auth/beforeCreate";
-export {beforeSignIn} from "./auth/beforeSignIn";
+// Export authentication functions
+export * from "./auth";
 
-// HTTP Functions
-export {deviceManagement} from "./http/deviceManagement";
-export {generateReport} from "./http/generateReport";
-export {alertManagement} from "./http/alertManagement";
-export {
-  listNotificationPreferences,
-  setupNotificationPreferences,
-  deleteNotificationPreferences,
-} from "./http/notificationPreferences";
+// Export callable functions
+export * from "./callable";
 
-// Pub/Sub Functions
-export {processSensorData} from "./pubsub/processSensorData";
-export {autoRegisterDevice} from "./pubsub/autoRegisterDevice";
-export {monitorDeviceStatus} from "./pubsub/monitorDeviceStatus";
-export {aggregateAlertsToDigest} from "./pubsub/aggregateAlertsToDigest";
+// Export Pub/Sub trigger functions
+export * from "./pubsub";
 
-// Scheduler Functions
-export {checkStaleAlerts} from "./scheduler/checkStaleAlerts";
-export {sendDailyAnalytics} from "./scheduler/sendDailyAnalytics";
-export {sendAlertDigests} from "./scheduler/sendAlertDigests";
-
-// HTTP Functions - Alert Management
-export {acknowledgeDigest} from "./http/acknowledgeDigest";
-
-// HTTP Functions - User Management
-export {
-  updateUserStatus,
-  updateUser,
-  listUsers,
-} from "./http/userManagement";
+// Export scheduled functions
+export * from "./scheduler";

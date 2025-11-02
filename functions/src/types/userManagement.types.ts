@@ -1,11 +1,11 @@
 /**
- * Type Definitions - User Management Module
- * Centralized type definitions for user management operations
+ * User Management Type Definitions
+ * Type definitions specific to user management operations
  *
  * @module types/userManagement.types
  */
 
-import {UserRole, UserStatus} from "./index";
+import type { UserStatus, UserRole } from "../constants/userManagement.constants";
 
 // ===========================
 // REQUEST TYPES
@@ -20,26 +20,13 @@ export interface UpdateUserStatusRequest {
 }
 
 /**
- * Request payload for updating user (status and/or role)
+ * Request payload for updating user information
+ * Can update status and/or role
  */
 export interface UpdateUserRequest {
   userId: string;
   status?: UserStatus;
   role?: UserRole;
-}
-
-/**
- * Request payload for bulk approving users
- */
-export interface BulkApproveUsersRequest {
-  userIds: string[];
-}
-
-/**
- * Request payload for deleting a user
- */
-export interface DeleteUserRequest {
-  userId: string;
 }
 
 // ===========================
@@ -52,43 +39,30 @@ export interface DeleteUserRequest {
 export interface UserOperationResponse {
   success: boolean;
   message: string;
-  userId?: string;
-  status?: UserStatus;
-  role?: UserRole;
-  updates?: {
+  userId: string;
+}
+
+/**
+ * Response for status update operation
+ */
+export interface UpdateStatusResponse extends UserOperationResponse {
+  status: UserStatus;
+}
+
+/**
+ * Response for user update operation
+ */
+export interface UpdateUserResponse extends UserOperationResponse {
+  updates: {
     status?: UserStatus;
     role?: UserRole;
   };
 }
 
 /**
- * Response for bulk operations
+ * User data returned from list operation
  */
-export interface BulkOperationResponse {
-  success: boolean;
-  message: string;
-  results: {
-    succeeded: string[];
-    failed: Array<{
-      userId: string;
-      error: string;
-    }>;
-  };
-}
-
-/**
- * Response for list users operation
- */
-export interface ListUsersResponse {
-  success: boolean;
-  users: UserListItem[];
-  count: number;
-}
-
-/**
- * User item in list response
- */
-export interface UserListItem {
+export interface ListUserData {
   id: string;
   uuid: string;
   firstname: string;
@@ -104,23 +78,11 @@ export interface UserListItem {
   lastLogin?: string;
 }
 
-// ===========================
-// VALIDATION TYPES
-// ===========================
-
 /**
- * Result of user validation
+ * Response for list users operation
  */
-export interface UserValidationResult {
-  isValid: boolean;
-  error?: string;
-}
-
-/**
- * Result of self-modification check
- */
-export interface SelfModificationCheck {
-  isSelf: boolean;
-  isAllowed: boolean;
-  reason?: string;
+export interface ListUsersResponse {
+  success: boolean;
+  users: ListUserData[];
+  count: number;
 }
