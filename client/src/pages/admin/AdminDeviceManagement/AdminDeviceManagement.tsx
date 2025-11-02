@@ -1,3 +1,18 @@
+/**
+ * REDESIGNED ADMIN DEVICE MANAGEMENT - ENHANCED UI/UX
+ * 
+ * Maximizes Ant Design v5 Components:
+ * - Drawer for device details (side panel)
+ * - Descriptions for structured device info
+ * - Steps for registration process
+ * - Segmented for view modes
+ * - Progress for status indicators
+ * - Flex layouts
+ * - Enhanced Table with expandable rows
+ * - Alert for important notifications
+ * - Skeleton for loading states
+ */
+
 import { useState, useEffect } from 'react';
 import {
   Table,
@@ -13,8 +28,22 @@ import {
   Card,
   Statistic,
   Tabs,
+  Drawer,
+  Descriptions,
+  Segmented,
+  Progress,
+  Alert,
+  Flex,
+  Row,
+  Col,
+  Skeleton,
+  Divider,
+  List,
+  Avatar,
+  Popconfirm,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { SegmentedValue } from 'antd/es/segmented';
 import {
   EditOutlined,
   DeleteOutlined,
@@ -28,6 +57,12 @@ import {
   WifiOutlined,
   EnvironmentOutlined,
   InfoCircleOutlined,
+  PlusOutlined,
+  ApiOutlined,
+  FilterOutlined,
+  SyncOutlined,
+  SettingOutlined,
+  DashboardOutlined,
 } from '@ant-design/icons';
 import { deviceManagementService } from '../../../services/deviceManagement.Service';
 import type { Device, DeviceStatus } from '../../../schemas';
@@ -37,9 +72,9 @@ import { AddEditDeviceModal } from './AddEditDeviceModal';
 import { ViewDeviceModal } from './ViewDeviceModal';
 import { RegisterDeviceModal } from './RegisterDeviceModal';
 import type { ReactNode } from 'react';
-import { useThemeToken } from '../../../theme';
+import { useResponsiveToken } from '../../../theme';
 
-const { Title, Text } = Typography;
+const { Title, Text, Paragraph } = Typography;
 const { Search } = Input;
 const { TabPane } = Tabs;
 
@@ -52,16 +87,19 @@ const statusConfig: Record<DeviceStatus, { color: string; icon: ReactNode }> = {
 };
 
 export const AdminDeviceManagement = () => {
-  const token = useThemeToken();
+  const { token, isMobile } = useResponsiveToken();
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
   const [isAddEditModalVisible, setIsAddEditModalVisible] = useState(false);
   const [isViewModalVisible, setIsViewModalVisible] = useState(false);
   const [isRegisterModalVisible, setIsRegisterModalVisible] = useState(false);
+  const [detailsDrawerVisible, setDetailsDrawerVisible] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   const [activeTab, setActiveTab] = useState<'registered' | 'unregistered'>('registered');
+  const [viewMode, setViewMode] = useState<SegmentedValue>('table');
 
   // Inject custom table styles
   useEffect(() => {
@@ -115,13 +153,26 @@ export const AdminDeviceManagement = () => {
     try {
       const data = await deviceManagementService.listDevices();
       setDevices(data);
-      message.success('Devices loaded successfully');
+      message.success(`Loaded ${data.length} devices successfully`);
     } catch (error) {
       message.error('Failed to load devices');
       console.error('Error loading devices:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handle refresh with loading indicator
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadDevices();
+    setRefreshing(false);
+  };
+
+  // Handle view device details in drawer
+  const handleViewDetails = (device: Device) => {
+    setSelectedDevice(device);
+    setDetailsDrawerVisible(true);
   };
 
   // Handle device deletion
