@@ -6,12 +6,16 @@
  * @module scheduler/checkOfflineDevices
  *
  * Functionality:
- * - Runs every 5 minutes (aligned with device heartbeat interval)
+ * - Runs based on configurable interval (default: every 5 minutes)
+ * - Uses Manila Time (UTC+8) for all operations
  * - Checks lastSeen timestamp for all devices
- * - Marks devices as offline if lastSeen > 10 minutes old
+ * - Marks devices as offline if lastSeen > (interval × 2) minutes old
  * - Provides grace period to account for network delays
  *
- * Schedule: Every 5 minutes (cron: */5 * * * *)
+ * Configuration:
+ * - Interval configurable via Firestore: systemConfig/timing
+ * - Timezone: Asia/Manila (UTC+8)
+ * - Offline threshold: interval × 2 (allows 1 missed heartbeat + delays)
  */
 
 import * as admin from "firebase-admin";
@@ -20,27 +24,26 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 
 import { db } from "../config/firebase";
 import { COLLECTIONS } from "../constants/database.constants";
-
-/**
- * Threshold for marking devices as offline (10 minutes in milliseconds)
- * Devices send heartbeats every 5 minutes, so 10 minutes allows for:
- * - One missed heartbeat
- * - Network delays
- * - Processing time
- */
-const OFFLINE_THRESHOLD_MS = 600000; // 10 minutes
+import {
+  MANILA_TIMEZONE,
+  calculateOfflineThreshold,
+  DEFAULT_CHECK_INTERVAL_MINUTES,
+} from "../constants/timing.constants";
+import { loadTimingConfig } from "../utils/timingConfig";
 
 /**
  * Check for offline devices and update their status
  *
- * Schedule: Runs every 5 minutes
- * Time Zone: America/Chicago (adjust as needed)
+ * Schedule: Configurable via Firestore (default: every 5 minutes)
+ * Time Zone: Asia/Manila (UTC+8)
  *
  * Process:
- * 1. Query all devices from Firestore
- * 2. Check lastSeen timestamp for each device
- * 3. If lastSeen > 10 minutes ago, mark as offline
- * 4. Only update devices that are currently marked as "online"
+ * 1. Load timing configuration from Firestore
+ * 2. Calculate offline threshold based on current interval
+ * 3. Query all devices from Firestore
+ * 4. Check lastSeen timestamp for each device (in Manila time)
+ * 5. If lastSeen > threshold, mark as offline with offlineSince timestamp
+ * 6. Only update devices that are currently marked as "online"
  *
  * @example
  * // Deployed as scheduled function:
@@ -48,8 +51,8 @@ const OFFLINE_THRESHOLD_MS = 600000; // 10 minutes
  */
 export const checkOfflineDevices = onSchedule(
   {
-    schedule: "*/5 * * * *", // Every 5 minutes
-    timeZone: "America/Chicago", // US Central Time
+    schedule: `*/${DEFAULT_CHECK_INTERVAL_MINUTES} * * * *`, // Default schedule
+    timeZone: MANILA_TIMEZONE, // Manila Time (UTC+8)
     region: "us-central1",
     retryCount: 0, // Don't retry on failure
     minInstances: 0,
@@ -57,10 +60,21 @@ export const checkOfflineDevices = onSchedule(
   },
   async (event) => {
     try {
-      logger.info("Starting offline device check...");
+      logger.info("Starting offline device check (Manila Time)...");
 
+      // Load timing configuration from Firestore
+      const config = await loadTimingConfig();
+      const offlineThresholdMs = calculateOfflineThreshold(config.checkIntervalMinutes);
+
+      // Get current time in Manila timezone
       const now = Date.now();
-      const offlineThreshold = now - OFFLINE_THRESHOLD_MS;
+      const offlineThreshold = now - offlineThresholdMs;
+
+      logger.info("Offline check configuration", {
+        checkInterval: config.checkIntervalMinutes,
+        offlineThresholdMinutes: config.checkIntervalMinutes * 2,
+        timezone: MANILA_TIMEZONE,
+      });
 
       // Query all devices
       const devicesSnapshot = await db.collection(COLLECTIONS.DEVICES).get();
@@ -93,7 +107,13 @@ export const checkOfflineDevices = onSchedule(
           if (lastSeenTimestamp < offlineThreshold) {
             const timeSinceLastSeen = Math.floor((now - lastSeenTimestamp) / 1000 / 60); // minutes
             logger.info(
-              `Marking device ${deviceId} as offline (last seen ${timeSinceLastSeen} minutes ago)`
+              `Marking device ${deviceId} as offline (last seen ${timeSinceLastSeen} minutes ago)`,
+              {
+                deviceId,
+                lastSeen: new Date(lastSeenTimestamp).toISOString(),
+                threshold: config.checkIntervalMinutes * 2,
+                timezone: MANILA_TIMEZONE,
+              }
             );
 
             batch.update(doc.ref, {
@@ -118,10 +138,17 @@ export const checkOfflineDevices = onSchedule(
       if (devicesMarkedOffline > 0) {
         await batch.commit();
         logger.info(
-          `Offline check complete: ${devicesChecked} devices checked, ${devicesMarkedOffline} marked as offline`
+          `Offline check complete: ${devicesChecked} devices checked, ${devicesMarkedOffline} marked as offline`,
+          {
+            timezone: MANILA_TIMEZONE,
+            timestamp: new Date().toISOString(),
+          }
         );
       } else {
-        logger.info(`Offline check complete: ${devicesChecked} devices checked, all online`);
+        logger.info(`Offline check complete: ${devicesChecked} devices checked, all online`, {
+          timezone: MANILA_TIMEZONE,
+          timestamp: new Date().toISOString(),
+        });
       }
     } catch (error) {
       logger.error("Error checking offline devices:", error);
