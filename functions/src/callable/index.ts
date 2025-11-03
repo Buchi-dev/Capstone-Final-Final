@@ -24,3 +24,6 @@ export { notificationPreferences } from "./notificationPreferences";
 
 // Report Generation
 export { generateReport } from "./generateReport";
+
+// System Configuration
+export { systemConfig } from "./systemConfig";

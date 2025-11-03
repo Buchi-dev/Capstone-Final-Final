@@ -35,5 +35,8 @@ export * from "./digest.constants";
 // Export sensor data constants
 export * from "./sensorData.constants";
 
+// Export timing constants
+export * from "./timing.constants";
+
 // Export pub/sub constants (selective to avoid conflicts)
 export { PUBSUB_DEFAULT_CONFIG, PUBSUB_ERRORS, PUBSUB_MESSAGES } from "./pubsub.constants";
