@@ -58,7 +58,7 @@ export const checkOfflineDevices = onSchedule(
     minInstances: 0,
     maxInstances: 1,
   },
-  async (event) => {
+  async () => {
     try {
       logger.info("Starting offline device check (Manila Time)...");
 

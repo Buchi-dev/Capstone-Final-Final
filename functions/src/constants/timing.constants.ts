@@ -1,9 +1,9 @@
 /**
  * Timing Configuration Constants
  * Centralized timing and timezone configuration for the entire system
- * 
+ *
  * @module constants/timing.constants
- * 
+ *
  * Purpose:
  * - Standardize Manila Time (UTC+8) across all components
  * - Provide configurable intervals via Firestore
@@ -58,13 +58,13 @@ export const SYSTEM_CONFIG_DOC = "timing";
 export interface SystemTimingConfig {
   /** Check interval in minutes */
   checkIntervalMinutes: number;
-  
+
   /** Timezone identifier */
   timezone: string;
-  
+
   /** Last updated timestamp */
   updatedAt: FirebaseFirestore.Timestamp;
-  
+
   /** Updated by user ID */
   updatedBy?: string;
 }
@@ -98,16 +98,25 @@ export const TIMING_MESSAGES = {
 
 /**
  * Convert minutes to milliseconds
+ *
+ * @param {number} minutes - Number of minutes to convert
+ * @return {number} Equivalent milliseconds
  */
 export const minutesToMs = (minutes: number): number => minutes * 60 * 1000;
 
 /**
  * Convert milliseconds to minutes
+ *
+ * @param {number} ms - Number of milliseconds to convert
+ * @return {number} Equivalent minutes (floored)
  */
 export const msToMinutes = (ms: number): number => Math.floor(ms / 60 / 1000);
 
 /**
  * Calculate offline threshold in milliseconds based on check interval
+ *
+ * @param {number} checkIntervalMinutes - Check interval in minutes
+ * @return {number} Offline threshold in milliseconds
  */
 export const calculateOfflineThreshold = (checkIntervalMinutes: number): number => {
   return minutesToMs(checkIntervalMinutes * OFFLINE_THRESHOLD_MULTIPLIER);
@@ -115,6 +124,9 @@ export const calculateOfflineThreshold = (checkIntervalMinutes: number): number 
 
 /**
  * Validate check interval
+ *
+ * @param {number} minutes - Check interval to validate
+ * @return {boolean} True if interval is valid
  */
 export const validateCheckInterval = (minutes: number): boolean => {
   return (
@@ -127,6 +139,9 @@ export const validateCheckInterval = (minutes: number): boolean => {
 /**
  * Get cron expression for given interval in minutes
  * Returns standard cron format: "minute hour day month weekday"
+ *
+ * @param {number} intervalMinutes - Interval in minutes
+ * @return {string} Cron expression string
  */
 export const getCronExpression = (intervalMinutes: number): string => {
   if (intervalMinutes === 1) {

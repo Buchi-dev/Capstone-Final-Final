@@ -1,14 +1,14 @@
 /**
  * System Configuration Callable Function
  * Manages system-wide configuration including timing intervals
- * 
+ *
  * @module callable/systemConfig
  */
 
 import * as admin from "firebase-admin";
+import { logger } from "firebase-functions/v2";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
-import { logger } from "firebase-functions/v2";
 
 import { db } from "../config/firebase";
 import {
@@ -44,11 +44,11 @@ interface SystemConfigResponse {
 
 /**
  * System Configuration Callable Function
- * 
+ *
  * Actions:
  * - getTimingConfig: Retrieve current timing configuration
  * - updateTimingConfig: Update timing configuration (admin only)
- * 
+ *
  * @param {CallableRequest<SystemConfigRequest>} req - Request with action and parameters
  * @returns {Promise<SystemConfigResponse>} Response with configuration
  */
@@ -77,16 +77,16 @@ export const systemConfig = onCall<SystemConfigRequest, Promise<SystemConfigResp
         default:
           throw new HttpsError("invalid-argument", "Invalid action specified");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("System config error:", error);
-      
+
       if (error instanceof HttpsError) {
         throw error;
       }
 
       return {
         success: false,
-        error: error.message || "Unknown error occurred",
+        error: error instanceof Error ? error.message : "Unknown error occurred",
       };
     }
   }
@@ -117,7 +117,7 @@ async function getTimingConfig(): Promise<SystemConfigResponse> {
         updatedAt: admin.firestore.Timestamp.now(),
       },
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error("Failed to get timing config:", error);
     throw new HttpsError("internal", "Failed to retrieve configuration");
   }
@@ -125,6 +125,10 @@ async function getTimingConfig(): Promise<SystemConfigResponse> {
 
 /**
  * Update timing configuration (admin only)
+ *
+ * @param {string} userId - User ID requesting the update
+ * @param {number} checkIntervalMinutes - New check interval in minutes
+ * @return {Promise<SystemConfigResponse>} Response with updated configuration
  */
 async function updateTimingConfig(
   userId: string,
@@ -136,7 +140,10 @@ async function updateTimingConfig(
     const userData = userDoc.data();
 
     if (!userData || userData.role !== "admin") {
-      throw new HttpsError("permission-denied", "Only administrators can update system configuration");
+      throw new HttpsError(
+        "permission-denied",
+        "Only administrators can update system configuration"
+      );
     }
 
     // Validate interval
@@ -176,13 +183,13 @@ async function updateTimingConfig(
       message: TIMING_MESSAGES.CONFIG_UPDATED,
       config: newConfig,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error("Failed to update timing config:", error);
-    
+
     if (error instanceof HttpsError) {
       throw error;
     }
-    
+
     throw new HttpsError("internal", TIMING_ERRORS.CONFIG_UPDATE_FAILED);
   }
 }
