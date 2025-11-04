@@ -39,6 +39,8 @@ interface AlertDetailsDrawerProps {
   onClose: () => void;
   onAcknowledge: (alertId: string) => void;
   onResolve: (alertId: string, notes?: string) => Promise<boolean>;
+  isAcknowledging?: (alertId: string) => boolean;
+  isResolving?: (alertId: string) => boolean;
 }
 
 /**
@@ -51,6 +53,8 @@ export const AlertDetailsDrawer: React.FC<AlertDetailsDrawerProps> = ({
   onClose,
   onAcknowledge,
   onResolve,
+  isAcknowledging = () => false,
+  isResolving = () => false,
 }) => {
   const token = useThemeToken();
 
@@ -64,6 +68,9 @@ export const AlertDetailsDrawer: React.FC<AlertDetailsDrawerProps> = ({
   };
 
   if (!alert) return null;
+
+  const acknowledging = isAcknowledging(alert.alertId);
+  const resolving = isResolving(alert.alertId);
 
   return (
     <Drawer
@@ -119,10 +126,12 @@ export const AlertDetailsDrawer: React.FC<AlertDetailsDrawerProps> = ({
                 type="primary"
                 icon={<CheckCircleOutlined />}
                 onClick={() => onAcknowledge(alert.alertId)}
+                loading={acknowledging}
+                disabled={acknowledging}
                 block
                 size="large"
               >
-                Acknowledge Alert
+                {acknowledging ? 'Acknowledging...' : 'Acknowledge Alert'}
               </Button>
             )}
           </Space>
@@ -347,13 +356,15 @@ export const AlertDetailsDrawer: React.FC<AlertDetailsDrawerProps> = ({
                       icon={<CheckCircleOutlined />}
                       size="large"
                       block
+                      loading={resolving}
+                      disabled={resolving}
                       style={{ 
                         background: token.colorSuccess,
                         borderColor: token.colorSuccess,
                         height: 44
                       }}
                     >
-                      Mark as Resolved
+                      {resolving ? 'Resolving...' : 'Mark as Resolved'}
                     </Button>
                   </Form.Item>
                 </Form>

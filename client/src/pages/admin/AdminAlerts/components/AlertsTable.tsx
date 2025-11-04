@@ -24,6 +24,7 @@ interface AlertsTableProps {
   loading: boolean;
   onViewDetails: (alert: WaterQualityAlert) => void;
   onAcknowledge: (alertId: string) => void;
+  isAcknowledging?: (alertId: string) => boolean;
 }
 
 /**
@@ -35,6 +36,7 @@ export const AlertsTable: React.FC<AlertsTableProps> = ({
   loading,
   onViewDetails,
   onAcknowledge,
+  isAcknowledging = () => false,
 }) => {
   const token = useThemeToken();
 
@@ -161,8 +163,10 @@ export const AlertsTable: React.FC<AlertsTableProps> = ({
                 size="small"
                 icon={<CheckCircleOutlined />}
                 onClick={() => onAcknowledge(record.alertId)}
+                loading={isAcknowledging(record.alertId)}
+                disabled={isAcknowledging(record.alertId)}
               >
-                Acknowledge
+                {isAcknowledging(record.alertId) ? 'Acknowledging...' : 'Acknowledge'}
               </Button>
             </Tooltip>
           )}

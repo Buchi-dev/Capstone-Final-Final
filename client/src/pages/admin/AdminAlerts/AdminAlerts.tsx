@@ -28,7 +28,7 @@ export const AdminAlerts = () => {
   // Use custom hooks
   const { filteredAlerts, filters, setFilters, clearFilters } = useAlertFilters(alerts);
   const stats = useAlertStats(filteredAlerts);
-  const { acknowledgeAlert, resolveAlert } = useAlertActions();
+  const { acknowledgeAlert, resolveAlert, isAcknowledging, isResolving } = useAlertActions();
 
   const handleClearFilters = () => {
     clearFilters();
@@ -86,6 +86,7 @@ export const AdminAlerts = () => {
           loading={loading}
           onViewDetails={viewAlertDetails}
           onAcknowledge={acknowledgeAlert}
+          isAcknowledging={isAcknowledging}
         />
 
         {/* Alert Details Drawer */}
@@ -95,6 +96,8 @@ export const AdminAlerts = () => {
           onClose={() => setDetailsVisible(false)}
           onAcknowledge={acknowledgeAlert}
           onResolve={resolveAlert}
+          isAcknowledging={isAcknowledging}
+          isResolving={isResolving}
         />
       </div>
     </AdminLayout>
