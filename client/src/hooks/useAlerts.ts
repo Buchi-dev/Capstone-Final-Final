@@ -27,7 +27,7 @@ export const useAlerts = () => {
       20 // Get 20 most recent alerts
     );
 
-    // Clean up listener on unmount
+
     return () => unsubscribe();
   }, []);
 

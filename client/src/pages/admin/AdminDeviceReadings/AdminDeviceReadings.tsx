@@ -1,18 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Card,
   Row,
   Col,
   Statistic,
   Select,
-  Switch,
   Button,
   Space,
   Alert,
   Spin,
   Typography,
   Divider,
-  Tag,
   Progress,
   Badge,
   message,
@@ -20,7 +18,6 @@ import {
 } from 'antd';
 import { useThemeToken } from '../../../theme';
 import {
-  ReloadOutlined,
   DownloadOutlined,
   LineChartOutlined,
   DashboardOutlined,
@@ -47,14 +44,7 @@ const THRESHOLDS = {
   ph: { min: 6.5, max: 8.5, unit: '', label: 'pH Level' },
 };
 
-// Refresh interval options (in milliseconds)
-const REFRESH_INTERVALS = [
-  { label: '5 seconds', value: 5000 },
-  { label: '10 seconds', value: 10000 },
-  { label: '30 seconds', value: 30000 },
-  { label: '1 minute', value: 60000 },
-  { label: '5 minutes', value: 300000 },
-];
+
 
 export const AdminDeviceReadings = () => {
   const token = useThemeToken();
@@ -63,93 +53,77 @@ export const AdminDeviceReadings = () => {
   const [latestReading, setLatestReading] = useState<SensorReading | null>(null);
   const [sensorHistory, setSensorHistory] = useState<SensorReading[]>([]);
   const [loading, setLoading] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState(10000);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Load devices on mount
   useEffect(() => {
+    const loadDevices = async () => {
+      setLoading(true);
+      try {
+        const data = await deviceManagementService.listDevices();
+        setDevices(data);
+        
+        // Auto-select first online device
+        const firstOnlineDevice = data.find(d => d.status === 'online');
+        if (firstOnlineDevice) {
+          setSelectedDeviceId(firstOnlineDevice.deviceId);
+        }
+      } catch (error) {
+        message.error('Failed to load devices');
+        console.error('Error loading devices:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     loadDevices();
   }, []);
 
-  // Auto-refresh effect
+  // Setup real-time sensor data subscriptions
   useEffect(() => {
-    let intervalId: number;
-
-    if (autoRefresh && selectedDeviceId) {
-      intervalId = window.setInterval(() => {
-        loadSensorData(selectedDeviceId);
-      }, refreshInterval);
+    if (!selectedDeviceId) {
+      setLatestReading(null);
+      setSensorHistory([]);
+      return;
     }
+
+    // Subscribe to latest readings
+    const unsubscribeReadings = deviceManagementService.subscribeToSensorReadings(
+      selectedDeviceId,
+      (reading) => {
+        setLatestReading(reading);
+        setLastUpdated(new Date());
+      },
+      (error) => {
+        console.error('Error loading sensor readings:', error);
+        message.error('Failed to load sensor readings');
+      }
+    );
+
+    // Subscribe to historical data
+    const unsubscribeHistory = deviceManagementService.subscribeToSensorHistory(
+      selectedDeviceId,
+      setSensorHistory,
+      (error) => {
+        console.error('Error loading sensor history:', error);
+        message.error('Failed to load sensor history');
+      },
+      50
+    );
 
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      unsubscribeReadings();
+      unsubscribeHistory();
     };
-  }, [autoRefresh, selectedDeviceId, refreshInterval]);
-
-  // Load devices
-  const loadDevices = async () => {
-    setLoading(true);
-    try {
-      const data = await deviceManagementService.listDevices();
-      setDevices(data);
-      
-      // Auto-select first online device
-      const firstOnlineDevice = data.find(d => d.status === 'online');
-      if (firstOnlineDevice) {
-        setSelectedDeviceId(firstOnlineDevice.deviceId);
-        loadSensorData(firstOnlineDevice.deviceId);
-      }
-    } catch (error) {
-      message.error('Failed to load devices');
-      console.error('Error loading devices:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load sensor data for selected device
-  const loadSensorData = async (deviceId: string) => {
-    if (!deviceId) return;
-
-    try {
-      const [readings, history] = await Promise.all([
-        deviceManagementService.getSensorReadings(deviceId),
-        deviceManagementService.getSensorHistory(deviceId, 50),
-      ]);
-
-      if (readings) {
-        setLatestReading(readings);
-        setLastUpdated(new Date());
-      }
-      
-      if (history) {
-        setSensorHistory(history);
-      }
-    } catch (error) {
-      message.error('Failed to load sensor data');
-      console.error('Error loading sensor data:', error);
-    }
-  };
-
-  // Manual refresh
-  const handleRefresh = useCallback(() => {
-    if (selectedDeviceId) {
-      loadSensorData(selectedDeviceId);
-      message.success('Data refreshed');
-    }
   }, [selectedDeviceId]);
 
   // Handle device selection change
   const handleDeviceChange = (deviceId: string) => {
     setSelectedDeviceId(deviceId);
-    setLatestReading(null);
-    setSensorHistory([]);
-    loadSensorData(deviceId);
   };
 
   // Export data to CSV
-  const handleExport = () => {
+  const handleExport = useCallback(() => {
     if (!sensorHistory.length) {
       message.warning('No data to export');
       return;
@@ -172,22 +146,18 @@ export const AdminDeviceReadings = () => {
     link.click();
     URL.revokeObjectURL(url);
     message.success('Data exported successfully');
-  };
+  }, [sensorHistory, selectedDeviceId]);
 
   // Get status color based on value and thresholds
-  const getStatusColor = (value: number, type: 'turbidity' | 'tds' | 'ph') => {
+  const getStatusColor = useCallback((value: number, type: 'turbidity' | 'tds' | 'ph') => {
     const threshold = THRESHOLDS[type];
-    if (value < threshold.min || value > threshold.max) {
-      return 'error';
-    }
-    if (value < threshold.min * 1.2 || value > threshold.max * 0.8) {
-      return 'warning';
-    }
+    if (value < threshold.min || value > threshold.max) return 'error';
+    if (value < threshold.min * 1.2 || value > threshold.max * 0.8) return 'warning';
     return 'success';
-  };
+  }, []);
 
   // Get status icon
-  const getStatusIcon = (value: number, type: 'turbidity' | 'tds' | 'ph') => {
+  const getStatusIcon = useCallback((value: number, type: 'turbidity' | 'tds' | 'ph') => {
     const status = getStatusColor(value, type);
     switch (status) {
       case 'success':
@@ -199,20 +169,30 @@ export const AdminDeviceReadings = () => {
       default:
         return null;
     }
-  };
+  }, [getStatusColor, token]);
 
-  // Prepare chart data
-  const getChartData = (type: 'turbidity' | 'tds' | 'ph') => {
-    return sensorHistory.map(reading => ({
+  // Memoized chart data
+  const chartData = useMemo(() => ({
+    turbidity: sensorHistory.map(reading => ({
       timestamp: new Date(reading.timestamp).toLocaleTimeString(),
-      value: reading[type],
-      type: THRESHOLDS[type].label,
-    }));
-  };
+      value: reading.turbidity,
+      type: THRESHOLDS.turbidity.label,
+    })),
+    tds: sensorHistory.map(reading => ({
+      timestamp: new Date(reading.timestamp).toLocaleTimeString(),
+      value: reading.tds,
+      type: THRESHOLDS.tds.label,
+    })),
+    ph: sensorHistory.map(reading => ({
+      timestamp: new Date(reading.timestamp).toLocaleTimeString(),
+      value: reading.ph,
+      type: THRESHOLDS.ph.label,
+    })),
+  }), [sensorHistory]);
 
   // Chart configuration
-  const getChartConfig = (type: 'turbidity' | 'tds' | 'ph') => ({
-    data: getChartData(type),
+  const getChartConfig = useCallback((type: 'turbidity' | 'tds' | 'ph') => ({
+    data: chartData[type],
     xField: 'timestamp',
     yField: 'value',
     seriesField: 'type',
@@ -234,9 +214,12 @@ export const AdminDeviceReadings = () => {
         formatter: (v: string) => `${v} ${THRESHOLDS[type].unit}`,
       },
     },
-  });
+  }), [chartData]);
 
-  const selectedDevice = devices.find(d => d.deviceId === selectedDeviceId);
+  const selectedDevice = useMemo(
+    () => devices.find(d => d.deviceId === selectedDeviceId),
+    [devices, selectedDeviceId]
+  );
 
   return (
     <AdminLayout>
@@ -253,20 +236,13 @@ export const AdminDeviceReadings = () => {
           </Col>
           <Col>
             <Space>
+              <Badge status="processing" text="Live" />
               <Button
                 icon={<DownloadOutlined />}
                 onClick={handleExport}
                 disabled={!sensorHistory.length}
               >
                 Export Data
-              </Button>
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={handleRefresh}
-                loading={loading}
-                type="primary"
-              >
-                Refresh
               </Button>
             </Space>
           </Col>
@@ -304,28 +280,12 @@ export const AdminDeviceReadings = () => {
             <Col>
               <Space direction="vertical">
                 <Space>
-                  <Text strong>Auto-refresh:</Text>
-                  <Switch
-                    checked={autoRefresh}
-                    onChange={setAutoRefresh}
-                    checkedChildren="ON"
-                    unCheckedChildren="OFF"
-                  />
+                  <Badge status="processing" />
+                  <Text strong style={{ color: token.colorSuccess }}>Real-time Updates</Text>
                 </Space>
-                {autoRefresh && (
-                  <Select
-                    size="small"
-                    value={refreshInterval}
-                    onChange={setRefreshInterval}
-                    style={{ width: 120 }}
-                  >
-                    {REFRESH_INTERVALS.map(interval => (
-                      <Option key={interval.value} value={interval.value}>
-                        {interval.label}
-                      </Option>
-                    ))}
-                  </Select>
-                )}
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Data syncs automatically
+                </Text>
               </Space>
             </Col>
 
@@ -384,11 +344,7 @@ export const AdminDeviceReadings = () => {
                 <Space>
                   <ThunderboltOutlined />
                   <span>Current Readings</span>
-                  {autoRefresh && (
-                    <Tag color="blue" icon={<ReloadOutlined spin />}>
-                      Live
-                    </Tag>
-                  )}
+                  <Badge status="processing" text="Live" />
                 </Space>
               }
               style={{ marginBottom: 24 }}

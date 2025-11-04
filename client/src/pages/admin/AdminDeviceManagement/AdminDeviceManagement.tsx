@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Table,
   Button,
@@ -104,18 +104,12 @@ export const AdminDeviceManagement = () => {
     }
   }, []);
 
-  // Load devices on mount
-  useEffect(() => {
-    loadDevices();
-  }, []);
-
-  // Fetch devices from API
+  // Load devices
   const loadDevices = async () => {
     setLoading(true);
     try {
       const data = await deviceManagementService.listDevices();
       setDevices(data);
-      message.success('Devices loaded successfully');
     } catch (error) {
       message.error('Failed to load devices');
       console.error('Error loading devices:', error);
@@ -123,6 +117,11 @@ export const AdminDeviceManagement = () => {
       setLoading(false);
     }
   };
+
+  // Load devices on mount
+  useEffect(() => {
+    loadDevices();
+  }, []);
 
   // Handle device deletion
   const handleDelete = (device: Device) => {
@@ -220,29 +219,37 @@ export const AdminDeviceManagement = () => {
   };
 
 
-  // Filter devices based on registration status and search
-  const registeredDevices = devices.filter((d) => isDeviceRegistered(d));
-  const unregisteredDevices = devices.filter((d) => !isDeviceRegistered(d));
+  // Memoized filtered devices and stats
+  const { registeredDevices, unregisteredDevices, filteredDevices, stats } = useMemo(() => {
+    const registered = devices.filter((d) => isDeviceRegistered(d));
+    const unregistered = devices.filter((d) => !isDeviceRegistered(d));
+    
+    const currentDevices = activeTab === 'registered' ? registered : unregistered;
+    const searchLower = searchText.toLowerCase();
+    const filtered = searchText
+      ? currentDevices.filter(
+          (device) =>
+            device.name.toLowerCase().includes(searchLower) ||
+            device.deviceId.toLowerCase().includes(searchLower) ||
+            device.type.toLowerCase().includes(searchLower) ||
+            device.ipAddress.toLowerCase().includes(searchLower)
+        )
+      : currentDevices;
 
-  // Apply search filter to the appropriate tab
-  const currentDevices = activeTab === 'registered' ? registeredDevices : unregisteredDevices;
-  const filteredDevices = currentDevices.filter(
-    (device) =>
-      device.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      device.deviceId.toLowerCase().includes(searchText.toLowerCase()) ||
-      device.type.toLowerCase().includes(searchText.toLowerCase()) ||
-      device.ipAddress.toLowerCase().includes(searchText.toLowerCase())
-  );
-
-  // Calculate statistics
-  const stats = {
-    total: devices.length,
-    online: devices.filter((d) => d.status === 'online').length,
-    offline: devices.filter((d) => d.status === 'offline').length,
-    maintenance: devices.filter((d) => d.status === 'maintenance').length,
-    registered: devices.filter((d) => isDeviceRegistered(d)).length,
-    unregistered: devices.filter((d) => !isDeviceRegistered(d)).length,
-  };
+    return {
+      registeredDevices: registered,
+      unregisteredDevices: unregistered,
+      filteredDevices: filtered,
+      stats: {
+        total: devices.length,
+        online: devices.filter((d) => d.status === 'online').length,
+        offline: devices.filter((d) => d.status === 'offline').length,
+        maintenance: devices.filter((d) => d.status === 'maintenance').length,
+        registered: registered.length,
+        unregistered: unregistered.length,
+      },
+    };
+  }, [devices, activeTab, searchText]);
 
   // Table columns - Optimized responsive design
   const columns: ColumnsType<Device> = [
