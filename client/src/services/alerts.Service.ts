@@ -1,332 +1,103 @@
-/**
- * Alerts Service
- * 
- * Provides API functions for alert management operations
- * Communicates with Firebase Callable Function: alertManagement
- * 
- * @module services/alertsService
- */
-
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getFirestore, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import type { Unsubscribe } from 'firebase/firestore';
 import type {
   WaterQualityAlert,
-  AlertFilters,
   AcknowledgeAlertRequest,
   ResolveAlertRequest,
-  ListAlertsRequest,
   AlertResponse,
 } from '../schemas';
 
-// ============================================================================
-// ERROR RESPONSE TYPE
-// ============================================================================
-
-/**
- * Generic error response
- */
 export interface ErrorResponse {
   code: string;
   message: string;
   details?: any;
 }
 
-// ============================================================================
-// ALERTS SERVICE
-// ============================================================================
+const ERROR_MESSAGES: Record<string, string> = {
+  'functions/unauthenticated': 'Please log in to perform this action',
+  'functions/permission-denied': 'You do not have permission to manage alerts',
+  'functions/not-found': 'Alert not found',
+  'functions/already-exists': 'Alert already exists',
+  'functions/invalid-argument': 'Invalid request parameters',
+  'functions/internal': 'An internal error occurred. Please try again',
+  'functions/unavailable': 'Alert service temporarily unavailable. Please try again',
+  'functions/deadline-exceeded': 'Request timeout. Please try again',
+};
 
-/**
- * Alerts Service Class
- * Provides methods to interact with the alertManagement Firebase Callable Function
- */
 export class AlertsService {
-  private functions;
-  private functionName = 'alertManagement';
+  private readonly functions = getFunctions();
+  private readonly functionName = 'alertManagement';
+  private readonly db = getFirestore();
 
-  constructor() {
-    this.functions = getFunctions();
+  // ============================================================================
+  // WRITE OPERATIONS (Client → Cloud Functions → Firestore)
+  // ============================================================================
+
+  private async callFunction<T>(action: string, data: Omit<T, 'action'>): Promise<void> {
+    try {
+      const callable = httpsCallable<T, AlertResponse>(this.functions, this.functionName);
+      const result = await callable({ action, ...data } as T);
+
+      if (!result.data.success) {
+        throw new Error(result.data.error || `Failed to ${action}`);
+      }
+    } catch (error: any) {
+      throw this.handleError(error, `Failed to ${action}`);
+    }
   }
 
-  /**
-   * Acknowledge an alert
-   * 
-   * Changes alert status from Active to Acknowledged.
-   * Requires admin authentication.
-   * 
-   * @param {string} alertId - The ID of the alert to acknowledge
-   * 
-   * @returns {Promise<void>}
-   * 
-   * @throws {ErrorResponse} If alert is not found
-   * @throws {ErrorResponse} If alert is already acknowledged or resolved
-   * @throws {ErrorResponse} If the operation fails
-   * 
-   * @example
-   * const service = new AlertsService();
-   * try {
-   *   await service.acknowledgeAlert('alert_12345');
-   *   console.log('Alert acknowledged successfully');
-   * } catch (error) {
-   *   console.error('Failed to acknowledge alert:', error);
-   * }
-   */
   async acknowledgeAlert(alertId: string): Promise<void> {
-    try {
-      const callable = httpsCallable<AcknowledgeAlertRequest, AlertResponse>(
-        this.functions,
-        this.functionName
-      );
-
-      const result = await callable({
-        action: 'acknowledgeAlert',
-        alertId,
-      });
-
-      if (!result.data.success) {
-        throw new Error(result.data.error || 'Failed to acknowledge alert');
-      }
-    } catch (error: any) {
-      throw this.handleError(error, 'Failed to acknowledge alert');
-    }
+    return this.callFunction<AcknowledgeAlertRequest>('acknowledgeAlert', { alertId });
   }
 
-  /**
-   * Resolve an alert
-   * 
-   * Changes alert status to Resolved with optional resolution notes.
-   * Requires admin authentication.
-   * 
-   * @param {string} alertId - The ID of the alert to resolve
-   * @param {string} [notes] - Optional resolution notes
-   * 
-   * @returns {Promise<void>}
-   * 
-   * @throws {ErrorResponse} If alert is not found
-   * @throws {ErrorResponse} If alert is already resolved
-   * @throws {ErrorResponse} If the operation fails
-   * 
-   * @example
-   * const service = new AlertsService();
-   * try {
-   *   await service.resolveAlert('alert_12345', 'Issue fixed by replacing sensor');
-   *   console.log('Alert resolved successfully');
-   * } catch (error) {
-   *   console.error('Failed to resolve alert:', error);
-   * }
-   */
   async resolveAlert(alertId: string, notes?: string): Promise<void> {
-    try {
-      const callable = httpsCallable<ResolveAlertRequest, AlertResponse>(
-        this.functions,
-        this.functionName
-      );
-
-      const result = await callable({
-        action: 'resolveAlert',
-        alertId,
-        notes,
-      });
-
-      if (!result.data.success) {
-        throw new Error(result.data.error || 'Failed to resolve alert');
-      }
-    } catch (error: any) {
-      throw this.handleError(error, 'Failed to resolve alert');
-    }
-  }
-
-  /**
-   * List alerts with optional filters
-   * 
-   * Retrieves alerts from the backend with server-side filtering.
-   * Requires admin authentication.
-   * 
-   * @param {AlertFilters} [filters] - Optional filters for alerts
-   * 
-   * @returns {Promise<WaterQualityAlert[]>} Array of alerts
-   * 
-   * @throws {ErrorResponse} If the operation fails
-   * 
-   * @example
-   * const service = new AlertsService();
-   * try {
-   *   const alerts = await service.listAlerts({
-   *     status: ['Active', 'Acknowledged'],
-   *     severity: ['Critical']
-   *   });
-   *   console.log(`Found ${alerts.length} alerts`);
-   * } catch (error) {
-   *   console.error('Failed to list alerts:', error);
-   * }
-   */
-  async listAlerts(filters?: AlertFilters): Promise<WaterQualityAlert[]> {
-    try {
-      const callable = httpsCallable<ListAlertsRequest, AlertResponse>(
-        this.functions,
-        this.functionName
-      );
-
-      const result = await callable({
-        action: 'listAlerts',
-        filters,
-      });
-
-      if (!result.data.success) {
-        throw new Error(result.data.error || 'Failed to list alerts');
-      }
-
-      // Convert serialized timestamps to objects with toDate method
-      const alerts = (result.data.alerts || []).map(alert => this.normalizeTimestamps(alert));
-
-      return alerts;
-    } catch (error: any) {
-      throw this.handleError(error, 'Failed to list alerts');
-    }
-  }
-
-  /**
-   * Normalize timestamps in alert data
-   * 
-   * Converts serialized Firebase Timestamp objects from callable functions
-   * into objects with a toDate() method that returns a JavaScript Date.
-   * 
-   * @private
-   * @param {WaterQualityAlert} alert - Alert with serialized timestamps
-   * @returns {WaterQualityAlert} Alert with normalized timestamps
-   */
-  private normalizeTimestamps(alert: WaterQualityAlert): WaterQualityAlert {
-    return {
-      ...alert,
-      createdAt: this.convertToTimestampLike(alert.createdAt),
-      acknowledgedAt: alert.acknowledgedAt ? this.convertToTimestampLike(alert.acknowledgedAt) : undefined,
-      resolvedAt: alert.resolvedAt ? this.convertToTimestampLike(alert.resolvedAt) : undefined,
-    };
-  }
-
-  /**
-   * Convert serialized timestamp to an object with toDate() and toMillis() methods
-   * 
-   * @private
-   * @param {any} timestamp - Serialized timestamp from Firebase Callable Function
-   * @returns {any} Object with toDate() and toMillis() methods
-   */
-  private convertToTimestampLike(timestamp: any): any {
-    if (!timestamp) return null;
-
-    // If it's already a proper Timestamp with toDate method, return as-is
-    if (timestamp.toDate && typeof timestamp.toDate === 'function') {
-      return timestamp;
-    }
-
-    // If it's a serialized timestamp with _seconds and _nanoseconds
-    if (timestamp._seconds !== undefined) {
-      return {
-        toDate: () => new Date(timestamp._seconds * 1000 + timestamp._nanoseconds / 1000000),
-        toMillis: () => timestamp._seconds * 1000 + timestamp._nanoseconds / 1000000,
-      };
-    }
-
-    // If it's already a Date object
-    if (timestamp instanceof Date) {
-      return {
-        toDate: () => timestamp,
-        toMillis: () => timestamp.getTime(),
-      };
-    }
-
-    // If it's a plain object with seconds/nanoseconds (alternative serialization)
-    if (timestamp.seconds !== undefined) {
-      return {
-        toDate: () => new Date(timestamp.seconds * 1000 + (timestamp.nanoseconds || 0) / 1000000),
-        toMillis: () => timestamp.seconds * 1000 + (timestamp.nanoseconds || 0) / 1000000,
-      };
-    }
-
-    // Fallback: try to parse as date string or number
-    const date = new Date(timestamp);
-    if (!isNaN(date.getTime())) {
-      return {
-        toDate: () => date,
-        toMillis: () => date.getTime(),
-      };
-    }
-
-    // Last resort: return null
-    console.warn('Could not convert timestamp:', timestamp);
-    return null;
+    return this.callFunction<ResolveAlertRequest>('resolveAlert', { alertId, notes });
   }
 
   // ============================================================================
-  // ERROR HANDLING
+  // READ OPERATIONS (Client → Firestore Real-time Listener)
   // ============================================================================
 
-  /**
-   * Handle errors from Firebase Functions
-   * 
-   * Transforms Firebase Function errors into a consistent ErrorResponse format.
-   * 
-   * @private
-   * @param {any} error - The error from Firebase Functions
-   * @param {string} defaultMessage - Default message if error doesn't have one
-   * 
-   * @returns {ErrorResponse} Formatted error response
-   */
+  subscribeToAlerts(
+    onUpdate: (alerts: WaterQualityAlert[]) => void,
+    onError: (error: Error) => void,
+    maxAlerts: number = 20
+  ): Unsubscribe {
+    const alertsQuery = query(
+      collection(this.db, 'alerts'),
+      orderBy('createdAt', 'desc'),
+      limit(maxAlerts)
+    );
+
+    return onSnapshot(
+      alertsQuery,
+      (snapshot) => {
+        const alerts = snapshot.docs.map((doc) => ({
+          alertId: doc.id,
+          ...doc.data(),
+        } as WaterQualityAlert));
+        onUpdate(alerts);
+      },
+      (err) => onError(err instanceof Error ? err : new Error('Failed to fetch alerts'))
+    );
+  }
+
   private handleError(error: any, defaultMessage: string): ErrorResponse {
     console.error('AlertsService error:', error);
 
-    // Extract error details from Firebase Functions error
     const code = error.code || 'unknown';
-    const message = error.message || defaultMessage;
-    const details = error.details || undefined;
-
-    // Map Firebase error codes to user-friendly messages
-    const errorMessages: Record<string, string> = {
-      'functions/unauthenticated': 'Please log in to perform this action',
-      'functions/permission-denied': 'You do not have permission to manage alerts',
-      'functions/not-found': 'Alert not found',
-      'functions/already-exists': 'Alert already exists',
-      'functions/invalid-argument': 'Invalid request parameters',
-      'functions/failed-precondition': message, // Use original message for business logic errors
-      'functions/internal': 'An internal error occurred. Please try again',
-      'functions/unavailable': 'Alert service temporarily unavailable. Please try again',
-      'functions/deadline-exceeded': 'Request timeout. Please try again',
-    };
-
-    const friendlyMessage = errorMessages[code] || message;
+    const message = ERROR_MESSAGES[code] === undefined 
+      ? (error.message || defaultMessage)
+      : (code === 'functions/failed-precondition' ? error.message : ERROR_MESSAGES[code]);
 
     return {
       code,
-      message: friendlyMessage,
-      details,
+      message,
+      details: error.details,
     };
   }
 }
 
-// ============================================================================
-// SINGLETON INSTANCE EXPORT
-// ============================================================================
-
-/**
- * Singleton instance of AlertsService
- * Use this exported instance in your application
- * 
- * @example
- * import { alertsService } from './services/alerts.Service';
- * 
- * // Acknowledge alert
- * await alertsService.acknowledgeAlert('alert_12345');
- * 
- * // Resolve alert with notes
- * await alertsService.resolveAlert('alert_12345', 'Fixed by replacing sensor');
- * 
- * // List filtered alerts
- * const criticalAlerts = await alertsService.listAlerts({
- *   severity: ['Critical'],
- *   status: ['Active']
- * });
- */
 export const alertsService = new AlertsService();
-
-/**
- * Default export for convenience
- */
 export default alertsService;

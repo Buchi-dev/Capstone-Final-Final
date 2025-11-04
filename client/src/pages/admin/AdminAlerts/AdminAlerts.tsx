@@ -27,7 +27,6 @@ import {
 import { useThemeToken } from '../../../theme';
 import {
   SearchOutlined,
-  FilterOutlined,
   ReloadOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -60,12 +59,11 @@ export const AdminAlerts = () => {
   const token = useThemeToken();
   const [alerts, setAlerts] = useState<WaterQualityAlert[]>([]);
   const [filteredAlerts, setFilteredAlerts] = useState<WaterQualityAlert[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selectedAlert, setSelectedAlert] = useState<WaterQualityAlert | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
   const [filters, setFilters] = useState<AlertFilters>({});
 
-  // Statistics
   const [stats, setStats] = useState({
     total: 0,
     active: 0,
@@ -75,24 +73,6 @@ export const AdminAlerts = () => {
     warning: 0,
     advisory: 0,
   });
-
-  // Load alerts using service layer
-  const loadAlerts = async () => {
-    setLoading(true);
-    
-    try {
-      const alertsData = await alertsService.listAlerts();
-
-      setAlerts(alertsData);
-      setFilteredAlerts(alertsData);
-      calculateStats(alertsData);
-      setLoading(false);
-    } catch (error) {
-      console.error('Error loading alerts:', error);
-      message.error('Failed to load alerts');
-      setLoading(false);
-    }
-  };
 
   // Calculate statistics
   const calculateStats = (alertsData: WaterQualityAlert[]) => {
@@ -108,19 +88,25 @@ export const AdminAlerts = () => {
     setStats(stats);
   };
 
-  // Apply filters
-  const applyFilters = () => {
+  // Clear filters
+  const clearFilters = () => {
+    setFilters({});
+    message.info('Filters cleared');
+  };
+
+  // Auto-apply filters when alerts or filters change
+  useEffect(() => {
     let filtered = [...alerts];
 
-    if (filters.severity && filters.severity.length > 0) {
+    if (filters.severity?.length) {
       filtered = filtered.filter((a) => filters.severity!.includes(a.severity));
     }
 
-    if (filters.status && filters.status.length > 0) {
+    if (filters.status?.length) {
       filtered = filtered.filter((a) => filters.status!.includes(a.status));
     }
 
-    if (filters.parameter && filters.parameter.length > 0) {
+    if (filters.parameter?.length) {
       filtered = filtered.filter((a) => filters.parameter!.includes(a.parameter));
     }
 
@@ -136,58 +122,54 @@ export const AdminAlerts = () => {
 
     setFilteredAlerts(filtered);
     calculateStats(filtered);
-    message.success(`Showing ${filtered.length} alerts`);
-  };
+  }, [alerts, filters]);
 
-  // Clear filters
-  const clearFilters = () => {
-    setFilters({});
-    setFilteredAlerts(alerts);
-    calculateStats(alerts);
-    message.info('Filters cleared');
-  };
-
-  // Acknowledge alert - Uses service layer (business logic in Firebase Function)
+  // WRITE: Acknowledge alert via Cloud Function
   const acknowledgeAlert = async (alertId: string) => {
     try {
       await alertsService.acknowledgeAlert(alertId);
-      message.success('Alert acknowledged');
-      // Reload alerts to reflect changes
-      await loadAlerts();
+      message.success('Alert acknowledged successfully');
     } catch (error: any) {
       console.error('Error acknowledging alert:', error);
       message.error(error.message || 'Failed to acknowledge alert');
     }
   };
 
-  // Resolve alert - Uses service layer (business logic in Firebase Function)
+  // WRITE: Resolve alert via Cloud Function
   const resolveAlert = async (alertId: string, notes?: string) => {
     try {
       await alertsService.resolveAlert(alertId, notes);
-      message.success('Alert resolved');
+      message.success('Alert resolved successfully');
       setDetailsVisible(false);
-      // Reload alerts to reflect changes
-      await loadAlerts();
     } catch (error: any) {
       console.error('Error resolving alert:', error);
       message.error(error.message || 'Failed to resolve alert');
     }
   };
 
-  // View alert details
   const viewAlertDetails = (alert: WaterQualityAlert) => {
     setSelectedAlert(alert);
     setDetailsVisible(true);
   };
 
-  // Load alerts on mount and set up polling for updates
+  // READ: Subscribe to real-time alerts from Firestore
   useEffect(() => {
-    loadAlerts();
-    
-    // Poll for updates every 30 seconds
-    const intervalId = setInterval(loadAlerts, 30000);
-    
-    return () => clearInterval(intervalId);
+    const unsubscribe = alertsService.subscribeToAlerts(
+      (alertsData) => {
+        setAlerts(alertsData);
+        setFilteredAlerts(alertsData);
+        calculateStats(alertsData);
+        setLoading(false);
+      },
+      (error) => {
+        console.error('Error loading alerts:', error);
+        message.error('Failed to load alerts');
+        setLoading(false);
+      },
+      100 // Get more alerts for management page
+    );
+
+    return () => unsubscribe();
   }, []);
 
   // Table columns
@@ -397,7 +379,7 @@ export const AdminAlerts = () => {
               style={{ width: 250 }}
               value={filters.searchTerm}
               onChange={(e) => setFilters({ ...filters, searchTerm: e.target.value })}
-              onPressEnter={applyFilters}
+              allowClear
             />
             <Select
               mode="multiple"
@@ -435,15 +417,12 @@ export const AdminAlerts = () => {
                 { label: 'Turbidity', value: 'turbidity' },
               ]}
             />
-            <Button type="primary" icon={<FilterOutlined />} onClick={applyFilters}>
-              Apply Filters
-            </Button>
             <Button icon={<ReloadOutlined />} onClick={clearFilters}>
-              Clear
+              Clear Filters
             </Button>
-            <Button icon={<ReloadOutlined />} onClick={loadAlerts}>
-              Refresh
-            </Button>
+            <Text type="secondary">
+              Showing {filteredAlerts.length} of {alerts.length} alerts
+            </Text>
           </Space>
         </Card>
 
