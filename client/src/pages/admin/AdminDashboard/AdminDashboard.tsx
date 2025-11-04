@@ -1,16 +1,3 @@
-// ============================================================================
-// ADMIN DASHBOARD - REAL-TIME IMPLEMENTATION
-// ============================================================================
-// This is the complete implementation for the Admin Dashboard with:
-// - Real-time sensor readings from Firebase Realtime Database
-// - Dynamic alerts panel with filtering and search
-// - Interactive data visualization using Recharts
-// - Responsive single-screen layout
-//
-// TO IMPLEMENT: Replace the content of
-// client/src/pages/admin/AdminDashboard.tsx with this code
-// ============================================================================
-
 import { AdminLayout } from '../../../components/layouts/AdminLayout';
 import {
   Card,
@@ -40,8 +27,7 @@ import {
 } from '@ant-design/icons';
 import { useThemeToken } from '../../../theme';
 import { useState, useEffect, useMemo } from 'react';
-import { ref, onValue, off } from 'firebase/database';
-import { getDatabase } from 'firebase/database';
+import { getDatabase, ref, onValue, off } from 'firebase/database';
 import { alertsService } from '../../../services/alerts.Service';
 import { deviceManagementService } from '../../../services/deviceManagement.Service';
 import { 
@@ -55,43 +41,17 @@ import {
   Tooltip, 
   ResponsiveContainer 
 } from 'recharts';
-// --- Inlined from alerts.ts ---
-import type { Timestamp } from 'firebase/firestore';
-export type AlertSeverity = 'Advisory' | 'Warning' | 'Critical';
-export type AlertStatus = 'Active' | 'Acknowledged' | 'Resolved';
-export type WaterParameter = 'tds' | 'ph' | 'turbidity';
-export type TrendDirection = 'increasing' | 'decreasing' | 'stable';
-export type AlertType = 'threshold' | 'trend';
-export interface WaterQualityAlert {
-  alertId: string;
-  deviceId: string;
-  deviceName?: string;
-  deviceBuilding?: string;
-  deviceFloor?: string;
-  parameter: WaterParameter;
-  alertType: AlertType;
-  severity: AlertSeverity;
-  status: AlertStatus;
-  currentValue: number;
-  thresholdValue?: number;
-  trendDirection?: TrendDirection;
-  message: string;
-  recommendedAction: string;
-  createdAt: Timestamp;
-  acknowledgedAt?: Timestamp;
-  acknowledgedBy?: string;
-  resolvedAt?: Timestamp;
-  resolvedBy?: string;
-  notificationsSent: string[];
-  metadata?: {
-    previousValue?: number;
-    changeRate?: number;
-    location?: string;
-    [key: string]: any;
-  };
-}
-// --- End inlined section ---
-import type { SensorReading } from '../../../schemas';
+import type { 
+  WaterQualityAlert, 
+  WaterQualityAlertSeverity,
+  WaterQualityParameter,
+  SensorReading,
+} from '../../../schemas';
+import { 
+  getSeverityColor, 
+  getParameterName, 
+  getParameterUnit 
+} from '../../../schemas';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 
@@ -99,50 +59,6 @@ dayjs.extend(relativeTime);
 
 const { Title, Text } = Typography;
 const { Option } = Select;
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/**
- * Get color for alert severity
- */
-const getSeverityColor = (severity: AlertSeverity): string => {
-  switch (severity) {
-    case 'Critical':
-      return '#ff4d4f';
-    case 'Warning':
-      return '#faad14';
-    case 'Advisory':
-      return '#1890ff';
-    default:
-      return '#d9d9d9';
-  }
-};
-
-/**
- * Get display name for water parameter
- */
-const getParameterName = (param: string): string => {
-  const names: Record<string, string> = {
-    tds: 'TDS',
-    ph: 'pH',
-    turbidity: 'Turbidity',
-  };
-  return names[param] || param;
-};
-
-/**
- * Get unit for water parameter
- */
-const getParameterUnit = (param: string): string => {
-  const units: Record<string, string> = {
-    tds: 'ppm',
-    ph: '',
-    turbidity: 'NTU',
-  };
-  return units[param] || '';
-};
 
 // ============================================================================
 // INTERFACES
@@ -169,7 +85,7 @@ export const AdminDashboard = () => {
   const [devices, setDevices] = useState<DeviceSensorData[]>([]);
   const [historicalData, setHistoricalData] = useState<SensorReading[]>([]);
   const [loading, setLoading] = useState(true);
-  const [alertFilter, setAlertFilter] = useState<AlertSeverity | 'all'>('all');
+  const [alertFilter, setAlertFilter] = useState<WaterQualityAlertSeverity | 'all'>('all');
   const [searchText, setSearchText] = useState('');
   const [selectedDevice, setSelectedDevice] = useState<string>('all');
 
@@ -227,7 +143,7 @@ export const AdminDashboard = () => {
 
         // Set up real-time listeners for each device
         formattedDevices.forEach((device) => {
-          const sensorRef = ref(rtdb, `sensorReadings/${device.deviceId}/latest`);
+          const sensorRef = ref(rtdb, `sensorReadings/${device.deviceId}/latestReading`);
           onValue(sensorRef, (snapshot) => {
             const reading = snapshot.val();
             if (reading) {
@@ -251,7 +167,7 @@ export const AdminDashboard = () => {
     return () => {
       // Clean up RTDB listeners
       devices.forEach((device) => {
-        const sensorRef = ref(rtdb, `sensorReadings/${device.deviceId}/latest`);
+        const sensorRef = ref(rtdb, `sensorReadings/${device.deviceId}/latestReading`);
         off(sensorRef);
       });
     };
@@ -302,7 +218,6 @@ export const AdminDashboard = () => {
   const stats = useMemo(() => {
     const totalDevices = devices.length;
     const onlineDevices = devices.filter((d) => d.status === 'online').length;
-    const offlineDevices = totalDevices - onlineDevices;
     const activeAlerts = alerts.filter((a) => a.status === 'Active').length;
     const criticalAlerts = alerts.filter(
       (a) => a.severity === 'Critical' && a.status === 'Active'
@@ -311,7 +226,6 @@ export const AdminDashboard = () => {
     return {
       totalDevices,
       onlineDevices,
-      offlineDevices,
       activeAlerts,
       criticalAlerts,
     };
@@ -338,7 +252,7 @@ export const AdminDashboard = () => {
       dataIndex: 'severity',
       key: 'severity',
       width: 100,
-      render: (severity: AlertSeverity) => (
+      render: (severity: WaterQualityAlertSeverity) => (
         <Tag color={getSeverityColor(severity)} icon={<WarningOutlined />}>
           {severity}
         </Tag>
@@ -365,7 +279,7 @@ export const AdminDashboard = () => {
       dataIndex: 'parameter',
       key: 'parameter',
       width: 100,
-      render: (param: string) => getParameterName(param),
+      render: (param: WaterQualityParameter) => getParameterName(param),
     },
     {
       title: 'Message',
