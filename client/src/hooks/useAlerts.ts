@@ -5,8 +5,11 @@ import type { WaterQualityAlert } from '../schemas';
 /**
  * Custom hook to fetch and manage alerts with real-time updates
  * Uses alertsService.subscribeToAlerts for instant updates
+ * 
+ * @param maxAlerts - Maximum number of alerts to fetch (default: 20)
+ * @returns Object containing alerts array, loading state, error state, and action functions
  */
-export const useAlerts = () => {
+export const useAlerts = (maxAlerts: number = 20) => {
   const [alerts, setAlerts] = useState<WaterQualityAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -24,12 +27,26 @@ export const useAlerts = () => {
         setError(err);
         setLoading(false);
       },
-      20 // Get 20 most recent alerts
+      maxAlerts
     );
 
-
     return () => unsubscribe();
-  }, []);
+  }, [maxAlerts]);
 
-  return { alerts, loading, error };
+  // Action functions for managing alerts
+  const acknowledgeAlert = async (alertId: string): Promise<void> => {
+    await alertsService.acknowledgeAlert(alertId);
+  };
+
+  const resolveAlert = async (alertId: string, notes?: string): Promise<void> => {
+    await alertsService.resolveAlert(alertId, notes);
+  };
+
+  return { 
+    alerts, 
+    loading, 
+    error,
+    acknowledgeAlert,
+    resolveAlert,
+  };
 };
