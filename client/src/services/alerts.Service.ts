@@ -87,9 +87,9 @@ export class AlertsService {
     console.error('AlertsService error:', error);
 
     const code = error.code || 'unknown';
-    const message = ERROR_MESSAGES[code] === undefined 
-      ? (error.message || defaultMessage)
-      : (code === 'functions/failed-precondition' ? error.message : ERROR_MESSAGES[code]);
+    const message = code in ERROR_MESSAGES
+      ? (code === 'functions/failed-precondition' ? error.message : ERROR_MESSAGES[code])
+      : (error.message || defaultMessage);
 
     return {
       code,

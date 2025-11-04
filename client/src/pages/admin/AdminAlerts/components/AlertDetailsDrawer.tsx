@@ -46,7 +46,6 @@ const getColorValue = (colorName: string, token: ReturnType<typeof useThemeToken
   };
   return colorMap[colorName] || token.colorTextSecondary;
 };
-const { TextArea } = Input;
 
 interface AlertDetailsDrawerProps {
   visible: boolean;

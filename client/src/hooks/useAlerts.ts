@@ -7,7 +7,7 @@ import type { WaterQualityAlert } from '../schemas';
  * Uses alertsService.subscribeToAlerts for instant updates
  * 
  * @param maxAlerts - Maximum number of alerts to fetch (default: 20)
- * @returns Object containing alerts array, loading state, error state, and action functions
+ * @returns Object containing alerts array, loading state, and error state
  */
 export const useAlerts = (maxAlerts: number = 20) => {
   const [alerts, setAlerts] = useState<WaterQualityAlert[]>([]);
@@ -33,20 +33,9 @@ export const useAlerts = (maxAlerts: number = 20) => {
     return () => unsubscribe();
   }, [maxAlerts]);
 
-  // Action functions for managing alerts
-  const acknowledgeAlert = async (alertId: string): Promise<void> => {
-    await alertsService.acknowledgeAlert(alertId);
-  };
-
-  const resolveAlert = async (alertId: string, notes?: string): Promise<void> => {
-    await alertsService.resolveAlert(alertId, notes);
-  };
-
   return { 
     alerts, 
     loading, 
     error,
-    acknowledgeAlert,
-    resolveAlert,
   };
 };
