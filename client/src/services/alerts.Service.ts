@@ -174,10 +174,85 @@ export class AlertsService {
         throw new Error(result.data.error || 'Failed to list alerts');
       }
 
-      return result.data.alerts || [];
+      // Convert serialized timestamps to objects with toDate method
+      const alerts = (result.data.alerts || []).map(alert => this.normalizeTimestamps(alert));
+
+      return alerts;
     } catch (error: any) {
       throw this.handleError(error, 'Failed to list alerts');
     }
+  }
+
+  /**
+   * Normalize timestamps in alert data
+   * 
+   * Converts serialized Firebase Timestamp objects from callable functions
+   * into objects with a toDate() method that returns a JavaScript Date.
+   * 
+   * @private
+   * @param {WaterQualityAlert} alert - Alert with serialized timestamps
+   * @returns {WaterQualityAlert} Alert with normalized timestamps
+   */
+  private normalizeTimestamps(alert: WaterQualityAlert): WaterQualityAlert {
+    return {
+      ...alert,
+      createdAt: this.convertToTimestampLike(alert.createdAt),
+      acknowledgedAt: alert.acknowledgedAt ? this.convertToTimestampLike(alert.acknowledgedAt) : undefined,
+      resolvedAt: alert.resolvedAt ? this.convertToTimestampLike(alert.resolvedAt) : undefined,
+    };
+  }
+
+  /**
+   * Convert serialized timestamp to an object with toDate() and toMillis() methods
+   * 
+   * @private
+   * @param {any} timestamp - Serialized timestamp from Firebase Callable Function
+   * @returns {any} Object with toDate() and toMillis() methods
+   */
+  private convertToTimestampLike(timestamp: any): any {
+    if (!timestamp) return null;
+
+    // If it's already a proper Timestamp with toDate method, return as-is
+    if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+      return timestamp;
+    }
+
+    // If it's a serialized timestamp with _seconds and _nanoseconds
+    if (timestamp._seconds !== undefined) {
+      return {
+        toDate: () => new Date(timestamp._seconds * 1000 + timestamp._nanoseconds / 1000000),
+        toMillis: () => timestamp._seconds * 1000 + timestamp._nanoseconds / 1000000,
+      };
+    }
+
+    // If it's already a Date object
+    if (timestamp instanceof Date) {
+      return {
+        toDate: () => timestamp,
+        toMillis: () => timestamp.getTime(),
+      };
+    }
+
+    // If it's a plain object with seconds/nanoseconds (alternative serialization)
+    if (timestamp.seconds !== undefined) {
+      return {
+        toDate: () => new Date(timestamp.seconds * 1000 + (timestamp.nanoseconds || 0) / 1000000),
+        toMillis: () => timestamp.seconds * 1000 + (timestamp.nanoseconds || 0) / 1000000,
+      };
+    }
+
+    // Fallback: try to parse as date string or number
+    const date = new Date(timestamp);
+    if (!isNaN(date.getTime())) {
+      return {
+        toDate: () => date,
+        toMillis: () => date.getTime(),
+      };
+    }
+
+    // Last resort: return null
+    console.warn('Could not convert timestamp:', timestamp);
+    return null;
   }
 
   // ============================================================================

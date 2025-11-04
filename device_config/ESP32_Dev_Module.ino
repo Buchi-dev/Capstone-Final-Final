@@ -50,10 +50,20 @@
 #define TURBIDITY_PIN 32    // GPIO32 (ADC1_CH4)
 
 // Timing Configuration - Phase 3 Optimization
-#define SENSOR_READ_INTERVAL 30000   // Read sensors every 30 seconds
-#define MQTT_PUBLISH_INTERVAL 300000 // Publish batch to MQTT every 5 minutes (300 seconds)
-#define HEARTBEAT_INTERVAL 300000    // Send status every 5 minutes (aligned with batch)
-#define BATCH_SIZE 10                // Buffer 10 readings before sending (5 minutes worth)
+// 🔧 TESTING MODE: Set to true for immediate testing, false for production
+#define TESTING_MODE true
+
+#if TESTING_MODE
+  #define SENSOR_READ_INTERVAL 10000   // Read sensors every 10 seconds (TESTING)
+  #define MQTT_PUBLISH_INTERVAL 30000  // Publish batch every 30 seconds (TESTING)
+  #define HEARTBEAT_INTERVAL 60000     // Send status every 1 minute (TESTING)
+  #define BATCH_SIZE 2                 // Buffer 2 readings before sending (TESTING)
+#else
+  #define SENSOR_READ_INTERVAL 30000   // Read sensors every 30 seconds (PRODUCTION)
+  #define MQTT_PUBLISH_INTERVAL 300000 // Publish batch to MQTT every 5 minutes (PRODUCTION)
+  #define HEARTBEAT_INTERVAL 300000    // Send status every 5 minutes (PRODUCTION)
+  #define BATCH_SIZE 10                // Buffer 10 readings before sending (PRODUCTION)
+#endif
 
 // ===========================
 // GLOBAL OBJECTS
@@ -123,6 +133,31 @@ void setup() {
   Serial.println(F("ESP32 Dev Module"));
   Serial.println(F("=================================\n"));
 
+  // Print configuration mode
+  #if TESTING_MODE
+    Serial.println(F("⚠️  MODE: TESTING"));
+    Serial.print(F("   Sensor read: "));
+    Serial.print(SENSOR_READ_INTERVAL / 1000);
+    Serial.println(F("s"));
+    Serial.print(F("   Publish batch: "));
+    Serial.print(MQTT_PUBLISH_INTERVAL / 1000);
+    Serial.println(F("s"));
+    Serial.print(F("   Batch size: "));
+    Serial.print(BATCH_SIZE);
+    Serial.println(F(" readings\n"));
+  #else
+    Serial.println(F("✓ MODE: PRODUCTION"));
+    Serial.print(F("   Sensor read: "));
+    Serial.print(SENSOR_READ_INTERVAL / 1000);
+    Serial.println(F("s"));
+    Serial.print(F("   Publish batch: "));
+    Serial.print(MQTT_PUBLISH_INTERVAL / 1000);
+    Serial.println(F("s"));
+    Serial.print(F("   Batch size: "));
+    Serial.print(BATCH_SIZE);
+    Serial.println(F(" readings\n"));
+  #endif
+
   // ESP32 ADC configuration
   analogReadResolution(12);  // 12-bit resolution (0-4095)
   analogSetAttenuation(ADC_11db);  // Full range: 0-3.3V
@@ -179,17 +214,24 @@ void loop() {
     // Mark buffer as ready when full
     if (bufferIndex >= BATCH_SIZE) {
       bufferReady = true;
-      bufferIndex = 0;  // Reset for next batch
     }
   }
   
-  // Publish batch every 5 minutes when buffer is ready
-  if (currentMillis - lastMqttPublish >= MQTT_PUBLISH_INTERVAL) {
+  // Publish batch when buffer is full OR every 5 minutes (whichever comes first)
+  if (bufferReady && sendToMQTT) {
+    publishSensorDataBatch();
+    bufferReady = false;
+    bufferIndex = 0;  // Reset for next batch
     lastMqttPublish = currentMillis;
-    if (sendToMQTT && bufferReady) {
-      publishSensorDataBatch();
-      bufferReady = false;
-    }
+  } else if (currentMillis - lastMqttPublish >= MQTT_PUBLISH_INTERVAL && bufferIndex > 0 && sendToMQTT) {
+    // Publish partial batch if 5 minutes elapsed but buffer not full
+    Serial.print(F("⏰ Time elapsed - publishing partial batch ("));
+    Serial.print(bufferIndex);
+    Serial.println(F(" readings)"));
+    publishSensorDataBatch();
+    bufferIndex = 0;
+    bufferReady = false;
+    lastMqttPublish = currentMillis;
   }
   
   // Send heartbeat every 5 minutes (aligned with batch)
@@ -585,13 +627,18 @@ void publishSensorDataBatch() {
     return;  // Silent skip
   }
   
-  Serial.println(F("\n📦 Publishing batch of readings..."));
+  // Determine how many readings to publish (full batch or partial)
+  int readingsToPublish = (bufferIndex > 0) ? bufferIndex : BATCH_SIZE;
+  
+  Serial.print(F("\n📦 Publishing batch of "));
+  Serial.print(readingsToPublish);
+  Serial.println(F(" readings..."));
   
   // Create JSON document with readings array
   StaticJsonDocument<1024> doc;
   JsonArray readings = doc.createNestedArray("readings");
   
-  for (int i = 0; i < BATCH_SIZE; i++) {
+  for (int i = 0; i < readingsToPublish; i++) {
     JsonObject reading = readings.createNestedObject();
     reading["turbidity"] = readingBuffer[i].turbidity;
     reading["tds"] = readingBuffer[i].tds;
@@ -604,7 +651,7 @@ void publishSensorDataBatch() {
   
   if (mqttClient.publish(TOPIC_SENSOR_DATA, payload.c_str())) {
     Serial.print(F("✓ Published batch ("));
-    Serial.print(BATCH_SIZE);
+    Serial.print(readingsToPublish);
     Serial.print(F(" readings) to: "));
     Serial.println(TOPIC_SENSOR_DATA);
     Serial.print(F("   Payload size: "));

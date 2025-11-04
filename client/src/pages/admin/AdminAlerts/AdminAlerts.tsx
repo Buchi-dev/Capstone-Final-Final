@@ -37,7 +37,6 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import type { Timestamp } from 'firebase/firestore';
 import { alertsService } from '../../../services/alerts.Service';
 import type {
   WaterQualityAlert,
@@ -285,14 +284,20 @@ export const AdminAlerts = () => {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 180,
-      render: (timestamp: Timestamp) => (
-        <Text type="secondary">
-          {timestamp?.toDate().toLocaleString()}
-        </Text>
-      ),
+      render: (timestamp: any) => {
+        if (!timestamp || !timestamp.toDate) {
+          return <Text type="secondary">N/A</Text>;
+        }
+        try {
+          return <Text type="secondary">{timestamp.toDate().toLocaleString()}</Text>;
+        } catch (error) {
+          console.error('Error formatting timestamp:', error, timestamp);
+          return <Text type="secondary">Invalid date</Text>;
+        }
+      },
       sorter: (a, b) => {
-        const timeA = a.createdAt?.toMillis() || 0;
-        const timeB = b.createdAt?.toMillis() || 0;
+        const timeA = a.createdAt?.toMillis?.() || 0;
+        const timeB = b.createdAt?.toMillis?.() || 0;
         return timeB - timeA;
       },
     },
@@ -564,18 +569,24 @@ export const AdminAlerts = () => {
                   <Space direction="vertical" style={{ width: '100%' }}>
                     <div>
                       <Text type="secondary">Created:</Text>{' '}
-                      {selectedAlert.createdAt?.toDate().toLocaleString()}
+                      {selectedAlert.createdAt?.toDate ? 
+                        selectedAlert.createdAt.toDate().toLocaleString() : 
+                        'N/A'}
                     </div>
                     {selectedAlert.acknowledgedAt && (
                       <div>
                         <Text type="secondary">Acknowledged:</Text>{' '}
-                        {selectedAlert.acknowledgedAt.toDate().toLocaleString()}
+                        {selectedAlert.acknowledgedAt.toDate ? 
+                          selectedAlert.acknowledgedAt.toDate().toLocaleString() : 
+                          'N/A'}
                       </div>
                     )}
                     {selectedAlert.resolvedAt && (
                       <div>
                         <Text type="secondary">Resolved:</Text>{' '}
-                        {selectedAlert.resolvedAt.toDate().toLocaleString()}
+                        {selectedAlert.resolvedAt.toDate ? 
+                          selectedAlert.resolvedAt.toDate().toLocaleString() : 
+                          'N/A'}
                       </div>
                     )}
                   </Space>
