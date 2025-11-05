@@ -1,5 +1,4 @@
 import { FieldValue } from "firebase-admin/firestore";
-import type * as FirebaseFirestore from "firebase-admin/firestore";
 import { logger } from "firebase-functions/v2";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
@@ -10,7 +9,6 @@ import { DIGEST_COLLECTION, DIGEST_ERRORS, DIGEST_MESSAGES } from "../constants/
 import type {
   AcknowledgeAlertRequest,
   ResolveAlertRequest,
-  ListAlertsRequest,
   AcknowledgeDigestRequest,
   AlertResponse,
   WaterQualityAlert,
@@ -19,239 +17,104 @@ import type { AlertDigest } from "../types/digest.types";
 import { createRoutedFunction } from "../utils";
 import { isValidAckToken } from "../utils/validators";
 
-type AlertManagementRequest =
-  | AcknowledgeAlertRequest
-  | ResolveAlertRequest
-  | ListAlertsRequest
-  | AcknowledgeDigestRequest;
+type AlertManagementRequest = AcknowledgeAlertRequest | ResolveAlertRequest | AcknowledgeDigestRequest;
 
-async function handleAcknowledgeAlert(
-  request: CallableRequest<AlertManagementRequest>
-): Promise<AlertResponse> {
+// ============================================================================
+// VALIDATION & DATABASE HELPERS
+// ============================================================================
+
+function validateAuth(userId: string | undefined, alertId?: string): asserts userId is string {
+  if (!alertId) throw new HttpsError("invalid-argument", ALERT_MANAGEMENT_ERRORS.MISSING_ALERT_ID);
+  if (!userId) throw new HttpsError("unauthenticated", ALERT_MANAGEMENT_ERRORS.UNAUTHENTICATED);
+}
+
+function validateAlertStatus(status: string, operation: "acknowledge" | "resolve"): void {
+  const isAcknowledged = status === "Acknowledged";
+  const isResolved = status === "Resolved";
+
+  if ((operation === "acknowledge" && (isAcknowledged || isResolved)) || (operation === "resolve" && isResolved)) {
+    const error = isResolved ? ALERT_MANAGEMENT_ERRORS.ALREADY_RESOLVED : ALERT_MANAGEMENT_ERRORS.ALREADY_ACKNOWLEDGED;
+    throw new HttpsError("failed-precondition", error);
+  }
+}
+
+async function getDocument<T>(collection: string, docId: string, notFoundError: string): Promise<T> {
+  const doc = await db.collection(collection).doc(docId).get();
+  if (!doc.exists) throw new HttpsError("not-found", notFoundError);
+  return doc.data() as T;
+}
+
+async function updateAlert(alertId: string, status: string, userId: string, notes?: string): Promise<void> {
+  const timestamp = FieldValue.serverTimestamp();
+  const actionPrefix = status === "Acknowledged" ? "acknowledged" : "resolved";
+
+  await db.collection(COLLECTIONS.ALERTS).doc(alertId).update({
+    status,
+    [`${actionPrefix}At`]: timestamp,
+    [`${actionPrefix}By`]: userId,
+    ...(notes && { resolutionNotes: notes }),
+  });
+}
+
+// ============================================================================
+// REQUEST HANDLERS
+// ============================================================================
+
+async function handleAcknowledgeAlert(request: CallableRequest<AlertManagementRequest>): Promise<AlertResponse> {
   const { alertId } = request.data as AcknowledgeAlertRequest;
   const userId = request.auth?.uid;
 
-  if (!alertId) {
-    throw new HttpsError("invalid-argument", ALERT_MANAGEMENT_ERRORS.MISSING_ALERT_ID);
-  }
+  validateAuth(userId, alertId);
+  const alert = await getDocument<WaterQualityAlert>(COLLECTIONS.ALERTS, alertId, ALERT_MANAGEMENT_ERRORS.ALERT_NOT_FOUND);
+  validateAlertStatus(alert.status, "acknowledge");
+  await updateAlert(alertId, "Acknowledged", userId);
 
-  if (!userId) {
-    throw new HttpsError("unauthenticated", ALERT_MANAGEMENT_ERRORS.UNAUTHENTICATED);
-  }
-
-  try {
-  const alertRef = db.collection(COLLECTIONS.ALERTS).doc(alertId);
-  const alertDoc = await alertRef.get(); // READ: fetch alert document
-
-    if (!alertDoc.exists) {
-      throw new HttpsError("not-found", ALERT_MANAGEMENT_ERRORS.ALERT_NOT_FOUND);
-    }
-
-    const alertData = alertDoc.data() as WaterQualityAlert;
-
-    // Business Logic: Cannot acknowledge if already acknowledged or resolved
-    if (alertData.status === "Acknowledged") {
-      throw new HttpsError("failed-precondition", ALERT_MANAGEMENT_ERRORS.ALREADY_ACKNOWLEDGED);
-    }
-
-    if (alertData.status === "Resolved") {
-      throw new HttpsError("failed-precondition", ALERT_MANAGEMENT_ERRORS.ALREADY_RESOLVED);
-    }
-
-    // Update alert with server timestamp and user tracking
-    await alertRef.update({
-      status: "Acknowledged",
-      acknowledgedAt: FieldValue.serverTimestamp(),
-      acknowledgedBy: userId,
-    }); // WRITE: update acknowledgement metadata
-
-    return {
-      success: true,
-      message: ALERT_MANAGEMENT_MESSAGES.ACKNOWLEDGE_SUCCESS,
-      alert: {
-        alertId,
-        status: "Acknowledged",
-      },
-    };
-  } catch (error) {
-    if (error instanceof HttpsError) {
-      throw error;
-    }
-    console.error("Error acknowledging alert:", error);
-    throw new HttpsError("internal", ALERT_MANAGEMENT_ERRORS.ACKNOWLEDGE_FAILED);
-  }
+  return {
+    success: true,
+    message: ALERT_MANAGEMENT_MESSAGES.ACKNOWLEDGE_SUCCESS,
+    alert: { alertId, status: "Acknowledged" },
+  };
 }
 
-async function handleResolveAlert(
-  request: CallableRequest<AlertManagementRequest>
-): Promise<AlertResponse> {
+async function handleResolveAlert(request: CallableRequest<AlertManagementRequest>): Promise<AlertResponse> {
   const { alertId, notes } = request.data as ResolveAlertRequest;
   const userId = request.auth?.uid;
 
-  if (!alertId) {
-    throw new HttpsError("invalid-argument", ALERT_MANAGEMENT_ERRORS.MISSING_ALERT_ID);
-  }
+  validateAuth(userId, alertId);
+  const alert = await getDocument<WaterQualityAlert>(COLLECTIONS.ALERTS, alertId, ALERT_MANAGEMENT_ERRORS.ALERT_NOT_FOUND);
+  validateAlertStatus(alert.status, "resolve");
+  await updateAlert(alertId, "Resolved", userId, notes);
 
-  if (!userId) {
-    throw new HttpsError("unauthenticated", ALERT_MANAGEMENT_ERRORS.UNAUTHENTICATED);
-  }
-
-  try {
-  const alertRef = db.collection(COLLECTIONS.ALERTS).doc(alertId);
-  const alertDoc = await alertRef.get(); // READ: fetch alert document
-
-    if (!alertDoc.exists) {
-      throw new HttpsError("not-found", ALERT_MANAGEMENT_ERRORS.ALERT_NOT_FOUND);
-    }
-
-    const alertData = alertDoc.data() as WaterQualityAlert;
-
-    // Business Logic: Cannot resolve if already resolved
-    if (alertData.status === "Resolved") {
-      throw new HttpsError("failed-precondition", ALERT_MANAGEMENT_ERRORS.ALREADY_RESOLVED);
-    }
-
-    // Prepare update data
-    const updateData: Record<string, FirebaseFirestore.FieldValue | string> = {
-      status: "Resolved",
-      resolvedAt: FieldValue.serverTimestamp(),
-      resolvedBy: userId,
-    };
-
-    // Add resolution notes if provided
-    if (notes) {
-      updateData.resolutionNotes = notes;
-    }
-
-    await alertRef.update(updateData); // WRITE: resolve alert with optional notes
-
-    return {
-      success: true,
-      message: ALERT_MANAGEMENT_MESSAGES.RESOLVE_SUCCESS,
-      alert: {
-        alertId,
-        status: "Resolved",
-      },
-    };
-  } catch (error) {
-    if (error instanceof HttpsError) {
-      throw error;
-    }
-    console.error("Error resolving alert:", error);
-    throw new HttpsError("internal", ALERT_MANAGEMENT_ERRORS.RESOLVE_FAILED);
-  }
+  return {
+    success: true,
+    message: ALERT_MANAGEMENT_MESSAGES.RESOLVE_SUCCESS,
+    alert: { alertId, status: "Resolved" },
+  };
 }
 
-async function handleListAlerts(
-  request: CallableRequest<AlertManagementRequest>
-): Promise<AlertResponse> {
-  const { filters } = request.data as ListAlertsRequest;
-
-  try {
-    let query: FirebaseFirestore.Query = db
-      .collection(COLLECTIONS.ALERTS)
-      .orderBy("createdAt", "desc");
-
-    // Apply server-side filters if provided
-    if (filters) {
-      if (filters.status && filters.status.length > 0) {
-        query = query.where("status", "in", filters.status);
-      }
-
-      if (filters.severity && filters.severity.length > 0) {
-        query = query.where("severity", "in", filters.severity);
-      }
-
-      if (filters.parameter && filters.parameter.length > 0) {
-        query = query.where("parameter", "in", filters.parameter);
-      }
-
-      if (filters.deviceId && filters.deviceId.length > 0) {
-        query = query.where("deviceId", "in", filters.deviceId);
-      }
-    }
-
-  const snapshot = await query.get(); // READ: retrieve filtered alert list
-
-    const alerts: WaterQualityAlert[] = snapshot.docs.map(
-      (doc) =>
-        ({
-          alertId: doc.id,
-          ...doc.data(),
-        }) as WaterQualityAlert
-    );
-
-    return {
-      success: true,
-      message: ALERT_MANAGEMENT_MESSAGES.LIST_SUCCESS,
-      alerts,
-    };
-  } catch (error) {
-    console.error("Error listing alerts:", error);
-    throw new HttpsError("internal", ALERT_MANAGEMENT_ERRORS.LIST_FAILED);
-  }
-}
-
-async function handleAcknowledgeDigest(
-  request: CallableRequest<AlertManagementRequest>
-): Promise<AlertResponse> {
+async function handleAcknowledgeDigest(request: CallableRequest<AlertManagementRequest>): Promise<AlertResponse> {
   const { digestId, token } = request.data as AcknowledgeDigestRequest;
 
-  // Validate required parameters
-  if (!digestId || !token) {
-    throw new HttpsError("invalid-argument",  "Missing required parameters: digestId and token");
+  if (!digestId || !token) throw new HttpsError("invalid-argument", "Missing required parameters: digestId and token");
+  if (!isValidAckToken(token)) throw new HttpsError("invalid-argument", "Invalid token format");
+
+  const digest = await getDocument<AlertDigest>(DIGEST_COLLECTION, digestId, DIGEST_ERRORS.DIGEST_NOT_FOUND);
+
+  if (digest.ackToken !== token) {
+    logger.warn(`Invalid ack token for digest ${digestId}`);
+    throw new HttpsError("permission-denied", DIGEST_ERRORS.INVALID_TOKEN);
   }
 
-  // Validate token format
-  if (!isValidAckToken(token)) {
-    throw new HttpsError("invalid-argument", "Invalid token format");
-  }
+  if (digest.isAcknowledged) return { success: true, message: DIGEST_ERRORS.ALREADY_ACKNOWLEDGED };
 
-  try {
-    // Fetch digest document
-  const digestRef = db.collection(DIGEST_COLLECTION).doc(digestId);
-  const digestDoc = await digestRef.get(); // READ: fetch digest document
+  await db.collection(DIGEST_COLLECTION).doc(digestId).update({
+    isAcknowledged: true,
+    acknowledgedAt: FieldValue.serverTimestamp(),
+    acknowledgedBy: digest.recipientUid,
+  });
 
-    if (!digestDoc.exists) {
-      throw new HttpsError("not-found", DIGEST_ERRORS.DIGEST_NOT_FOUND);
-    }
-
-    const digest = digestDoc.data() as AlertDigest;
-
-    // Verify token match (security check)
-    if (digest.ackToken !== token) {
-      logger.warn(`Invalid ack token for digest ${digestId}`);
-      throw new HttpsError("permission-denied", DIGEST_ERRORS.INVALID_TOKEN);
-    }
-
-    // Check if already acknowledged (idempotent operation)
-    if (digest.isAcknowledged) {
-      return {
-        success: true,
-        message: DIGEST_ERRORS.ALREADY_ACKNOWLEDGED,
-      };
-    }
-
-    // Update digest to acknowledged state (stops future sends)
-    await digestRef.update({
-      isAcknowledged: true,
-      acknowledgedAt: FieldValue.serverTimestamp(),
-      acknowledgedBy: digest.recipientUid,
-    }); // WRITE: mark digest as acknowledged
-
-    logger.info(`Digest ${digestId} acknowledged by ${digest.recipientEmail}`);
-
-    return {
-      success: true,
-      message: DIGEST_MESSAGES.ACKNOWLEDGED,
-    };
-  } catch (error) {
-    if (error instanceof HttpsError) {
-      throw error;
-    }
-    logger.error("Error acknowledging digest:", error);
-    throw new HttpsError("internal", DIGEST_ERRORS.UPDATE_FAILED);
-  }
+  logger.info(`Digest ${digestId} acknowledged by ${digest.recipientEmail}`);
+  return { success: true, message: DIGEST_MESSAGES.ACKNOWLEDGED };
 }
 
 export const alertManagement = onCall<AlertManagementRequest, Promise<AlertResponse>>(
@@ -259,12 +122,11 @@ export const alertManagement = onCall<AlertManagementRequest, Promise<AlertRespo
     {
       acknowledgeAlert: handleAcknowledgeAlert,
       resolveAlert: handleResolveAlert,
-      listAlerts: handleListAlerts,
       acknowledgeDigest: handleAcknowledgeDigest,
     },
     {
       requireAuth: true,
-      requireAdmin: false, // Mixed auth - acknowledgeDigest is public, others need admin
+      requireAdmin: false,
     }
   )
 );
