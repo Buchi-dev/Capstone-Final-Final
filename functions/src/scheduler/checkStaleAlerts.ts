@@ -292,11 +292,7 @@ export const checkStaleAlerts = onSchedule(
           const preferences: NotificationPreferences = {
             ...rawPreferences,
             userId: rawPreferences.userId ?? doc.id,
-            alertSeverities: rawPreferences.alertSeverities ?? [
-              "Critical",
-              "Warning",
-              "Advisory",
-            ],
+            alertSeverities: rawPreferences.alertSeverities ?? ["Critical", "Warning", "Advisory"],
             parameters: rawPreferences.parameters ?? [],
             devices: rawPreferences.devices ?? [],
           };
@@ -373,8 +369,8 @@ export const checkStaleAlerts = onSchedule(
         }
       }
 
-  // ===================================
-  // 5. LOG SUMMARY
+      // ===================================
+      // 5. LOG SUMMARY
       // ===================================
       logger.info(
         "Stale alerts check completed: " +

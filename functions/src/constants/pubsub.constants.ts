@@ -14,10 +14,6 @@ export const PUBSUB_TOPICS = {
 
   /** Topic for device registration from MQTT bridge */
   DEVICE_REGISTRATION: "iot-device-registration",
-
-  /** Topic for device status updates from MQTT bridge */
-  DEVICE_STATUS: "iot-device-status",
-
   /** Topic for device commands (future use) */
   DEVICE_COMMANDS: "device-commands",
 

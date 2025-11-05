@@ -296,10 +296,7 @@ export async function getNotificationRecipients(
       }
 
       // Check parameter filter (empty array means all parameters)
-      if (
-        preferences.parameters.length > 0 &&
-        !preferences.parameters.includes(alert.parameter!)
-      ) {
+      if (preferences.parameters.length > 0 && !preferences.parameters.includes(alert.parameter!)) {
         continue;
       }
 

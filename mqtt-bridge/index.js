@@ -36,7 +36,7 @@ validateEnvironment();
 const TOPIC_MAPPINGS = {
   'device/sensordata/+': 'iot-sensor-readings',
   'device/registration/+': 'iot-device-registration',
-  'device/status/+': 'iot-device-status',
+  // 'device/status/+' removed - redundant with processSensorData
 };
 
 // Reverse mappings: Pub/Sub → MQTT (for commands)
@@ -47,7 +47,6 @@ const BUFFER_INTERVAL_MS = 60000; // Buffer messages for 60 seconds
 const messageBuffer = {
   'iot-sensor-readings': [],
   'iot-device-registration': [],
-  'iot-device-status': []
 };
 
 let mqttClient = null;

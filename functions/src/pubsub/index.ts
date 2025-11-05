@@ -8,7 +8,6 @@
  * - processSensorData: Process incoming sensor data from MQTT bridge (CRITICAL)
  * - aggregateAlertsToDigest: Batch alerts into periodic digests (HIGH)
  * - autoRegisterDevice: Auto-register new devices on first connection (MEDIUM)
- * - monitorDeviceStatus: Track device online/offline status (MEDIUM)
  */
 
 // Export sensor data processing function (P0 CRITICAL)
@@ -19,6 +18,3 @@ export { aggregateAlertsToDigest } from "./aggregateAlertsToDigest";
 
 // Export device auto-registration function (P2 MEDIUM)
 export { autoRegisterDevice } from "./autoRegisterDevice";
-
-// Export device status monitoring function (P2 MEDIUM)
-export { monitorDeviceStatus } from "./monitorDeviceStatus";

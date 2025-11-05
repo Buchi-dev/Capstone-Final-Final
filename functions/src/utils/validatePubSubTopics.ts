@@ -225,7 +225,7 @@ function validateFunctionTriggers(): void {
   const functionsToCheck = [
     { file: "processSensorData.ts", expectedTopic: "iot-sensor-readings" },
     { file: "autoRegisterDevice.ts", expectedTopic: "iot-device-registration" },
-    { file: "monitorDeviceStatus.ts", expectedTopic: "iot-device-status" },
+    // monitorDeviceStatus.ts removed - redundant with processSensorData
   ];
 
   functionsToCheck.forEach(({ file, expectedTopic }) => {

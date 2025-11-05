@@ -179,8 +179,8 @@ export const sendDailyAnalytics = onSchedule(
         }
       }
 
-  // ===================================
-  // 4. LOG SUMMARY
+      // ===================================
+      // 4. LOG SUMMARY
       // ===================================
       logger.info(
         "[DAILY][Asia/Manila] Daily analytics completed: " +

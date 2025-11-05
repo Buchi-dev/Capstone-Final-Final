@@ -168,8 +168,8 @@ export const sendWeeklyAnalytics = onSchedule(
         }
       }
 
-  // ===================================
-  // 4. LOG SUMMARY
+      // ===================================
+      // 4. LOG SUMMARY
       // ===================================
       logger.info(
         "[WEEKLY][Asia/Manila] Weekly analytics completed: " +

@@ -168,8 +168,8 @@ export const sendMonthlyAnalytics = onSchedule(
         }
       }
 
-  // ===================================
-  // 4. LOG SUMMARY
+      // ===================================
+      // 4. LOG SUMMARY
       // ===================================
       logger.info(
         "[MONTHLY][Asia/Manila] Monthly analytics completed: " +
