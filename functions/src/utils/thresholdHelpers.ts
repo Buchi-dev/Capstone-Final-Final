@@ -8,10 +8,10 @@
  * Used by: processSensorData, alertManagement
  */
 
-import { logger } from "firebase-functions/v2";
+import {logger} from "firebase-functions/v2";
 
-import { rtdb, db } from "../config/firebase";
-import type { WaterParameter, AlertSeverity, TrendDirection } from "../types/alertManagement.types";
+import {rtdb, db} from "../config/firebase";
+import type {WaterParameter, AlertSeverity, TrendDirection} from "../types/alertManagement.types";
 
 /**
  * Parameter threshold configuration
@@ -176,7 +176,7 @@ export function checkThreshold(
   }
 
   // No threshold violation
-  return { exceeded: false, severity: null, threshold: null };
+  return {exceeded: false, severity: null, threshold: null};
 }
 
 /**
@@ -286,14 +286,14 @@ export async function analyzeTrend(
  */
 export function getParameterUnit(parameter: WaterParameter): string {
   switch (parameter) {
-    case "tds":
-      return "ppm";
-    case "ph":
-      return "";
-    case "turbidity":
-      return "NTU";
-    default:
-      return "";
+  case "tds":
+    return "ppm";
+  case "ph":
+    return "";
+  case "turbidity":
+    return "NTU";
+  default:
+    return "";
   }
 }
 
@@ -309,13 +309,13 @@ export function getParameterUnit(parameter: WaterParameter): string {
  */
 export function getParameterName(parameter: WaterParameter): string {
   switch (parameter) {
-    case "tds":
-      return "TDS (Total Dissolved Solids)";
-    case "ph":
-      return "pH Level";
-    case "turbidity":
-      return "Turbidity";
-    default:
-      return parameter;
+  case "tds":
+    return "TDS (Total Dissolved Solids)";
+  case "ph":
+    return "pH Level";
+  case "turbidity":
+    return "Turbidity";
+  default:
+    return parameter;
   }
 }

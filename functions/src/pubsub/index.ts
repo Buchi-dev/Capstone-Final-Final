@@ -11,10 +11,10 @@
  */
 
 // Export sensor data processing function (P0 CRITICAL)
-export { processSensorData } from "./processSensorData";
+export {processSensorData} from "./processSensorData";
 
 // Export alert digest aggregation function (P1 HIGH)
-export { aggregateAlertsToDigest } from "./aggregateAlertsToDigest";
+export {aggregateAlertsToDigest} from "./aggregateAlertsToDigest";
 
 // Export device auto-registration function (P2 MEDIUM)
-export { autoRegisterDevice } from "./autoRegisterDevice";
+export {autoRegisterDevice} from "./autoRegisterDevice";

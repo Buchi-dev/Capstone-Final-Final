@@ -21,7 +21,7 @@ export const ALLOWED_EMAIL_DOMAIN = "@smu.edu.ph";
 const ORGANIZATION_NAME = "Saint Mary's University";
 
 // Import user status and role from userManagement constants (single source of truth)
-import type { UserStatus, UserRole } from "./userManagement.constants";
+import type {UserStatus, UserRole} from "./userManagement.constants";
 
 // ===========================
 // DEFAULT USER VALUES

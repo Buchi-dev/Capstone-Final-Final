@@ -15,7 +15,7 @@ import {
   PUBSUB_TOPICS as DEVICE_PUBSUB,
   MQTT_TOPICS,
 } from "../constants/deviceManagement.constants";
-import { PUBSUB_TOPICS as PUBSUB_CONSTANTS } from "../constants/pubsub.constants";
+import {PUBSUB_TOPICS as PUBSUB_CONSTANTS} from "../constants/pubsub.constants";
 
 // ANSI color codes
 const colors = {
@@ -112,13 +112,13 @@ function validateConstantsAlignment(): void {
 
   // Check that all topics match
   const topicsToValidate = [
-    { name: "SENSOR_DATA", expected: "iot-sensor-readings" },
-    { name: "DEVICE_REGISTRATION", expected: "iot-device-registration" },
-    { name: "DEVICE_STATUS", expected: "iot-device-status" },
-    { name: "DEVICE_COMMANDS", expected: "device-commands" },
+    {name: "SENSOR_DATA", expected: "iot-sensor-readings"},
+    {name: "DEVICE_REGISTRATION", expected: "iot-device-registration"},
+    {name: "DEVICE_STATUS", expected: "iot-device-status"},
+    {name: "DEVICE_COMMANDS", expected: "device-commands"},
   ];
 
-  topicsToValidate.forEach(({ name, expected }) => {
+  topicsToValidate.forEach(({name, expected}) => {
     const pubsubValue = PUBSUB_CONSTANTS[name as keyof typeof PUBSUB_CONSTANTS];
     const deviceValue = DEVICE_PUBSUB[name as keyof typeof DEVICE_PUBSUB];
 
@@ -189,12 +189,12 @@ function validateMqttBridgeConfig(): void {
   info("Checking TOPIC_MAPPINGS in mqtt-bridge/index.js...");
 
   const expectedMappings = [
-    { mqtt: "device/sensordata/+", pubsub: "iot-sensor-readings" },
-    { mqtt: "device/registration/+", pubsub: "iot-device-registration" },
-    { mqtt: "device/status/+", pubsub: "iot-device-status" },
+    {mqtt: "device/sensordata/+", pubsub: "iot-sensor-readings"},
+    {mqtt: "device/registration/+", pubsub: "iot-device-registration"},
+    {mqtt: "device/status/+", pubsub: "iot-device-status"},
   ];
 
-  expectedMappings.forEach(({ mqtt, pubsub }) => {
+  expectedMappings.forEach(({mqtt, pubsub}) => {
     const regex = new RegExp(`[""]${mqtt}[""]\\s*:\\s*[""]${pubsub}[""]`);
     if (bridgeContent.match(regex)) {
       success(`MQTT Bridge: ${mqtt} → ${pubsub}`);
@@ -223,12 +223,12 @@ function validateFunctionTriggers(): void {
   header("Validating Pub/Sub Function Triggers");
 
   const functionsToCheck = [
-    { file: "processSensorData.ts", expectedTopic: "iot-sensor-readings" },
-    { file: "autoRegisterDevice.ts", expectedTopic: "iot-device-registration" },
+    {file: "processSensorData.ts", expectedTopic: "iot-sensor-readings"},
+    {file: "autoRegisterDevice.ts", expectedTopic: "iot-device-registration"},
     // monitorDeviceStatus.ts removed - redundant with processSensorData
   ];
 
-  functionsToCheck.forEach(({ file, expectedTopic }) => {
+  functionsToCheck.forEach(({file, expectedTopic}) => {
     const filePath = path.join(__dirname, "../pubsub", file);
 
     if (!fs.existsSync(filePath)) {
@@ -401,4 +401,4 @@ if (require.main === module) {
   main();
 }
 
-export { main as validatePubSubTopics };
+export {main as validatePubSubTopics};

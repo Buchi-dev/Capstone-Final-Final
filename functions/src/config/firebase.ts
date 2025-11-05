@@ -5,9 +5,9 @@
  * @module config/firebase
  */
 
-import { PubSub } from "@google-cloud/pubsub";
+import {PubSub} from "@google-cloud/pubsub";
 import * as admin from "firebase-admin";
-import { setGlobalOptions } from "firebase-functions/v2";
+import {setGlobalOptions} from "firebase-functions/v2";
 
 // ===========================
 // FIREBASE INITIALIZATION
@@ -66,4 +66,4 @@ setGlobalOptions({
  * Re-export collection names for convenience
  * Import from constants/database.constants for primary usage
  */
-export { COLLECTIONS } from "../constants/database.constants";
+export {COLLECTIONS} from "../constants/database.constants";

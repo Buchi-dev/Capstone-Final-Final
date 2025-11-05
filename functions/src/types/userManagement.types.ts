@@ -5,7 +5,7 @@
  * @module types/userManagement.types
  */
 
-import type { UserStatus, UserRole } from "../constants/userManagement.constants";
+import type {UserStatus, UserRole} from "../constants/userManagement.constants";
 
 // ===========================
 // REQUEST TYPES

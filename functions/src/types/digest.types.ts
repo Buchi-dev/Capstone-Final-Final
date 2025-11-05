@@ -10,7 +10,7 @@
 
 import * as admin from "firebase-admin";
 
-import type { WaterParameter, AlertSeverity } from "./alertManagement.types";
+import type {WaterParameter, AlertSeverity} from "./alertManagement.types";
 
 /**
  * Individual alert item within a digest

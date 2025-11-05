@@ -5,9 +5,9 @@
  * @module utils/analyticsHelpers
  */
 
-import { db, rtdb } from "../config/firebase";
-import { COLLECTIONS } from "../constants";
-import type { Device, SensorReading, WaterQualityAlert } from "../types";
+import {db, rtdb} from "../config/firebase";
+import {COLLECTIONS} from "../constants";
+import type {Device, SensorReading, WaterQualityAlert} from "../types";
 
 /**
  * Calculate device uptime percentage
@@ -266,7 +266,7 @@ export function calculateParameterStats(
   count: number;
 } {
   if (readings.length === 0) {
-    return { min: 0, max: 0, avg: 0, count: 0 };
+    return {min: 0, max: 0, avg: 0, count: 0};
   }
 
   const values = readings
@@ -274,7 +274,7 @@ export function calculateParameterStats(
     .filter((v): v is number => v !== undefined && v !== null && !isNaN(v));
 
   if (values.length === 0) {
-    return { min: 0, max: 0, avg: 0, count: 0 };
+    return {min: 0, max: 0, avg: 0, count: 0};
   }
 
   const min = Math.min(...values);

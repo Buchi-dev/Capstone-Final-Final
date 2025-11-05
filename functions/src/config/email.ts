@@ -17,8 +17,8 @@
  *   );
  */
 
-import { defineSecret } from "firebase-functions/params";
-import { logger } from "firebase-functions/v2";
+import {defineSecret} from "firebase-functions/params";
+import {logger} from "firebase-functions/v2";
 import * as nodemailer from "nodemailer";
 
 /**
@@ -43,7 +43,7 @@ export function getEmailCredentials(): { user: string; password: string } {
     );
   }
 
-  return { user, password };
+  return {user, password};
 }
 
 /**
@@ -175,7 +175,7 @@ export interface DigestEmailData {
  * });
  */
 export async function sendStaleAlertEmail(data: StaleAlertEmailData): Promise<void> {
-  const { recipientEmail, recipientName, staleAlerts, totalCount } = data;
+  const {recipientEmail, recipientName, staleAlerts, totalCount} = data;
 
   // Get email credentials and create transporter
   const credentials = getEmailCredentials();
@@ -199,7 +199,7 @@ export async function sendStaleAlertEmail(data: StaleAlertEmailData): Promise<vo
         ${alert.value}
       </td>
       <td style="padding: 12px; border-right: 1px solid #e5e7eb;">
-        ${alert.createdAt.toLocaleString("en-US", { timeZone: "Asia/Manila" })}
+        ${alert.createdAt.toLocaleString("en-US", {timeZone: "Asia/Manila"})}
       </td>
       <td style="padding: 12px; color: #dc2626; font-weight: 600;">
         ${alert.hoursStale.toFixed(1)} hours
@@ -294,7 +294,7 @@ export async function sendStaleAlertEmail(data: StaleAlertEmailData): Promise<vo
           This is an automated notification. Please do not reply to this email.
         </p>
         <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-          Generated at: ${new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" })} (Asia/Manila)
+          Generated at: ${new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"})} (Asia/Manila)
         </p>
       </div>
     </div>
@@ -352,11 +352,11 @@ export async function sendAnalyticsEmail(data: AnalyticsEmailData): Promise<void
 
   const reportTitle = reportType.charAt(0).toUpperCase() + reportType.slice(1);
   const periodText =
-    reportType === "daily"
-      ? "Last 24 Hours"
-      : reportType === "weekly"
-        ? "Last 7 Days"
-        : "Last 30 Days";
+    reportType === "daily" ?
+      "Last 24 Hours" :
+      reportType === "weekly" ?
+        "Last 7 Days" :
+        "Last 30 Days";
 
   // Generate device rows HTML
   const deviceRows = topDevices
@@ -377,12 +377,12 @@ export async function sendAnalyticsEmail(data: AnalyticsEmailData): Promise<void
       </td>
       <td style="padding: 12px;">
         ${
-          device.latestReading
-            ? `pH: ${device.latestReading.ph?.toFixed(1) || "N/A"} | 
+  device.latestReading ?
+    `pH: ${device.latestReading.ph?.toFixed(1) || "N/A"} | 
            TDS: ${device.latestReading.tds?.toFixed(0) || "N/A"} | 
-           Turb: ${device.latestReading.turbidity?.toFixed(1) || "N/A"}`
-            : "No data"
-        }
+           Turb: ${device.latestReading.turbidity?.toFixed(1) || "N/A"}` :
+    "No data"
+}
       </td>
     </tr>
   `
@@ -412,12 +412,12 @@ export async function sendAnalyticsEmail(data: AnalyticsEmailData): Promise<void
       </td>
       <td style="padding: 12px;">
         ${alert.createdAt.toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone: "Asia/Manila",
-        })}
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Manila",
+  })}
       </td>
     </tr>
   `
@@ -439,8 +439,8 @@ export async function sendAnalyticsEmail(data: AnalyticsEmailData): Promise<void
       <h1 style="color: white; margin: 0; font-size: 24px;">📊 ${reportTitle} Analytics Report</h1>
       <p style="color: #dbeafe; margin: 10px 0 0 0;">${periodText}</p>
       <p style="color: #bfdbfe; margin: 5px 0 0 0; font-size: 14px;">
-        ${periodStart.toLocaleDateString("en-US", { timeZone: "Asia/Manila" })} - 
-        ${periodEnd.toLocaleDateString("en-US", { timeZone: "Asia/Manila" })}
+        ${periodStart.toLocaleDateString("en-US", {timeZone: "Asia/Manila"})} - 
+        ${periodEnd.toLocaleDateString("en-US", {timeZone: "Asia/Manila"})}
       </p>
     </div>
     
@@ -517,8 +517,8 @@ export async function sendAnalyticsEmail(data: AnalyticsEmailData): Promise<void
 
       <!-- Top Devices Table -->
       ${
-        topDevices.length > 0
-          ? `
+  topDevices.length > 0 ?
+    `
       <div style="margin: 25px 0;">
         <h3 style="color: #374151; margin-bottom: 15px; font-size: 16px;">
           🏆 Top Devices Status
@@ -537,14 +537,14 @@ export async function sendAnalyticsEmail(data: AnalyticsEmailData): Promise<void
           </tbody>
         </table>
       </div>
-      `
-          : ""
-      }
+      ` :
+    ""
+}
 
       <!-- Recent Alerts Table -->
       ${
-        recentAlerts.length > 0
-          ? `
+  recentAlerts.length > 0 ?
+    `
       <div style="margin: 25px 0;">
         <h3 style="color: #374151; margin-bottom: 15px; font-size: 16px;">
           🚨 Recent Alerts
@@ -564,15 +564,15 @@ export async function sendAnalyticsEmail(data: AnalyticsEmailData): Promise<void
           </tbody>
         </table>
       </div>
-      `
-          : `
+      ` :
+    `
       <div style="background: #f0fdf4; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; border-radius: 4px;">
         <p style="color: #166534; margin: 0; font-weight: 600;">
           ✅ No alerts during this period - System running smoothly!
         </p>
       </div>
       `
-      }
+}
 
       <!-- Action Button -->
       <div style="text-align: center; margin: 30px 0;">
@@ -591,7 +591,7 @@ export async function sendAnalyticsEmail(data: AnalyticsEmailData): Promise<void
           This is an automated report. To manage your preferences, visit your dashboard settings.
         </p>
         <p style="color: #9ca3af; font-size: 12px; margin: 5px 0;">
-          Generated at: ${new Date().toLocaleString("en-US", { timeZone: "Asia/Manila" })} (Asia/Manila)
+          Generated at: ${new Date().toLocaleString("en-US", {timeZone: "Asia/Manila"})} (Asia/Manila)
         </p>
       </div>
     </div>
@@ -624,14 +624,14 @@ export async function sendAnalyticsEmail(data: AnalyticsEmailData): Promise<void
  */
 function getSeverityColor(severity: string): string {
   switch (severity) {
-    case "Critical":
-      return "#dc2626";
-    case "Warning":
-      return "#f59e0b";
-    case "Advisory":
-      return "#3b82f6";
-    default:
-      return "#6b7280";
+  case "Critical":
+    return "#dc2626";
+  case "Warning":
+    return "#f59e0b";
+  case "Advisory":
+    return "#3b82f6";
+  default:
+    return "#6b7280";
   }
 }
 
@@ -653,7 +653,7 @@ function getSeverityColor(severity: string): string {
  * });
  */
 export async function sendDigestEmail(data: DigestEmailData): Promise<void> {
-  const { recipientEmail, category, items, createdAt, sendAttempts, ackToken, digestId } = data;
+  const {recipientEmail, category, items, createdAt, sendAttempts, ackToken, digestId} = data;
 
   // Get email credentials and create transporter
   const credentials = getEmailCredentials();
@@ -679,13 +679,13 @@ export async function sendDigestEmail(data: DigestEmailData): Promise<void> {
       <td style="padding: 12px;">${item.summary}</td>
       <td style="padding: 12px; color: #666; font-size: 13px;">
         ${item.timestamp.toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-          timeZone: "Asia/Manila",
-        })}
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Manila",
+  })}
       </td>
     </tr>
   `
@@ -733,12 +733,12 @@ export async function sendDigestEmail(data: DigestEmailData): Promise<void> {
       <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.8;">
         ${items.length} alert${items.length !== 1 ? "s" : ""} aggregated since 
         ${createdAt.toLocaleString("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          timeZone: "Asia/Manila",
-        })}
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Manila",
+  })}
       </p>
     </div>
 
@@ -774,8 +774,8 @@ export async function sendDigestEmail(data: DigestEmailData): Promise<void> {
     </div>
 
     ${
-      chartValues.length > 0
-        ? `
+  chartValues.length > 0 ?
+    `
     <!-- Trend Visualization -->
     <div style="padding: 0 24px 24px 24px;">
       <h3 style="color: #333;">Trend Over Time</h3>
@@ -813,9 +813,9 @@ export async function sendDigestEmail(data: DigestEmailData): Promise<void> {
         }
       });
     </script>
-    `
-        : ""
-    }
+    ` :
+    ""
+}
 
     <!-- Acknowledgement CTA -->
     <div style="padding: 0 24px 24px 24px;">

@@ -1,11 +1,11 @@
-import { FieldValue } from "firebase-admin/firestore";
-import { logger } from "firebase-functions/v2";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import type { CallableRequest } from "firebase-functions/v2/https";
+import {FieldValue} from "firebase-admin/firestore";
+import {logger} from "firebase-functions/v2";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
+import type {CallableRequest} from "firebase-functions/v2/https";
 
-import { db } from "../config/firebase";
-import { ALERT_MANAGEMENT_ERRORS, ALERT_MANAGEMENT_MESSAGES, COLLECTIONS } from "../constants";
-import { DIGEST_COLLECTION, DIGEST_ERRORS, DIGEST_MESSAGES } from "../constants/digest.constants";
+import {db} from "../config/firebase";
+import {ALERT_MANAGEMENT_ERRORS, ALERT_MANAGEMENT_MESSAGES, COLLECTIONS} from "../constants";
+import {DIGEST_COLLECTION, DIGEST_ERRORS, DIGEST_MESSAGES} from "../constants/digest.constants";
 import type {
   AcknowledgeAlertRequest,
   ResolveAlertRequest,
@@ -13,9 +13,9 @@ import type {
   AlertResponse,
   WaterQualityAlert,
 } from "../types";
-import type { AlertDigest } from "../types/digest.types";
-import { createRoutedFunction } from "../utils";
-import { isValidAckToken } from "../utils/validators";
+import type {AlertDigest} from "../types/digest.types";
+import {createRoutedFunction} from "../utils";
+import {isValidAckToken} from "../utils/validators";
 
 type AlertManagementRequest =
   | AcknowledgeAlertRequest
@@ -52,9 +52,9 @@ function validateAlertStatus(status: string, operation: "acknowledge" | "resolve
     (operation === "acknowledge" && (isAcknowledged || isResolved)) ||
     (operation === "resolve" && isResolved)
   ) {
-    const error = isResolved
-      ? ALERT_MANAGEMENT_ERRORS.ALREADY_RESOLVED
-      : ALERT_MANAGEMENT_ERRORS.ALREADY_ACKNOWLEDGED;
+    const error = isResolved ?
+      ALERT_MANAGEMENT_ERRORS.ALREADY_RESOLVED :
+      ALERT_MANAGEMENT_ERRORS.ALREADY_ACKNOWLEDGED;
     throw new HttpsError("failed-precondition", error);
   }
 }
@@ -102,7 +102,7 @@ async function updateAlert(
       status,
       [`${actionPrefix}At`]: timestamp,
       [`${actionPrefix}By`]: userId,
-      ...(notes && { resolutionNotes: notes }),
+      ...(notes && {resolutionNotes: notes}),
     });
 }
 
@@ -119,7 +119,7 @@ async function updateAlert(
 async function handleAcknowledgeAlert(
   request: CallableRequest<AlertManagementRequest>
 ): Promise<AlertResponse> {
-  const { alertId } = request.data as AcknowledgeAlertRequest;
+  const {alertId} = request.data as AcknowledgeAlertRequest;
   const userId = request.auth?.uid;
 
   validateAuth(userId, alertId);
@@ -134,7 +134,7 @@ async function handleAcknowledgeAlert(
   return {
     success: true,
     message: ALERT_MANAGEMENT_MESSAGES.ACKNOWLEDGE_SUCCESS,
-    alert: { alertId, status: "Acknowledged" },
+    alert: {alertId, status: "Acknowledged"},
   };
 }
 
@@ -147,7 +147,7 @@ async function handleAcknowledgeAlert(
 async function handleResolveAlert(
   request: CallableRequest<AlertManagementRequest>
 ): Promise<AlertResponse> {
-  const { alertId, notes } = request.data as ResolveAlertRequest;
+  const {alertId, notes} = request.data as ResolveAlertRequest;
   const userId = request.auth?.uid;
 
   validateAuth(userId, alertId);
@@ -162,7 +162,7 @@ async function handleResolveAlert(
   return {
     success: true,
     message: ALERT_MANAGEMENT_MESSAGES.RESOLVE_SUCCESS,
-    alert: { alertId, status: "Resolved" },
+    alert: {alertId, status: "Resolved"},
   };
 }
 
@@ -175,10 +175,11 @@ async function handleResolveAlert(
 async function handleAcknowledgeDigest(
   request: CallableRequest<AlertManagementRequest>
 ): Promise<AlertResponse> {
-  const { digestId, token } = request.data as AcknowledgeDigestRequest;
+  const {digestId, token} = request.data as AcknowledgeDigestRequest;
 
-  if (!digestId || !token)
+  if (!digestId || !token) {
     throw new HttpsError("invalid-argument", "Missing required parameters: digestId and token");
+  }
   if (!isValidAckToken(token)) throw new HttpsError("invalid-argument", "Invalid token format");
 
   const digest = await getDocument<AlertDigest>(
@@ -192,7 +193,7 @@ async function handleAcknowledgeDigest(
     throw new HttpsError("permission-denied", DIGEST_ERRORS.INVALID_TOKEN);
   }
 
-  if (digest.isAcknowledged) return { success: true, message: DIGEST_ERRORS.ALREADY_ACKNOWLEDGED };
+  if (digest.isAcknowledged) return {success: true, message: DIGEST_ERRORS.ALREADY_ACKNOWLEDGED};
 
   await db.collection(DIGEST_COLLECTION).doc(digestId).update({
     isAcknowledged: true,
@@ -201,7 +202,7 @@ async function handleAcknowledgeDigest(
   });
 
   logger.info(`Digest ${digestId} acknowledged by ${digest.recipientEmail}`);
-  return { success: true, message: DIGEST_MESSAGES.ACKNOWLEDGED };
+  return {success: true, message: DIGEST_MESSAGES.ACKNOWLEDGED};
 }
 
 export const alertManagement = onCall<AlertManagementRequest, Promise<AlertResponse>>(

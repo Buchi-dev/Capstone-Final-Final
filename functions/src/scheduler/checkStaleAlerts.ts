@@ -14,12 +14,12 @@
  */
 
 import * as admin from "firebase-admin";
-import { logger } from "firebase-functions/v2";
-import { onSchedule } from "firebase-functions/v2/scheduler";
+import {logger} from "firebase-functions/v2";
+import {onSchedule} from "firebase-functions/v2/scheduler";
 
-import { sendStaleAlertEmail } from "../config/email";
-import type { StaleAlertEmailData } from "../config/email";
-import { db } from "../config/firebase";
+import {sendStaleAlertEmail} from "../config/email";
+import type {StaleAlertEmailData} from "../config/email";
+import {db} from "../config/firebase";
 import {
   COLLECTIONS,
   STALE_ALERT_THRESHOLD_MS,
@@ -27,7 +27,7 @@ import {
   SCHEDULER_ERRORS,
   SCHEDULER_MESSAGES,
 } from "../constants";
-import type { WaterQualityAlert, NotificationPreferences, Device } from "../types";
+import type {WaterQualityAlert, NotificationPreferences, Device} from "../types";
 
 /**
  * Stale alert with device information
@@ -66,7 +66,7 @@ function isWithinQuietHours(preferences: NotificationPreferences): boolean {
     minute: "2-digit",
   });
 
-  const { quietHoursStart, quietHoursEnd } = preferences;
+  const {quietHoursStart, quietHoursEnd} = preferences;
 
   // Handle quiet hours spanning midnight
   if (quietHoursStart <= quietHoursEnd) {
@@ -327,7 +327,7 @@ export const checkStaleAlerts = onSchedule(
       let emailsFailed = 0;
 
       for (const recipient of recipients) {
-        const { preferences, profile } = recipient;
+        const {preferences, profile} = recipient;
 
         // Check if user should receive notifications
         if (!shouldNotifyUser(preferences, staleAlerts)) {

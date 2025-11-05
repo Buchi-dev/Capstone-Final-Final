@@ -22,8 +22,8 @@
  * });
  */
 
-import { HttpsError } from "firebase-functions/v2/https";
-import type { CallableRequest } from "firebase-functions/v2/https";
+import {HttpsError} from "firebase-functions/v2/https";
+import type {CallableRequest} from "firebase-functions/v2/https";
 
 /**
  * Generic handler function type
@@ -202,7 +202,7 @@ export function createRoutedFunction<TRequest = any, TResponse = any>(
     beforeRoute?: (request: CallableRequest<TRequest>) => Promise<void> | void;
   } = {}
 ): (request: CallableRequest<TRequest>) => Promise<TResponse> {
-  const { actionField = "action", requireAuth = true, requireAdmin = false, beforeRoute } = options;
+  const {actionField = "action", requireAuth = true, requireAdmin = false, beforeRoute} = options;
 
   return async (request: CallableRequest<TRequest>): Promise<TResponse> => {
     // Check authentication if required

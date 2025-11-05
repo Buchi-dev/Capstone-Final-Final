@@ -32,10 +32,10 @@
  *   await userMgmt({ action: 'listUsers' });
  */
 
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import type { CallableRequest } from "firebase-functions/v2/https";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
+import type {CallableRequest} from "firebase-functions/v2/https";
 
-import { db } from "../config/firebase";
+import {db} from "../config/firebase";
 import {
   USER_MANAGEMENT_ERRORS,
   USER_MANAGEMENT_MESSAGES,
@@ -130,7 +130,7 @@ export const userManagement = onCall<UserManagementRequest, Promise<UserManageme
 async function handleUpdateStatus(
   request: CallableRequest<UserManagementRequest>
 ): Promise<UpdateStatusResponse> {
-  const { userId, status } = request.data;
+  const {userId, status} = request.data;
 
   // Validate input
   if (!userId || !status) {
@@ -151,12 +151,12 @@ async function handleUpdateStatus(
     validateNotSuspendingSelf(request.auth!.uid, userId, status);
 
     // Update user status
-    const updateData = buildUpdateData(request.auth!.uid, { status });
+    const updateData = buildUpdateData(request.auth!.uid, {status});
     await userRef.update(updateData);
 
     // Update custom claims for Firebase Auth
     // eslint-disable-next-line @typescript-eslint/naming-convention
-    await updateUserCustomClaims(userId, { status });
+    await updateUserCustomClaims(userId, {status});
 
     return {
       success: true,
@@ -183,7 +183,7 @@ async function handleUpdateStatus(
 async function handleUpdateUser(
   request: CallableRequest<UserManagementRequest>
 ): Promise<UpdateUserResponse> {
-  const { userId, status, role } = request.data;
+  const {userId, status, role} = request.data;
 
   // Validate input
   if (!userId) {
@@ -223,19 +223,19 @@ async function handleUpdateUser(
     }
 
     // Build update object with standard metadata
-    const updateData = buildUpdateData(request.auth!.uid, { status, role });
+    const updateData = buildUpdateData(request.auth!.uid, {status, role});
 
     // Update Firestore document
     await userRef.update(updateData);
 
     // Update custom claims in Firebase Auth
-    await updateUserCustomClaims(userId, { status, role });
+    await updateUserCustomClaims(userId, {status, role});
 
     return {
       success: true,
       message: USER_MANAGEMENT_MESSAGES.USER_UPDATED,
       userId: userId,
-      updates: { status, role },
+      updates: {status, role},
     };
   } catch (error) {
     console.error("Error updating user:", error);

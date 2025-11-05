@@ -23,12 +23,12 @@
  */
 
 import * as admin from "firebase-admin";
-import { logger } from "firebase-functions/v2";
-import { onSchedule } from "firebase-functions/v2/scheduler";
+import {logger} from "firebase-functions/v2";
+import {onSchedule} from "firebase-functions/v2/scheduler";
 
-import { sendDigestEmail } from "../config/email";
-import type { DigestEmailData } from "../config/email";
-import { db } from "../config/firebase";
+import {sendDigestEmail} from "../config/email";
+import type {DigestEmailData} from "../config/email";
+import {db} from "../config/firebase";
 import {
   DIGEST_COLLECTION,
   DIGEST_COOLDOWN_MS,
@@ -38,7 +38,7 @@ import {
   DIGEST_ERRORS,
   DIGEST_MESSAGES,
 } from "../constants/digest.constants";
-import type { AlertDigest } from "../types/digest.types";
+import type {AlertDigest} from "../types/digest.types";
 
 /**
  * Scheduled digest sender

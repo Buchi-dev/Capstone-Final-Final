@@ -20,7 +20,7 @@
  * @module auth/beforeSignIn
  */
 
-import { beforeUserSignedIn, HttpsError } from "firebase-functions/v2/identity";
+import {beforeUserSignedIn, HttpsError} from "firebase-functions/v2/identity";
 
 import {
   USER_STATUSES,

@@ -15,7 +15,7 @@
  * @module auth/beforeCreate
  */
 
-import { beforeUserCreated } from "firebase-functions/v2/identity";
+import {beforeUserCreated} from "firebase-functions/v2/identity";
 
 import {
   DEFAULT_USER_ROLE,

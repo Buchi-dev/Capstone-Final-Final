@@ -19,15 +19,15 @@
  */
 
 import * as admin from "firebase-admin";
-import type { CloudEvent } from "firebase-functions/v2";
-import { logger } from "firebase-functions/v2";
-import type { MessagePublishedData } from "firebase-functions/v2/pubsub";
-import { onMessagePublished } from "firebase-functions/v2/pubsub";
+import type {CloudEvent} from "firebase-functions/v2";
+import {logger} from "firebase-functions/v2";
+import type {MessagePublishedData} from "firebase-functions/v2/pubsub";
+import {onMessagePublished} from "firebase-functions/v2/pubsub";
 
-import { db, rtdb } from "../config/firebase";
-import { COLLECTIONS } from "../constants/database.constants";
-import { PUBSUB_TOPICS } from "../constants/pubsub.constants";
-import { isValidDeviceId } from "../utils/validators";
+import {db, rtdb} from "../config/firebase";
+import {COLLECTIONS} from "../constants/database.constants";
+import {PUBSUB_TOPICS} from "../constants/pubsub.constants";
+import {isValidDeviceId} from "../utils/validators";
 
 /**
  * Device registration information from MQTT

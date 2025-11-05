@@ -1,56 +1,120 @@
 const mqtt = require('mqtt');
 const {PubSub} = require('@google-cloud/pubsub');
+const {SecretManagerServiceClient} = require('@google-cloud/secret-manager');
 const express = require('express');
 
-// Initialize Pub/Sub client
+// Initialize clients
 const pubsub = new PubSub();
+const secretManager = new SecretManagerServiceClient();
 
-// MQTT Configuration - MUST be provided via environment variables
-// Store credentials in Google Secret Manager and inject via Cloud Run
-const MQTT_CONFIG = {
-  broker: process.env.MQTT_BROKER,
-  username: process.env.MQTT_USERNAME,
-  password: process.env.MQTT_PASSWORD,
-  clientId: `bridge_${Math.random().toString(16).slice(3)}`,
-};
+// Get GCP Project ID from environment or metadata
+const PROJECT_ID = process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
 
-// Validate required environment variables at startup
-function validateEnvironment() {
-  const required = ['MQTT_BROKER', 'MQTT_USERNAME', 'MQTT_PASSWORD'];
-  const missing = required.filter(key => !process.env[key]);
-  
-  if (missing.length > 0) {
-    console.error('❌ Missing required environment variables:', missing.join(', '));
-    console.error('Please configure these variables in Cloud Run service settings.');
-    console.error('See .env.example for required configuration.');
-    process.exit(1);
+// Configuration will be loaded from Secret Manager
+let MQTT_CONFIG = null;
+let PUBSUB_TOPIC_SENSOR_READINGS = null;
+let PUBSUB_TOPIC_DEVICE_REGISTRATION = null;
+let PUBSUB_SUBSCRIPTION_COMMANDS = null;
+
+/**
+ * Access a secret from Google Secret Manager
+ * @param {string} secretName - Name of the secret
+ * @returns {Promise<string>} - Secret value
+ */
+async function accessSecret(secretName) {
+  try {
+    const name = `projects/${PROJECT_ID}/secrets/${secretName}/versions/latest`;
+    console.log(`📥 Fetching secret: ${secretName}`);
+    
+    const [version] = await secretManager.accessSecretVersion({name});
+    const payload = version.payload.data.toString('utf8');
+    
+    console.log(`✓ Successfully retrieved: ${secretName}`);
+    return payload;
+  } catch (error) {
+    console.error(`❌ Error accessing secret ${secretName}:`, error.message);
+    throw error;
   }
-  
-  console.log('✓ Environment variables validated');
 }
 
-// Validate environment on startup
-validateEnvironment();
+/**
+ * Load all required secrets from Google Secret Manager
+ */
+async function loadSecrets() {
+  console.log('\n=== Loading Secrets from Google Secret Manager ===');
+  console.log(`Project ID: ${PROJECT_ID}\n`);
+  
+  try {
+    // Load MQTT credentials
+    const [mqttBroker, mqttUsername, mqttPassword, pubsubTopicSensorReadings, pubsubTopicDeviceRegistration, pubsubSubscriptionCommands] = await Promise.all([
+      accessSecret('mqtt-broker-url'),
+      accessSecret('mqtt-username'),
+      accessSecret('mqtt-password'),
+      accessSecret('pubsub-topic'),
+      accessSecret('pubsub-topic-device-registration'),
+      accessSecret('pubsub-subscription-commands'),
+    ]);
+    
+    // Set MQTT configuration
+    MQTT_CONFIG = {
+      broker: mqttBroker,
+      username: mqttUsername,
+      password: mqttPassword,
+      clientId: `bridge_${Math.random().toString(16).slice(3)}`,
+    };
+    
+    // Set Pub/Sub configuration
+    PUBSUB_TOPIC_SENSOR_READINGS = pubsubTopicSensorReadings;
+    PUBSUB_TOPIC_DEVICE_REGISTRATION = pubsubTopicDeviceRegistration;
+    PUBSUB_SUBSCRIPTION_COMMANDS = pubsubSubscriptionCommands;
+    
+    console.log('\n✓ All secrets loaded successfully');
+    console.log(`  MQTT Broker: ${mqttBroker}`);
+    console.log(`  MQTT Username: ${mqttUsername}`);
+    console.log(`  Sensor Readings Topic: ${PUBSUB_TOPIC_SENSOR_READINGS}`);
+    console.log(`  Device Registration Topic: ${PUBSUB_TOPIC_DEVICE_REGISTRATION}`);
+    console.log(`  Commands Subscription: ${PUBSUB_SUBSCRIPTION_COMMANDS}\n`);
+    
+    return true;
+  } catch (error) {
+    console.error('\n❌ Failed to load secrets from Secret Manager');
+    console.error('Make sure:');
+    console.error('  1. Secrets exist in Google Secret Manager');
+    console.error('  2. Service account has secretAccessor role');
+    console.error('  3. PROJECT_ID is correctly set\n');
+    throw error;
+  }
+}
 
-// Topic mappings: MQTT → Pub/Sub
-const TOPIC_MAPPINGS = {
-  'device/sensordata/+': 'iot-sensor-readings',
-  'device/registration/+': 'iot-device-registration',
-  // 'device/status/+' removed - redundant with processSensorData
-};
-
-// Reverse mappings: Pub/Sub → MQTT (for commands)
-const COMMAND_SUBSCRIPTION = 'device-commands-sub';
+// Topic mappings: MQTT → Pub/Sub (initialized after secrets are loaded)
+let TOPIC_MAPPINGS = {};
+let COMMAND_SUBSCRIPTION = null;
 
 // Phase 3: Message buffering configuration
 const BUFFER_INTERVAL_MS = 60000; // Buffer messages for 60 seconds
-const messageBuffer = {
-  'iot-sensor-readings': [],
-  'iot-device-registration': [],
-};
+const messageBuffer = {};
 
 let mqttClient = null;
 let bufferFlushTimer = null;
+
+/**
+ * Initialize topic mappings after secrets are loaded
+ */
+function initializeTopicMappings() {
+  TOPIC_MAPPINGS = {
+    'device/sensordata/+': PUBSUB_TOPIC_SENSOR_READINGS,
+    'device/registration/+': PUBSUB_TOPIC_DEVICE_REGISTRATION,
+    // 'device/status/+' removed - redundant with processSensorData
+  };
+  
+  COMMAND_SUBSCRIPTION = PUBSUB_SUBSCRIPTION_COMMANDS;
+  
+  // Initialize message buffers
+  messageBuffer[PUBSUB_TOPIC_SENSOR_READINGS] = [];
+  messageBuffer[PUBSUB_TOPIC_DEVICE_REGISTRATION] = [];
+  
+  console.log('✓ Topic mappings initialized');
+}
 
 // Phase 3: Flush buffered messages to Pub/Sub
 async function flushMessageBuffer() {
@@ -275,9 +339,34 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 
+// Main initialization function
+async function startBridge() {
+  try {
+    console.log('\n🚀 MQTT-Pub/Sub Bridge Starting...\n');
+    
+    // Step 1: Load secrets from Google Secret Manager
+    await loadSecrets();
+    
+    // Step 2: Initialize topic mappings
+    initializeTopicMappings();
+    
+    // Step 3: Start HTTP server for health checks
+    app.listen(PORT, () => {
+      console.log(`✓ HTTP server running on port ${PORT}`);
+    });
+    
+    // Step 4: Connect to MQTT broker
+    connectMQTT();
+    
+    // Step 5: Start listening for commands from Pub/Sub
+    startCommandListener();
+    
+    console.log('\n✅ MQTT Bridge fully initialized and running!\n');
+  } catch (error) {
+    console.error('\n❌ Failed to start MQTT Bridge:', error);
+    process.exit(1);
+  }
+}
+
 // Start the bridge
-app.listen(PORT, () => {
-  console.log(`MQTT Bridge running on port ${PORT}`);
-  connectMQTT();
-  startCommandListener();
-});
+startBridge();

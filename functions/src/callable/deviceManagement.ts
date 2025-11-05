@@ -1,8 +1,8 @@
 import * as admin from "firebase-admin";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import type { CallableRequest } from "firebase-functions/v2/https";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
+import type {CallableRequest} from "firebase-functions/v2/https";
 
-import { db, rtdb, pubsub } from "../config/firebase";
+import {db, rtdb, pubsub} from "../config/firebase";
 import {
   DEVICE_MANAGEMENT_ERRORS,
   DEVICE_MANAGEMENT_MESSAGES,
@@ -17,8 +17,8 @@ import type {
   DeviceManagementRequest,
   DeviceManagementResponse,
 } from "../types";
-import { createRoutedFunction } from "../utils";
-import type { ActionHandler } from "../utils/switchCaseRouting";
+import {createRoutedFunction} from "../utils";
+import type {ActionHandler} from "../utils/switchCaseRouting";
 
 // ============================================================================
 // WRITE OPERATIONS - Device Management
@@ -36,19 +36,20 @@ const handleDiscoverDevices: ActionHandler<
 
   await pubsub.topic(PUBSUB_TOPICS.DEVICE_COMMANDS).publishMessage({
     json: discoveryMessage,
-    attributes: { mqtt_topic: MQTT_TOPICS.DISCOVERY_REQUEST },
+    attributes: {mqtt_topic: MQTT_TOPICS.DISCOVERY_REQUEST},
   });
 
-  return { success: true, message: DEVICE_MANAGEMENT_MESSAGES.DISCOVERY_SENT };
+  return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.DISCOVERY_SENT};
 };
 
 const handleSendCommand: ActionHandler<DeviceManagementRequest, DeviceManagementResponse> = async (
   req: CallableRequest<DeviceManagementRequest>
 ) => {
-  const { deviceId, command, params } = req.data;
+  const {deviceId, command, params} = req.data;
 
-  if (!deviceId)
+  if (!deviceId) {
     throw new HttpsError("invalid-argument", DEVICE_MANAGEMENT_ERRORS.MISSING_DEVICE_ID);
+  }
 
   await pubsub.topic(PUBSUB_TOPICS.DEVICE_COMMANDS).publishMessage({
     json: {
@@ -63,22 +64,24 @@ const handleSendCommand: ActionHandler<DeviceManagementRequest, DeviceManagement
     },
   });
 
-  return { success: true, message: DEVICE_MANAGEMENT_MESSAGES.COMMAND_SENT };
+  return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.COMMAND_SENT};
 };
 
 const handleAddDevice: ActionHandler<DeviceManagementRequest, DeviceManagementResponse> = async (
   req: CallableRequest<DeviceManagementRequest>
 ) => {
-  const { deviceId, deviceData } = req.data;
+  const {deviceId, deviceData} = req.data;
 
-  if (!deviceId)
+  if (!deviceId) {
     throw new HttpsError("invalid-argument", DEVICE_MANAGEMENT_ERRORS.MISSING_DEVICE_ID);
+  }
 
   const deviceRef = db.collection("devices").doc(deviceId);
   const doc = await deviceRef.get();
 
-  if (doc.exists)
+  if (doc.exists) {
     throw new HttpsError("already-exists", DEVICE_MANAGEMENT_ERRORS.DEVICE_ALREADY_EXISTS);
+  }
 
   const newDevice: Device = {
     deviceId,
@@ -101,16 +104,17 @@ const handleAddDevice: ActionHandler<DeviceManagementRequest, DeviceManagementRe
     status: "waiting_for_data",
   });
 
-  return { success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_ADDED, device: newDevice };
+  return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_ADDED, device: newDevice};
 };
 
 const handleUpdateDevice: ActionHandler<DeviceManagementRequest, DeviceManagementResponse> = async (
   req: CallableRequest<DeviceManagementRequest>
 ) => {
-  const { deviceId, deviceData } = req.data;
+  const {deviceId, deviceData} = req.data;
 
-  if (!deviceId)
+  if (!deviceId) {
     throw new HttpsError("invalid-argument", DEVICE_MANAGEMENT_ERRORS.MISSING_DEVICE_ID);
+  }
 
   const deviceRef = db.collection("devices").doc(deviceId);
   const doc = await deviceRef.get();
@@ -123,16 +127,17 @@ const handleUpdateDevice: ActionHandler<DeviceManagementRequest, DeviceManagemen
     lastSeen: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  return { success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_UPDATED };
+  return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_UPDATED};
 };
 
 const handleDeleteDevice: ActionHandler<DeviceManagementRequest, DeviceManagementResponse> = async (
   req: CallableRequest<DeviceManagementRequest>
 ) => {
-  const { deviceId } = req.data;
+  const {deviceId} = req.data;
 
-  if (!deviceId)
+  if (!deviceId) {
     throw new HttpsError("invalid-argument", DEVICE_MANAGEMENT_ERRORS.MISSING_DEVICE_ID);
+  }
 
   const deviceRef = db.collection("devices").doc(deviceId);
   const doc = await deviceRef.get();
@@ -141,7 +146,7 @@ const handleDeleteDevice: ActionHandler<DeviceManagementRequest, DeviceManagemen
 
   await Promise.all([deviceRef.delete(), rtdb.ref(`sensorReadings/${deviceId}`).remove()]);
 
-  return { success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_DELETED };
+  return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_DELETED};
 };
 
 // ============================================================================

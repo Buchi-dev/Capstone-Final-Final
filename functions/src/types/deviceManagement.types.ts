@@ -5,7 +5,7 @@
  * @module types/deviceManagement.types
  */
 
-import type { SensorReading } from "./reportGeneration.types";
+import type {SensorReading} from "./reportGeneration.types";
 
 // ===========================
 // ENUMS & LITERALS

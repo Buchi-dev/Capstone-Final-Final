@@ -27,4 +27,4 @@ export * from "./deviceManagement.types";
 export * from "./digest.types";
 
 // Export sensor data types (selective to avoid conflicts)
-export type { BatchSensorData } from "./sensorData.types";
+export type {BatchSensorData} from "./sensorData.types";

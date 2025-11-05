@@ -11,11 +11,11 @@
  * - deletePreferences: Delete notification preferences
  */
 
-import { FieldValue } from "firebase-admin/firestore";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import type { CallableRequest } from "firebase-functions/v2/https";
+import {FieldValue} from "firebase-admin/firestore";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
+import type {CallableRequest} from "firebase-functions/v2/https";
 
-import { db } from "../config/firebase";
+import {db} from "../config/firebase";
 import {
   NOTIFICATION_PREFERENCES_ERRORS,
   NOTIFICATION_PREFERENCES_MESSAGES,
@@ -30,7 +30,7 @@ import type {
   ListPreferencesResponse,
   NotificationPreferences,
 } from "../types";
-import { createRoutedFunction } from "../utils";
+import {createRoutedFunction} from "../utils";
 
 /**
  * Request type for notification preferences operations
@@ -64,7 +64,7 @@ type NotificationPreferencesResponse = PreferencesResponse | ListPreferencesResp
 async function handleGetUserPreferences(
   request: CallableRequest<NotificationPreferencesRequest>
 ): Promise<NotificationPreferencesResponse> {
-  const { userId } = request.data as GetUserPreferencesRequest;
+  const {userId} = request.data as GetUserPreferencesRequest;
   const requestingUserId = request.auth?.uid;
   const isAdmin = request.auth?.token?.role === "Admin";
 
@@ -257,7 +257,7 @@ async function handleSetupPreferences(
       preferencesData.createdAt = FieldValue.serverTimestamp();
     }
 
-    await userRef.set({ notificationPreferences: preferencesData }, { merge: true });
+    await userRef.set({notificationPreferences: preferencesData}, {merge: true});
 
     const savedDoc = await userRef.get();
     const savedPreferences = savedDoc.get("notificationPreferences") as
@@ -266,15 +266,15 @@ async function handleSetupPreferences(
 
     return {
       success: true,
-      message: existingPreferences
-        ? NOTIFICATION_PREFERENCES_MESSAGES.UPDATE_SUCCESS
-        : NOTIFICATION_PREFERENCES_MESSAGES.CREATE_SUCCESS,
-      data: savedPreferences
-        ? {
-            ...savedPreferences,
-            userId: savedPreferences.userId ?? userId,
-          }
-        : null,
+      message: existingPreferences ?
+        NOTIFICATION_PREFERENCES_MESSAGES.UPDATE_SUCCESS :
+        NOTIFICATION_PREFERENCES_MESSAGES.CREATE_SUCCESS,
+      data: savedPreferences ?
+        {
+          ...savedPreferences,
+          userId: savedPreferences.userId ?? userId,
+        } :
+        null,
     };
   } catch (error) {
     console.error("Error setting up preferences:", error);
@@ -300,7 +300,7 @@ async function handleSetupPreferences(
 async function handleDeletePreferences(
   request: CallableRequest<NotificationPreferencesRequest>
 ): Promise<NotificationPreferencesResponse> {
-  const { userId } = request.data as DeletePreferencesRequest;
+  const {userId} = request.data as DeletePreferencesRequest;
   const requestingUserId = request.auth?.uid;
   const isAdmin = request.auth?.token?.role === "Admin";
 
@@ -325,7 +325,7 @@ async function handleDeletePreferences(
       throw new HttpsError("not-found", NOTIFICATION_PREFERENCES_ERRORS.USER_NOT_FOUND);
     }
 
-    await userRef.update({ notificationPreferences: FieldValue.delete() });
+    await userRef.update({notificationPreferences: FieldValue.delete()});
 
     return {
       success: true,

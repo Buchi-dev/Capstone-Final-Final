@@ -11,7 +11,6 @@ module.exports = {
     "plugin:import/typescript",
     "google",
     "plugin:@typescript-eslint/recommended",
-    "plugin:prettier/recommended", // Enables eslint-plugin-prettier and displays prettier errors as ESLint errors
   ],
   parser: "@typescript-eslint/parser",
   parserOptions: {
@@ -22,22 +21,17 @@ module.exports = {
     "/lib/**/*",
     ".eslintrc.js",
     "*.config.js",
-    "src_OLD_BACKUP_*/**/*", // Exclude backup directories
   ],
   plugins: [
     "@typescript-eslint",
     "import",
     "unused-imports",
-    "prettier",
   ],
   rules: {
-    // Prettier integration
-    "prettier/prettier": "error",
-    
     // Code quality
     "quotes": ["error", "double"],
-    "indent": "off", // Let Prettier handle indentation
-    "max-len": "off", // Let Prettier handle line length
+    "indent": ["error", 2],
+    "max-len": "off",
     "linebreak-style": 0,
     
     // Import rules
@@ -82,8 +76,5 @@ module.exports = {
         "allowTypedFunctionExpressions": true,
       },
     ],
-    
-    // Disable conflicting rules
-    "@typescript-eslint/indent": "off", // Let Prettier handle this
   },
 };

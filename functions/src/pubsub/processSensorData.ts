@@ -23,13 +23,13 @@
  */
 
 import * as admin from "firebase-admin";
-import type { CloudEvent } from "firebase-functions/v2";
-import { logger } from "firebase-functions/v2";
-import type { MessagePublishedData } from "firebase-functions/v2/pubsub";
-import { onMessagePublished } from "firebase-functions/v2/pubsub";
+import type {CloudEvent} from "firebase-functions/v2";
+import {logger} from "firebase-functions/v2";
+import type {MessagePublishedData} from "firebase-functions/v2/pubsub";
+import {onMessagePublished} from "firebase-functions/v2/pubsub";
 
-import { db, rtdb } from "../config/firebase";
-import { COLLECTIONS } from "../constants/database.constants";
+import {db, rtdb} from "../config/firebase";
+import {COLLECTIONS} from "../constants/database.constants";
 import {
   ALERT_COOLDOWN_MS,
   HISTORY_STORAGE_INTERVAL,
@@ -38,12 +38,12 @@ import {
   SENSOR_DATA_PUBSUB_CONFIG,
   RTDB_PATHS,
 } from "../constants/sensorData.constants";
-import type { WaterParameter } from "../types/alertManagement.types";
-import type { SensorData, SensorReading, BatchSensorData } from "../types/sensorData.types";
-import { createAlert, getNotificationRecipients } from "../utils/alertHelpers";
-import { sendEmailNotification } from "../utils/emailTemplates";
-import { getThresholdConfig, checkThreshold, analyzeTrend } from "../utils/thresholdHelpers";
-import { isValidDeviceId, isValidSensorReading } from "../utils/validators";
+import type {WaterParameter} from "../types/alertManagement.types";
+import type {SensorData, SensorReading, BatchSensorData} from "../types/sensorData.types";
+import {createAlert, getNotificationRecipients} from "../utils/alertHelpers";
+import {sendEmailNotification} from "../utils/emailTemplates";
+import {getThresholdConfig, checkThreshold, analyzeTrend} from "../utils/thresholdHelpers";
+import {isValidDeviceId, isValidSensorReading} from "../utils/validators";
 
 /**
  * OPTIMIZATION: In-memory cache for alert debouncing
@@ -117,9 +117,9 @@ export const processSensorData = onMessagePublished(
       // OPTIMIZATION: Support batch processing (array of readings)
       // Check if message contains batch of readings or single reading
       const isBatch = Array.isArray((messageData as BatchSensorData).readings);
-      const readingsArray: SensorData[] = isBatch
-        ? (messageData as BatchSensorData).readings
-        : [messageData as SensorData];
+      const readingsArray: SensorData[] = isBatch ?
+        (messageData as BatchSensorData).readings :
+        [messageData as SensorData];
 
       logger.info(`Processing ${readingsArray.length} reading(s) for device: ${deviceId}`);
 
@@ -279,12 +279,12 @@ async function processSensorReadingForAlerts(reading: SensorReading): Promise<vo
         value,
         thresholdCheck.threshold,
         undefined,
-        { location: reading.deviceId }
+        {location: reading.deviceId}
       );
 
       // Fetch alert data for notifications
       const alertDoc = await db.collection(COLLECTIONS.ALERTS).doc(alertId).get();
-      const alertData = { alertId, ...alertDoc.data() };
+      const alertData = {alertId, ...alertDoc.data()};
 
       await processNotifications(alertId, alertData);
 
@@ -303,11 +303,11 @@ async function processSensorReadingForAlerts(reading: SensorReading): Promise<vo
 
       if (!lastTrendAlert || now - lastTrendAlert >= ALERT_COOLDOWN_MS) {
         const severity =
-          trendAnalysis.changeRate > 30
-            ? "Critical"
-            : trendAnalysis.changeRate > 20
-              ? "Warning"
-              : "Advisory";
+          trendAnalysis.changeRate > 30 ?
+            "Critical" :
+            trendAnalysis.changeRate > 20 ?
+              "Warning" :
+              "Advisory";
 
         const alertId = await createAlert(
           reading.deviceId,
@@ -325,7 +325,7 @@ async function processSensorReadingForAlerts(reading: SensorReading): Promise<vo
 
         // Fetch alert data for notifications
         const alertDoc = await db.collection(COLLECTIONS.ALERTS).doc(alertId).get();
-        const alertData = { alertId, ...alertDoc.data() };
+        const alertData = {alertId, ...alertDoc.data()};
 
         await processNotifications(alertId, alertData);
 

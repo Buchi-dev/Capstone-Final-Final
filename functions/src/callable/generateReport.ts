@@ -12,11 +12,11 @@
  */
 
 import type * as FirebaseFirestore from "firebase-admin/firestore";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import type { CallableRequest } from "firebase-functions/v2/https";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
+import type {CallableRequest} from "firebase-functions/v2/https";
 
-import { db, rtdb } from "../config/firebase";
-import { REPORT_GENERATION_ERRORS, REPORT_GENERATION_MESSAGES, COLLECTIONS } from "../constants";
+import {db, rtdb} from "../config/firebase";
+import {REPORT_GENERATION_ERRORS, REPORT_GENERATION_MESSAGES, COLLECTIONS} from "../constants";
 import type {
   ReportGenerationRequest,
   ReportResponse,
@@ -29,7 +29,7 @@ import type {
   DeviceStatusSummary,
   DeviceStatusInfo,
 } from "../types";
-import { createRoutedFunction } from "../utils";
+import {createRoutedFunction} from "../utils";
 
 /**
  * Generate Water Quality Report Handler
@@ -44,7 +44,7 @@ async function handleGenerateWaterQualityReport(
   request: CallableRequest<ReportGenerationRequest>
 ): Promise<ReportResponse> {
   try {
-    const { deviceIds, startDate, endDate } = request.data;
+    const {deviceIds, startDate, endDate} = request.data;
 
     console.log("📊 Generating Water Quality Report");
     console.log("Device IDs:", deviceIds);
@@ -159,11 +159,11 @@ async function handleGenerateWaterQualityReport(
       });
 
       // Extract location from device metadata
-      const location = deviceData.metadata?.location
-        ? `${deviceData.metadata.location.building || ""}, ${deviceData.metadata.location.floor || ""}`
-            .trim()
-            .replace(/^,\s*|,\s*$/g, "") || "Unknown Location"
-        : "Unknown Location";
+      const location = deviceData.metadata?.location ?
+        `${deviceData.metadata.location.building || ""}, ${deviceData.metadata.location.floor || ""}`
+          .trim()
+          .replace(/^,\s*|,\s*$/g, "") || "Unknown Location" :
+        "Unknown Location";
 
       devices.push({
         deviceId,
@@ -188,12 +188,12 @@ async function handleGenerateWaterQualityReport(
     const reportData: WaterQualityReportData = {
       reportType: "water_quality",
       period:
-        startDate && endDate
-          ? {
-              start: new Date(startDate).toISOString(),
-              end: new Date(endDate).toISOString(),
-            }
-          : undefined,
+        startDate && endDate ?
+          {
+            start: new Date(startDate).toISOString(),
+            end: new Date(endDate).toISOString(),
+          } :
+          undefined,
       devices,
       summary,
     };
@@ -227,7 +227,7 @@ async function handleGenerateDeviceStatusReport(
 ): Promise<ReportResponse> {
   console.log("handleGenerateDeviceStatusReport called");
   try {
-    const { deviceIds } = request.data;
+    const {deviceIds} = request.data;
     console.log("Device IDs:", deviceIds);
 
     // Query devices

@@ -8,9 +8,9 @@
  * needs to be properly implemented with email service configuration.
  */
 
-import { logger } from "firebase-functions/v2";
+import {logger} from "firebase-functions/v2";
 
-import type { NotificationPreferences } from "../types/notificationPreferences.types";
+import type {NotificationPreferences} from "../types/notificationPreferences.types";
 
 /**
  * Send email notification for an alert

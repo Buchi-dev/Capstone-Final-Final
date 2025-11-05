@@ -28,18 +28,18 @@
 import * as crypto from "crypto";
 
 import * as admin from "firebase-admin";
-import { logger } from "firebase-functions/v2";
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import {logger} from "firebase-functions/v2";
+import {onDocumentWritten} from "firebase-functions/v2/firestore";
 
-import { db } from "../config/firebase";
-import { COLLECTIONS } from "../constants/database.constants";
-import { DIGEST_COLLECTION, DIGEST_MAX_ITEMS } from "../constants/digest.constants";
-import type { WaterQualityAlert } from "../types/alertManagement.types";
-import type { AlertDigest, DigestAlertItem } from "../types/digest.types";
-import { categorizeAlert } from "../types/digest.types";
-import type { NotificationPreferences } from "../types/notificationPreferences.types";
-import { getNotificationRecipients } from "../utils/alertHelpers";
-import { getThresholdConfig } from "../utils/thresholdHelpers";
+import {db} from "../config/firebase";
+import {COLLECTIONS} from "../constants/database.constants";
+import {DIGEST_COLLECTION, DIGEST_MAX_ITEMS} from "../constants/digest.constants";
+import type {WaterQualityAlert} from "../types/alertManagement.types";
+import type {AlertDigest, DigestAlertItem} from "../types/digest.types";
+import {categorizeAlert} from "../types/digest.types";
+import type {NotificationPreferences} from "../types/notificationPreferences.types";
+import {getNotificationRecipients} from "../utils/alertHelpers";
+import {getThresholdConfig} from "../utils/thresholdHelpers";
 
 /**
  * Aggregate alerts into daily digests
@@ -245,11 +245,11 @@ function generateAlertSummary(alert: WaterQualityAlert): string {
 
   // Format location if available
   const location =
-    alert.deviceBuilding && alert.deviceFloor
-      ? ` at ${alert.deviceBuilding}, ${alert.deviceFloor}`
-      : alert.deviceBuilding
-        ? ` at ${alert.deviceBuilding}`
-        : "";
+    alert.deviceBuilding && alert.deviceFloor ?
+      ` at ${alert.deviceBuilding}, ${alert.deviceFloor}` :
+      alert.deviceBuilding ?
+        ` at ${alert.deviceBuilding}` :
+        "";
 
   return `${alert.severity}: ${paramName} ${alert.currentValue.toFixed(2)}${unit}${location}`;
 }

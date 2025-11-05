@@ -24,4 +24,4 @@ export * from "./validators";
 export * from "./thresholdHelpers";
 
 // Export alert creation and management helpers
-export { generateAlertContent, createAlert, getNotificationRecipients } from "./alertHelpers";
+export {generateAlertContent, createAlert, getNotificationRecipients} from "./alertHelpers";

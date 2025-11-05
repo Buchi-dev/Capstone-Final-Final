@@ -6,15 +6,15 @@
  */
 
 import * as admin from "firebase-admin";
-import { HttpsError } from "firebase-functions/v2/https";
+import {HttpsError} from "firebase-functions/v2/https";
 
-import type { UserStatus, UserRole } from "../constants/userManagement.constants";
+import type {UserStatus, UserRole} from "../constants/userManagement.constants";
 import {
   VALID_USER_STATUSES,
   VALID_USER_ROLES,
   USER_MANAGEMENT_ERRORS,
 } from "../constants/userManagement.constants";
-import type { ListUserData } from "../types/userManagement.types";
+import type {ListUserData} from "../types/userManagement.types";
 
 // ===========================
 // VALIDATION FUNCTIONS

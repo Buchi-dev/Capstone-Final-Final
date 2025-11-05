@@ -13,14 +13,14 @@
  * - Comprehensive logging for audit trail
  */
 
-import { logger } from "firebase-functions/v2";
-import { onSchedule } from "firebase-functions/v2/scheduler";
+import {logger} from "firebase-functions/v2";
+import {onSchedule} from "firebase-functions/v2/scheduler";
 
-import { sendAnalyticsEmail } from "../config/email";
-import type { AnalyticsEmailData } from "../config/email";
-import { db } from "../config/firebase";
-import { COLLECTIONS, SCHEDULER_CONFIG, SCHEDULER_MESSAGES, ANALYTICS_PERIODS } from "../constants";
-import type { NotificationPreferences } from "../types";
+import {sendAnalyticsEmail} from "../config/email";
+import type {AnalyticsEmailData} from "../config/email";
+import {db} from "../config/firebase";
+import {COLLECTIONS, SCHEDULER_CONFIG, SCHEDULER_MESSAGES, ANALYTICS_PERIODS} from "../constants";
+import type {NotificationPreferences} from "../types";
 import {
   generateDeviceStatusReport,
   getAlertCounts,
@@ -149,9 +149,9 @@ export const sendWeeklyAnalytics = onSchedule(
             parameter: alert.parameter,
             value: alert.currentValue,
             createdAt:
-              alert.createdAt instanceof Date
-                ? alert.createdAt
-                : new Date(alert.createdAt.toMillis()),
+              alert.createdAt instanceof Date ?
+                alert.createdAt :
+                new Date(alert.createdAt.toMillis()),
           })),
         };
 

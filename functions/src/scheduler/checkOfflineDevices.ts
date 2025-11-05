@@ -1,10 +1,10 @@
 import * as admin from "firebase-admin";
-import { logger } from "firebase-functions/v2";
-import { onSchedule } from "firebase-functions/v2/scheduler";
+import {logger} from "firebase-functions/v2";
+import {onSchedule} from "firebase-functions/v2/scheduler";
 
-import { db } from "../config/firebase";
-import { COLLECTIONS } from "../constants/database.constants";
-import { SCHEDULER_CONFIG } from "../constants/scheduler.constants";
+import {db} from "../config/firebase";
+import {COLLECTIONS} from "../constants/database.constants";
+import {SCHEDULER_CONFIG} from "../constants/scheduler.constants";
 
 const DEFAULT_CHECK_INTERVAL_MINUTES = 5;
 const MANILA_TIMEZONE = SCHEDULER_CONFIG.TIMEZONE;
@@ -117,7 +117,7 @@ export const checkOfflineDevices = onSchedule(
         timestamp: new Date().toISOString(),
       });
     } catch (error) {
-      logger.error("Error during offline device check", { error });
+      logger.error("Error during offline device check", {error});
     }
   }
 );

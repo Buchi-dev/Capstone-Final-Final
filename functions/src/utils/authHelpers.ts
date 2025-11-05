@@ -6,9 +6,9 @@
  */
 
 import * as admin from "firebase-admin";
-import { HttpsError } from "firebase-functions/v2/identity";
+import {HttpsError} from "firebase-functions/v2/identity";
 
-import { db, COLLECTIONS } from "../config/firebase";
+import {db, COLLECTIONS} from "../config/firebase";
 import {
   ALLOWED_EMAIL_DOMAIN,
   DEFAULT_USER_ROLE,
@@ -69,7 +69,7 @@ export function parseDisplayName(displayName: string): ParsedDisplayName {
   const firstname = nameParts[0] || "";
   const lastname = nameParts.slice(1).join(" ") || "";
 
-  return { firstname, lastname };
+  return {firstname, lastname};
 }
 
 /**
@@ -79,7 +79,7 @@ export function parseDisplayName(displayName: string): ParsedDisplayName {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any, require-jsdoc
 export function parseUserInfo(authUser: any): ParsedUserInfo {
-  const { firstname, lastname } = parseDisplayName(authUser.displayName || "");
+  const {firstname, lastname} = parseDisplayName(authUser.displayName || "");
 
   return {
     uid: authUser.uid,

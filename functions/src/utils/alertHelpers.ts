@@ -9,10 +9,10 @@
  */
 
 import * as admin from "firebase-admin";
-import { logger } from "firebase-functions/v2";
+import {logger} from "firebase-functions/v2";
 
-import { db } from "../config/firebase";
-import { COLLECTIONS } from "../constants/database.constants";
+import {db} from "../config/firebase";
+import {COLLECTIONS} from "../constants/database.constants";
 import type {
   WaterParameter,
   AlertSeverity,
@@ -20,9 +20,9 @@ import type {
   TrendDirection,
   WaterQualityAlert,
 } from "../types/alertManagement.types";
-import type { NotificationPreferences } from "../types/notificationPreferences.types";
+import type {NotificationPreferences} from "../types/notificationPreferences.types";
 
-import { getParameterName, getParameterUnit } from "./thresholdHelpers";
+import {getParameterName, getParameterUnit} from "./thresholdHelpers";
 
 /**
  * Device location information
@@ -78,19 +78,19 @@ export function generateAlertContent(
 
   // Format location prefix for message
   const locationPrefix =
-    location?.building && location?.floor
-      ? `[${location.building}, ${location.floor}] `
-      : location?.building
-        ? `[${location.building}] `
-        : "";
+    location?.building && location?.floor ?
+      `[${location.building}, ${location.floor}] ` :
+      location?.building ?
+        `[${location.building}] ` :
+        "";
 
   // Format location context for recommended action
   const locContext =
-    location?.building && location?.floor
-      ? ` at ${location.building}, ${location.floor}`
-      : location?.building
-        ? ` at ${location.building}`
-        : "";
+    location?.building && location?.floor ?
+      ` at ${location.building}, ${location.floor}` :
+      location?.building ?
+        ` at ${location.building}` :
+        "";
 
   let message = "";
   let recommendedAction = "";
@@ -102,25 +102,25 @@ export function generateAlertContent(
 
     // Generate action based on severity
     switch (severity) {
-      case "Critical":
-        recommendedAction =
+    case "Critical":
+      recommendedAction =
           "Immediate action required" +
           locContext +
           ". " +
           "Investigate water source and treatment system. " +
           "Consider temporary shutdown if necessary.";
-        break;
-      case "Warning":
-        recommendedAction =
+      break;
+    case "Warning":
+      recommendedAction =
           "Monitor closely" +
           locContext +
           " and prepare " +
           "corrective actions. Schedule system inspection within 24 hours.";
-        break;
-      case "Advisory":
-        recommendedAction =
+      break;
+    case "Advisory":
+      recommendedAction =
           "Continue monitoring" + locContext + ". " + "Note for regular maintenance schedule.";
-        break;
+      break;
     }
   } else if (alertType === "trend") {
     const direction = trendDirection === "increasing" ? "increasing" : "decreasing";
@@ -135,7 +135,7 @@ export function generateAlertContent(
       "to water source or treatment.";
   }
 
-  return { message, recommendedAction };
+  return {message, recommendedAction};
 }
 
 /**
@@ -202,7 +202,7 @@ export async function createAlert(
   }
 
   // Generate alert message and recommended action
-  const { message, recommendedAction } = generateAlertContent(
+  const {message, recommendedAction} = generateAlertContent(
     parameter,
     currentValue,
     severity,
@@ -216,29 +216,29 @@ export async function createAlert(
   const alertData: Record<string, any> = {
     deviceId,
     deviceName,
-    ...(deviceLocation.building && { deviceBuilding: deviceLocation.building }),
-    ...(deviceLocation.floor && { deviceFloor: deviceLocation.floor }),
+    ...(deviceLocation.building && {deviceBuilding: deviceLocation.building}),
+    ...(deviceLocation.floor && {deviceFloor: deviceLocation.floor}),
     parameter,
     alertType,
     severity,
     status: "Active",
     currentValue,
-    ...(thresholdValue !== null && { thresholdValue }),
-    ...(trendDirection && { trendDirection }),
+    ...(thresholdValue !== null && {thresholdValue}),
+    ...(trendDirection && {trendDirection}),
     message,
     recommendedAction,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     notificationsSent: [],
-    ...(metadata && { metadata }),
+    ...(metadata && {metadata}),
   };
 
   // Create alert document
   const alertRef = await db.collection(COLLECTIONS.ALERTS).add(alertData);
 
   // Update with alert ID
-  await alertRef.update({ alertId: alertRef.id });
+  await alertRef.update({alertId: alertRef.id});
 
-  logger.info(`Alert created: ${alertRef.id}`, { deviceId, parameter, severity });
+  logger.info(`Alert created: ${alertRef.id}`, {deviceId, parameter, severity});
 
   return alertRef.id;
 }
