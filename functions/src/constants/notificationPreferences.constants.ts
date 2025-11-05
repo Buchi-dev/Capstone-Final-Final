@@ -29,6 +29,7 @@ export const NOTIFICATION_PREFERENCES_ERRORS = {
   LIST_FAILED: "Failed to list notification preferences",
   SETUP_FAILED: "Failed to setup notification preferences",
   DELETE_FAILED: "Failed to delete notification preferences",
+  USER_NOT_FOUND: "User not found",
 } as const;
 
 // ===========================

@@ -268,38 +268,70 @@ export const checkStaleAlerts = onSchedule(
       });
 
       // ===================================
-      // 3. FETCH NOTIFICATION PREFERENCES
+      // 3. FETCH USER DATA WITH PREFERENCES
       // ===================================
-      const preferencesSnapshot = await db.collection(COLLECTIONS.NOTIFICATION_PREFERENCES).get();
+      const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
 
-      if (preferencesSnapshot.empty) {
+      if (usersSnapshot.empty) {
+        logger.warn("No users found - no emails will be sent");
+        return;
+      }
+
+      const recipients = usersSnapshot.docs
+        .map((doc) => {
+          const userData = doc.data() as FirebaseFirestore.DocumentData & {
+            notificationPreferences?: NotificationPreferences;
+          };
+
+          const rawPreferences = userData.notificationPreferences;
+
+          if (!rawPreferences) {
+            return null;
+          }
+
+          const preferences: NotificationPreferences = {
+            ...rawPreferences,
+            userId: rawPreferences.userId ?? doc.id,
+            alertSeverities: rawPreferences.alertSeverities ?? [
+              "Critical",
+              "Warning",
+              "Advisory",
+            ],
+            parameters: rawPreferences.parameters ?? [],
+            devices: rawPreferences.devices ?? [],
+          };
+
+          return {
+            preferences,
+            profile: {
+              firstname: (userData.firstname as string) || "User",
+              lastname: (userData.lastname as string) || "",
+              role: (userData.role as string) || "Staff",
+            },
+          };
+        })
+        .filter(
+          (
+            recipient
+          ): recipient is {
+            preferences: NotificationPreferences;
+            profile: { firstname: string; lastname: string; role: string };
+          } => recipient !== null
+        );
+
+      if (recipients.length === 0) {
         logger.warn("No notification preferences found - no emails will be sent");
         return;
       }
 
       // ===================================
-      // 4. FETCH USER DATA
-      // ===================================
-      const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
-      const userMap = new Map<string, { firstname: string; lastname: string; role: string }>();
-
-      usersSnapshot.docs.forEach((doc) => {
-        const userData = doc.data();
-        userMap.set(doc.id, {
-          firstname: userData.firstname || "User",
-          lastname: userData.lastname || "",
-          role: userData.role || "Staff",
-        });
-      });
-
-      // ===================================
-      // 5. SEND NOTIFICATIONS
+      // 4. SEND NOTIFICATIONS
       // ===================================
       let emailsSent = 0;
       let emailsFailed = 0;
 
-      for (const prefDoc of preferencesSnapshot.docs) {
-        const preferences = prefDoc.data() as NotificationPreferences;
+      for (const recipient of recipients) {
+        const { preferences, profile } = recipient;
 
         // Check if user should receive notifications
         if (!shouldNotifyUser(preferences, staleAlerts)) {
@@ -316,8 +348,8 @@ export const checkStaleAlerts = onSchedule(
         }
 
         // Get user name
-        const user = userMap.get(preferences.userId);
-        const recipientName = user ? `${user.firstname} ${user.lastname}`.trim() : "Team Member";
+        const nameCandidate = `${profile.firstname} ${profile.lastname}`.trim();
+        const recipientName = nameCandidate.length > 0 ? nameCandidate : "Team Member";
 
         // Prepare email data
         const emailData: StaleAlertEmailData = {
@@ -341,8 +373,8 @@ export const checkStaleAlerts = onSchedule(
         }
       }
 
-      // ===================================
-      // 6. LOG SUMMARY
+  // ===================================
+  // 5. LOG SUMMARY
       // ===================================
       logger.info(
         "Stale alerts check completed: " +

@@ -1,15 +1,3 @@
-/**
- * Alert Management Callable Function
- * Single function with switch case to handle alert management operations
- *
- * @module callable/alertManagement
- *
- * Supported actions:
- * - acknowledgeAlert: Change alert status to Acknowledged
- * - resolveAlert: Change alert status to Resolved with optional notes
- * - listAlerts: Retrieve alerts with optional filtering
- */
-
 import { FieldValue } from "firebase-admin/firestore";
 import type * as FirebaseFirestore from "firebase-admin/firestore";
 import { logger } from "firebase-functions/v2";
@@ -31,32 +19,12 @@ import type { AlertDigest } from "../types/digest.types";
 import { createRoutedFunction } from "../utils";
 import { isValidAckToken } from "../utils/validators";
 
-/**
- * Request type for alert management operations
- */
 type AlertManagementRequest =
   | AcknowledgeAlertRequest
   | ResolveAlertRequest
   | ListAlertsRequest
   | AcknowledgeDigestRequest;
 
-/**
- * Acknowledge Alert Handler
- * Changes alert status from Active to Acknowledged
- *
- * Business Rules:
- * - Alert must exist
- * - Alert must be Active (cannot acknowledge if already Acknowledged or Resolved)
- * - Requires admin authentication
- * - Records who acknowledged and when
- *
- * @param {CallableRequest<AlertManagementRequest>} request - Callable request with alertId
- * @return {Promise<AlertResponse>} Success response with updated alert data
- *
- * @throws {HttpsError} not-found - Alert not found
- * @throws {HttpsError} failed-precondition - Alert already acknowledged or resolved
- * @throws {HttpsError} internal - Database operation failed
- */
 async function handleAcknowledgeAlert(
   request: CallableRequest<AlertManagementRequest>
 ): Promise<AlertResponse> {
@@ -72,8 +40,8 @@ async function handleAcknowledgeAlert(
   }
 
   try {
-    const alertRef = db.collection(COLLECTIONS.ALERTS).doc(alertId);
-    const alertDoc = await alertRef.get();
+  const alertRef = db.collection(COLLECTIONS.ALERTS).doc(alertId);
+  const alertDoc = await alertRef.get(); // READ: fetch alert document
 
     if (!alertDoc.exists) {
       throw new HttpsError("not-found", ALERT_MANAGEMENT_ERRORS.ALERT_NOT_FOUND);
@@ -95,7 +63,7 @@ async function handleAcknowledgeAlert(
       status: "Acknowledged",
       acknowledgedAt: FieldValue.serverTimestamp(),
       acknowledgedBy: userId,
-    });
+    }); // WRITE: update acknowledgement metadata
 
     return {
       success: true,
@@ -114,23 +82,6 @@ async function handleAcknowledgeAlert(
   }
 }
 
-/**
- * Resolve Alert Handler
- * Changes alert status to Resolved with optional resolution notes
- *
- * Business Rules:
- * - Alert must exist
- * - Alert must not already be Resolved
- * - Requires admin authentication
- * - Records who resolved, when, and optional notes
- *
- * @param {CallableRequest<AlertManagementRequest>} request - Callable request with alertId and optional notes
- * @return {Promise<AlertResponse>} Success response with updated alert data
- *
- * @throws {HttpsError} not-found - Alert not found
- * @throws {HttpsError} failed-precondition - Alert already resolved
- * @throws {HttpsError} internal - Database operation failed
- */
 async function handleResolveAlert(
   request: CallableRequest<AlertManagementRequest>
 ): Promise<AlertResponse> {
@@ -146,8 +97,8 @@ async function handleResolveAlert(
   }
 
   try {
-    const alertRef = db.collection(COLLECTIONS.ALERTS).doc(alertId);
-    const alertDoc = await alertRef.get();
+  const alertRef = db.collection(COLLECTIONS.ALERTS).doc(alertId);
+  const alertDoc = await alertRef.get(); // READ: fetch alert document
 
     if (!alertDoc.exists) {
       throw new HttpsError("not-found", ALERT_MANAGEMENT_ERRORS.ALERT_NOT_FOUND);
@@ -172,7 +123,7 @@ async function handleResolveAlert(
       updateData.resolutionNotes = notes;
     }
 
-    await alertRef.update(updateData);
+    await alertRef.update(updateData); // WRITE: resolve alert with optional notes
 
     return {
       success: true,
@@ -191,21 +142,6 @@ async function handleResolveAlert(
   }
 }
 
-/**
- * List Alerts Handler
- * Retrieves alerts with optional server-side filtering
- *
- * Filtering Options:
- * - severity: Filter by alert severity (Advisory, Warning, Critical)
- * - status: Filter by alert status (Active, Acknowledged, Resolved)
- * - parameter: Filter by water parameter (tds, ph, turbidity)
- * - deviceId: Filter by specific device(s)
- *
- * @param {CallableRequest<AlertManagementRequest>} request - Callable request with optional filters
- * @return {Promise<AlertResponse>} Success response with array of alerts
- *
- * @throws {HttpsError} internal - Database operation failed
- */
 async function handleListAlerts(
   request: CallableRequest<AlertManagementRequest>
 ): Promise<AlertResponse> {
@@ -235,7 +171,7 @@ async function handleListAlerts(
       }
     }
 
-    const snapshot = await query.get();
+  const snapshot = await query.get(); // READ: retrieve filtered alert list
 
     const alerts: WaterQualityAlert[] = snapshot.docs.map(
       (doc) =>
@@ -256,24 +192,6 @@ async function handleListAlerts(
   }
 }
 
-/**
- * Acknowledge Digest Handler
- * Stops future digest email notifications by marking digest as acknowledged
- *
- * Business Rules:
- * - Requires valid acknowledgement token (security check)
- * - Digest must exist
- * - Can be acknowledged multiple times (idempotent)
- * - Does NOT require admin authentication (user self-service)
- *
- * @param {CallableRequest<AlertManagementRequest>} request - Callable request with digestId and token
- * @return {Promise<AlertResponse>} Success response with acknowledgement confirmation
- *
- * @throws {HttpsError} invalid-argument - Missing or invalid parameters
- * @throws {HttpsError} not-found - Digest not found
- * @throws {HttpsError} permission-denied - Invalid acknowledgement token
- * @throws {HttpsError} internal - Database operation failed
- */
 async function handleAcknowledgeDigest(
   request: CallableRequest<AlertManagementRequest>
 ): Promise<AlertResponse> {
@@ -281,7 +199,7 @@ async function handleAcknowledgeDigest(
 
   // Validate required parameters
   if (!digestId || !token) {
-    throw new HttpsError("invalid-argument", "Missing required parameters: digestId and token");
+    throw new HttpsError("invalid-argument",  "Missing required parameters: digestId and token");
   }
 
   // Validate token format
@@ -291,8 +209,8 @@ async function handleAcknowledgeDigest(
 
   try {
     // Fetch digest document
-    const digestRef = db.collection(DIGEST_COLLECTION).doc(digestId);
-    const digestDoc = await digestRef.get();
+  const digestRef = db.collection(DIGEST_COLLECTION).doc(digestId);
+  const digestDoc = await digestRef.get(); // READ: fetch digest document
 
     if (!digestDoc.exists) {
       throw new HttpsError("not-found", DIGEST_ERRORS.DIGEST_NOT_FOUND);
@@ -319,7 +237,7 @@ async function handleAcknowledgeDigest(
       isAcknowledged: true,
       acknowledgedAt: FieldValue.serverTimestamp(),
       acknowledgedBy: digest.recipientUid,
-    });
+    }); // WRITE: mark digest as acknowledged
 
     logger.info(`Digest ${digestId} acknowledged by ${digest.recipientEmail}`);
 
@@ -336,48 +254,6 @@ async function handleAcknowledgeDigest(
   }
 }
 
-/**
- * Alert Management Callable Function
- * Single entry point for all alert management operations
- *
- * Uses createRoutedFunction for clean switch-case routing
- *
- * Note: acknowledgeDigest does NOT require admin authentication (user self-service)
- * All other actions require admin authentication
- *
- * @example
- * // Acknowledge alert (requires admin)
- * const result = await httpsCallable('alertManagement')({
- *   action: 'acknowledgeAlert',
- *   alertId: 'alert_12345'
- * });
- *
- * @example
- * // Resolve alert with notes (requires admin)
- * const result = await httpsCallable('alertManagement')({
- *   action: 'resolveAlert',
- *   alertId: 'alert_12345',
- *   notes: 'Sensor replaced and recalibrated'
- * });
- *
- * @example
- * // List alerts with filters (requires admin)
- * const result = await httpsCallable('alertManagement')({
- *   action: 'listAlerts',
- *   filters: {
- *     status: ['Active', 'Acknowledged'],
- *     severity: ['Critical']
- *   }
- * });
- *
- * @example
- * // Acknowledge digest (NO admin required - user self-service)
- * const result = await httpsCallable('alertManagement')({
- *   action: 'acknowledgeDigest',
- *   digestId: 'user123_ph_high_2025-11-02',
- *   token: 'a1b2c3d4...'
- * });
- */
 export const alertManagement = onCall<AlertManagementRequest, Promise<AlertResponse>>(
   createRoutedFunction<AlertManagementRequest, AlertResponse>(
     {

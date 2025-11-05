@@ -82,9 +82,21 @@ async function handleGetUserPreferences(
   }
 
   try {
-    const prefDoc = await db.collection(COLLECTIONS.NOTIFICATION_PREFERENCES).doc(userId).get();
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
 
-    if (!prefDoc.exists) {
+    if (!userDoc.exists) {
+      return {
+        success: true,
+        message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND,
+        data: null,
+      };
+    }
+
+    const preferences = userDoc.get("notificationPreferences") as
+      | NotificationPreferences
+      | undefined;
+
+    if (!preferences) {
       return {
         success: true,
         message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND,
@@ -95,7 +107,10 @@ async function handleGetUserPreferences(
     return {
       success: true,
       message: NOTIFICATION_PREFERENCES_MESSAGES.GET_SUCCESS,
-      data: prefDoc.data() as NotificationPreferences,
+      data: {
+        ...preferences,
+        userId: preferences.userId ?? userId,
+      },
     };
   } catch (error) {
     console.error("Error getting user preferences:", error);
@@ -126,15 +141,20 @@ async function handleListAllPreferences(
   }
 
   try {
-    const snapshot = await db.collection(COLLECTIONS.NOTIFICATION_PREFERENCES).get();
+    const snapshot = await db.collection(COLLECTIONS.USERS).select("notificationPreferences").get();
 
-    const preferences: NotificationPreferences[] = snapshot.docs.map(
-      (doc) =>
-        ({
-          userId: doc.id,
-          ...doc.data(),
-        }) as NotificationPreferences
-    );
+    const preferences: NotificationPreferences[] = snapshot.docs
+      .map((doc) => {
+        const data = doc.data() as { notificationPreferences?: NotificationPreferences };
+        if (!data?.notificationPreferences) {
+          return null;
+        }
+        return {
+          ...data.notificationPreferences,
+          userId: data.notificationPreferences.userId ?? doc.id,
+        } as NotificationPreferences;
+      })
+      .filter((pref): pref is NotificationPreferences => pref !== null);
 
     return {
       success: true,
@@ -207,8 +227,16 @@ async function handleSetupPreferences(
   }
 
   try {
-    const prefRef = db.collection(COLLECTIONS.NOTIFICATION_PREFERENCES).doc(userId);
-    const existingDoc = await prefRef.get();
+    const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      throw new HttpsError("not-found", NOTIFICATION_PREFERENCES_ERRORS.USER_NOT_FOUND);
+    }
+
+    const existingPreferences = userDoc.get("notificationPreferences") as
+      | NotificationPreferences
+      | undefined;
 
     const preferencesData: Record<string, unknown> = {
       userId,
@@ -225,22 +253,28 @@ async function handleSetupPreferences(
       updatedAt: FieldValue.serverTimestamp(),
     };
 
-    // Set createdAt only on first create
-    if (!existingDoc.exists) {
+    if (!existingPreferences) {
       preferencesData.createdAt = FieldValue.serverTimestamp();
     }
 
-    await prefRef.set(preferencesData, { merge: true });
+    await userRef.set({ notificationPreferences: preferencesData }, { merge: true });
 
-    // Fetch the saved data to return
-    const savedDoc = await prefRef.get();
+    const savedDoc = await userRef.get();
+    const savedPreferences = savedDoc.get("notificationPreferences") as
+      | NotificationPreferences
+      | undefined;
 
     return {
       success: true,
-      message: existingDoc.exists
+      message: existingPreferences
         ? NOTIFICATION_PREFERENCES_MESSAGES.UPDATE_SUCCESS
         : NOTIFICATION_PREFERENCES_MESSAGES.CREATE_SUCCESS,
-      data: savedDoc.data() as NotificationPreferences,
+      data: savedPreferences
+        ? {
+            ...savedPreferences,
+            userId: savedPreferences.userId ?? userId,
+          }
+        : null,
     };
   } catch (error) {
     console.error("Error setting up preferences:", error);
@@ -284,7 +318,14 @@ async function handleDeletePreferences(
   }
 
   try {
-    await db.collection(COLLECTIONS.NOTIFICATION_PREFERENCES).doc(userId).delete();
+    const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      throw new HttpsError("not-found", NOTIFICATION_PREFERENCES_ERRORS.USER_NOT_FOUND);
+    }
+
+    await userRef.update({ notificationPreferences: FieldValue.delete() });
 
     return {
       success: true,

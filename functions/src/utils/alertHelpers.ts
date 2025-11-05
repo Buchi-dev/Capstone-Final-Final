@@ -266,8 +266,8 @@ export async function getNotificationRecipients(
   try {
     // Query users with email notifications enabled
     const prefsSnapshot = await db
-      .collection(COLLECTIONS.NOTIFICATION_PREFERENCES)
-      .where("emailNotifications", "==", true)
+      .collection(COLLECTIONS.USERS)
+      .where("notificationPreferences.emailNotifications", "==", true)
       .get();
 
     const recipients: NotificationPreferences[] = [];
@@ -275,33 +275,53 @@ export async function getNotificationRecipients(
 
     // Filter recipients based on preferences
     for (const doc of prefsSnapshot.docs) {
-      const prefs = doc.data() as NotificationPreferences;
+      const userData = doc.data() as { notificationPreferences?: NotificationPreferences };
+      const prefs = userData.notificationPreferences;
+
+      if (!prefs) {
+        continue;
+      }
+
+      const preferences: NotificationPreferences = {
+        ...prefs,
+        userId: prefs.userId ?? doc.id,
+        alertSeverities: prefs.alertSeverities ?? ["Critical", "Warning", "Advisory"],
+        parameters: prefs.parameters ?? [],
+        devices: prefs.devices ?? [],
+      };
 
       // Check severity filter
-      if (!prefs.alertSeverities.includes(alert.severity!)) {
+      if (!preferences.alertSeverities.includes(alert.severity!)) {
         continue;
       }
 
       // Check parameter filter (empty array means all parameters)
-      if (prefs.parameters.length > 0 && !prefs.parameters.includes(alert.parameter!)) {
+      if (
+        preferences.parameters.length > 0 &&
+        !preferences.parameters.includes(alert.parameter!)
+      ) {
         continue;
       }
 
       // Check device filter (empty array means all devices)
-      if (prefs.devices.length > 0 && !prefs.devices.includes(alert.deviceId!)) {
+      if (preferences.devices.length > 0 && !preferences.devices.includes(alert.deviceId!)) {
         continue;
       }
 
       // Check quiet hours
-      if (prefs.quietHoursEnabled && prefs.quietHoursStart && prefs.quietHoursEnd) {
-        const startHour = parseInt(prefs.quietHoursStart.split(":")[0]);
-        const endHour = parseInt(prefs.quietHoursEnd.split(":")[0]);
+      if (
+        preferences.quietHoursEnabled &&
+        preferences.quietHoursStart &&
+        preferences.quietHoursEnd
+      ) {
+        const startHour = parseInt(preferences.quietHoursStart.split(":")[0]);
+        const endHour = parseInt(preferences.quietHoursEnd.split(":")[0]);
         if (currentHour >= startHour && currentHour < endHour) {
           continue;
         }
       }
 
-      recipients.push(prefs);
+      recipients.push(preferences);
     }
 
     return recipients;

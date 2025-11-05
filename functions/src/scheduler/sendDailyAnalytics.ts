@@ -64,19 +64,19 @@ export const sendDailyAnalytics = onSchedule(
       // Get users with:
       // - emailNotifications enabled
       // - sendScheduledAlerts enabled
-      const preferencesSnapshot = await db
-        .collection(COLLECTIONS.NOTIFICATION_PREFERENCES)
-        .where("emailNotifications", "==", true)
-        .where("sendScheduledAlerts", "==", true)
+      const subscribedUsersSnapshot = await db
+        .collection(COLLECTIONS.USERS)
+        .where("notificationPreferences.emailNotifications", "==", true)
+        .where("notificationPreferences.sendScheduledAlerts", "==", true)
         .get();
 
-      if (preferencesSnapshot.empty) {
+      if (subscribedUsersSnapshot.empty) {
         logger.info("[DAILY][Asia/Manila] " + SCHEDULER_MESSAGES.NO_RECIPIENTS);
         return;
       }
 
       logger.info(
-        `[DAILY][Asia/Manila] Found ${preferencesSnapshot.size} users subscribed to daily analytics`
+        `[DAILY][Asia/Manila] Found ${subscribedUsersSnapshot.size} users subscribed to daily analytics`
       );
 
       // ===================================
@@ -100,31 +100,40 @@ export const sendDailyAnalytics = onSchedule(
       );
 
       // ===================================
-      // 3. FETCH USER DATA
-      // ===================================
-      const usersSnapshot = await db.collection(COLLECTIONS.USERS).get();
-      const userMap = new Map<string, { firstname: string; lastname: string }>();
-
-      usersSnapshot.docs.forEach((doc) => {
-        const userData = doc.data();
-        userMap.set(doc.id, {
-          firstname: userData.firstname || "User",
-          lastname: userData.lastname || "",
-        });
-      });
-
-      // ===================================
-      // 4. SEND REPORTS TO EACH USER
+      // 3. SEND REPORTS TO EACH USER
       // ===================================
       let emailsSent = 0;
       let emailsFailed = 0;
 
-      for (const prefDoc of preferencesSnapshot.docs) {
-        const preferences = prefDoc.data() as NotificationPreferences;
+      for (const userDoc of subscribedUsersSnapshot.docs) {
+        const userData = userDoc.data() as FirebaseFirestore.DocumentData & {
+          notificationPreferences?: NotificationPreferences;
+        };
 
-        // Get user name
-        const user = userMap.get(preferences.userId);
-        const recipientName = user ? `${user.firstname} ${user.lastname}`.trim() : "Team Member";
+        const rawPreferences = userData.notificationPreferences;
+        if (!rawPreferences) {
+          logger.warn(
+            `[DAILY][Asia/Manila] User ${userDoc.id} matched preference query but has no notificationPreferences field`
+          );
+          continue;
+        }
+
+        const preferences: NotificationPreferences = {
+          ...rawPreferences,
+          userId: rawPreferences.userId ?? userDoc.id,
+        };
+
+        if (!preferences.email) {
+          logger.warn(
+            `[DAILY][Asia/Manila] Skipping user ${preferences.userId} due to missing notification email`
+          );
+          continue;
+        }
+
+        const firstName = (userData.firstname as string) || "User";
+        const lastName = (userData.lastname as string) || "";
+        const nameCandidate = `${firstName} ${lastName}`.trim();
+        const recipientName = nameCandidate.length > 0 ? nameCandidate : "Team Member";
 
         // Prepare email data
         const emailData: AnalyticsEmailData = {
@@ -170,8 +179,8 @@ export const sendDailyAnalytics = onSchedule(
         }
       }
 
-      // ===================================
-      // 5. LOG SUMMARY
+  // ===================================
+  // 4. LOG SUMMARY
       // ===================================
       logger.info(
         "[DAILY][Asia/Manila] Daily analytics completed: " +
