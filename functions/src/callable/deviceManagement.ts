@@ -2,18 +2,15 @@ import * as admin from "firebase-admin";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import type {CallableRequest} from "firebase-functions/v2/https";
 
-import {db, rtdb, pubsub} from "../config/firebase";
+import {db, rtdb} from "../config/firebase";
 import {
   DEVICE_MANAGEMENT_ERRORS,
   DEVICE_MANAGEMENT_MESSAGES,
   DEVICE_DEFAULTS,
-  MQTT_TOPICS,
-  PUBSUB_TOPICS,
 } from "../constants";
 import type {
   Device,
   DeviceStatus,
-  CommandMessage,
   DeviceManagementRequest,
   DeviceManagementResponse,
 } from "../types";
@@ -23,49 +20,6 @@ import type {ActionHandler} from "../utils/switchCaseRouting";
 // ============================================================================
 // WRITE OPERATIONS - Device Management
 // ============================================================================
-
-const handleDiscoverDevices: ActionHandler<
-  DeviceManagementRequest,
-  DeviceManagementResponse
-> = async () => {
-  const discoveryMessage: CommandMessage = {
-    command: "DISCOVER",
-    timestamp: Date.now(),
-    requestId: `discovery_${Date.now()}`,
-  };
-
-  await pubsub.topic(PUBSUB_TOPICS.DEVICE_COMMANDS).publishMessage({
-    json: discoveryMessage,
-    attributes: {mqtt_topic: MQTT_TOPICS.DISCOVERY_REQUEST},
-  });
-
-  return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.DISCOVERY_SENT};
-};
-
-const handleSendCommand: ActionHandler<DeviceManagementRequest, DeviceManagementResponse> = async (
-  req: CallableRequest<DeviceManagementRequest>
-) => {
-  const {deviceId, command, params} = req.data;
-
-  if (!deviceId) {
-    throw new HttpsError("invalid-argument", DEVICE_MANAGEMENT_ERRORS.MISSING_DEVICE_ID);
-  }
-
-  await pubsub.topic(PUBSUB_TOPICS.DEVICE_COMMANDS).publishMessage({
-    json: {
-      command: command || "STATUS",
-      params: params || {},
-      timestamp: Date.now(),
-      requestId: `cmd_${Date.now()}`,
-    },
-    attributes: {
-      mqtt_topic: `${MQTT_TOPICS.COMMAND_PREFIX}${deviceId}`,
-      device_id: deviceId,
-    },
-  });
-
-  return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.COMMAND_SENT};
-};
 
 const handleAddDevice: ActionHandler<DeviceManagementRequest, DeviceManagementResponse> = async (
   req: CallableRequest<DeviceManagementRequest>
@@ -156,8 +110,6 @@ const handleDeleteDevice: ActionHandler<DeviceManagementRequest, DeviceManagemen
 export const deviceManagement = onCall<DeviceManagementRequest, Promise<DeviceManagementResponse>>(
   createRoutedFunction<DeviceManagementRequest, DeviceManagementResponse>(
     {
-      discoverDevices: handleDiscoverDevices,
-      sendCommand: handleSendCommand,
       addDevice: handleAddDevice,
       updateDevice: handleUpdateDevice,
       deleteDevice: handleDeleteDevice,

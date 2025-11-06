@@ -20,8 +20,6 @@ export type DeviceStatus = "online" | "offline" | "error" | "maintenance";
  * Device management actions
  */
 export type DeviceAction =
-  | "discoverDevices"
-  | "sendCommand"
   | "addDevice"
   | "getDevice"
   | "updateDevice"

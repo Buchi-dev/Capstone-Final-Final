@@ -114,8 +114,6 @@ function validateConstantsAlignment(): void {
   const topicsToValidate = [
     {name: "SENSOR_DATA", expected: "iot-sensor-readings"},
     {name: "DEVICE_REGISTRATION", expected: "iot-device-registration"},
-    {name: "DEVICE_STATUS", expected: "iot-device-status"},
-    {name: "DEVICE_COMMANDS", expected: "device-commands"},
   ];
 
   topicsToValidate.forEach(({name, expected}) => {
@@ -147,9 +145,6 @@ function validateMqttTopics(): void {
   info("Checking MQTT_TOPICS constants...");
 
   const expectedMqttTopics = {
-    DISCOVERY_REQUEST: "device/discovery/request",
-    COMMAND_PREFIX: "device/command/",
-    STATUS_PREFIX: "device/status/",
     SENSOR_DATA_PREFIX: "device/sensordata/", // MUST be lowercase!
     REGISTRATION_PREFIX: "device/registration/",
   };
@@ -191,7 +186,6 @@ function validateMqttBridgeConfig(): void {
   const expectedMappings = [
     {mqtt: "device/sensordata/+", pubsub: "iot-sensor-readings"},
     {mqtt: "device/registration/+", pubsub: "iot-device-registration"},
-    {mqtt: "device/status/+", pubsub: "iot-device-status"},
   ];
 
   expectedMappings.forEach(({mqtt, pubsub}) => {
@@ -203,14 +197,7 @@ function validateMqttBridgeConfig(): void {
     }
   });
 
-  // Check command subscription
-  if (bridgeContent.includes("device-commands-sub")) {
-    success("MQTT Bridge: device-commands-sub subscription configured");
-  } else {
-    error("MQTT Bridge: device-commands-sub subscription not found");
-  }
-
-  // Check for incorrect casing
+  // Check for camelCase errors
   if (bridgeContent.includes("device/sensorData/")) {
     error("CRITICAL: MQTT Bridge uses incorrect casing 'sensorData'");
   }

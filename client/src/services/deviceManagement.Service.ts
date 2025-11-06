@@ -214,24 +214,11 @@ export class DeviceManagementService {
     await this.callFunction({ action: 'discoverDevices' }, 'Failed to send discovery command');
   }
 
-  /** WRITE - Cloud Function */
-  async sendCommand(deviceId: string, command: string, params?: CommandParams): Promise<void> {
-    await this.callFunction(
-      { action: 'sendCommand', deviceId, command, params },
-      `Failed to send command to device ${deviceId}`
-    );
-  }
-
   /** WRITE - Cloud Function (via updateDevice) */
   async registerDevice(deviceId: string, building: string, floor: string, notes?: string): Promise<void> {
     await this.updateDevice(deviceId, {
       metadata: { location: { building, floor, notes: notes || '' } }
     });
-  }
-
-  /** WRITE - Cloud Function (via sendCommand) */
-  async sendStatusCommand(deviceId: string): Promise<void> {
-    await this.sendCommand(deviceId, 'STATUS');
   }
 
   /** WRITE - Cloud Function (via updateDevice) */

@@ -26,7 +26,11 @@ import * as admin from "firebase-admin";
 import {logger} from "firebase-functions/v2";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 
-import {sendDigestEmail} from "../config/email";
+import {
+  sendDigestEmail,
+  EMAIL_USER_SECRET_REF,
+  EMAIL_PASSWORD_SECRET_REF,
+} from "../config/email";
 import type {DigestEmailData} from "../config/email";
 import {db} from "../config/firebase";
 import {
@@ -62,6 +66,7 @@ export const sendAlertDigests = onSchedule(
     timeZone: DIGEST_SCHEDULER_CONFIG.timeZone,
     retryCount: DIGEST_SCHEDULER_CONFIG.retryCount,
     minInstances: DIGEST_SCHEDULER_CONFIG.minInstances,
+    secrets: [EMAIL_USER_SECRET_REF, EMAIL_PASSWORD_SECRET_REF],
   },
   async () => {
     try {

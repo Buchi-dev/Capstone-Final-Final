@@ -39,9 +39,6 @@
 // MQTT Topics
 #define TOPIC_SENSOR_DATA "device/sensordata/" DEVICE_ID
 #define TOPIC_REGISTRATION "device/registration/" DEVICE_ID
-#define TOPIC_STATUS "device/status/" DEVICE_ID
-#define TOPIC_COMMAND "device/command/" DEVICE_ID
-#define TOPIC_DISCOVERY "device/discovery/request"
 
 // Sensor Pin Configuration
 #define TDS_PIN A0          // TDS Sensor
@@ -187,13 +184,7 @@ void loop() {
     }
   }
   
-  // Send heartbeat every 5 minutes (aligned with batch)
-  if (currentMillis - lastHeartbeat >= HEARTBEAT_INTERVAL) {
-    lastHeartbeat = currentMillis;
-    if (sendToMQTT) {
-      publishStatus("online");
-    }
-  }
+  // Heartbeat removed - status tracking no longer needed
   
   delay(100);
 }
@@ -245,7 +236,6 @@ void connectMQTT() {
   mqttClient.setId(DEVICE_ID);
   mqttClient.setUsernamePassword(MQTT_USERNAME, MQTT_PASSWORD);
   mqttClient.setKeepAliveInterval(60000);
-  mqttClient.onMessage(onMqttMessage);
   
   int attempts = 0;
   while (!mqttClient.connect(MQTT_BROKER, MQTT_PORT) && attempts < 5) {
@@ -259,101 +249,13 @@ void connectMQTT() {
   if (mqttClient.connected()) {
     Serial.println(F("✓ MQTT connected"));
     mqttConnected = true;
-    
-    Serial.print(F("Subscribing to: "));
-    Serial.println(TOPIC_COMMAND);
-    mqttClient.subscribe(TOPIC_COMMAND);
-    
-    Serial.print(F("Subscribing to: "));
-    Serial.println(TOPIC_DISCOVERY);
-    mqttClient.subscribe(TOPIC_DISCOVERY);
   } else {
     Serial.println(F("✗ MQTT connection failed"));
     mqttConnected = false;
   }
 }
 
-void onMqttMessage(int messageSize) {
-  String topic = mqttClient.messageTopic();
-  String payload = "";
-  payload.reserve(messageSize);
-  
-  while (mqttClient.available()) {
-    payload += (char)mqttClient.read();
-  }
-  
-  Serial.println(F("\n--- Incoming MQTT Message ---"));
-  Serial.print(F("Topic: "));
-  Serial.println(topic);
-  Serial.print(F("Payload: "));
-  Serial.println(payload);
-  Serial.println(F("-----------------------------\n"));
-  
-  StaticJsonDocument<256> doc;
-  DeserializationError error = deserializeJson(doc, payload);
-  
-  if (error) {
-    Serial.print(F("JSON parse error: "));
-    Serial.println(error.c_str());
-    return;
-  }
-  
-  if (topic == String(TOPIC_COMMAND)) {
-    handleCommand(doc);
-  } else if (topic == String(TOPIC_DISCOVERY)) {
-    Serial.println(F("Discovery request received - Re-registering device"));
-    registerDevice();
-  }
-}
-
-void handleCommand(JsonDocument& doc) {
-  const char* command = doc["command"];
-  
-  if (!command) {
-    Serial.println(F("No command in payload"));
-    return;
-  }
-  
-  Serial.print(F("Executing command: "));
-  Serial.println(command);
-  
-  if (strcmp(command, "DISCOVER") == 0) {
-    registerDevice();
-  } else if (strcmp(command, "STATUS") == 0) {
-    publishStatus("online");
-  } else if (strcmp(command, "RESET") == 0) {
-    Serial.println(F("Resetting device..."));
-    delay(1000);
-    NVIC_SystemReset();
-  } else if (strcmp(command, "READ_SENSORS") == 0) {
-    readSensors();
-    publishSensorData();
-  } else if (strcmp(command, "PUBLISH_BATCH") == 0) {
-    // Force publish current buffer (for testing)
-    if (bufferIndex > 0) {
-      Serial.print(F("Force publishing partial batch ("));
-      Serial.print(bufferIndex);
-      Serial.println(F(" readings)"));
-      // Temporarily adjust batch size for partial send
-      int originalBatchSize = bufferIndex;
-      publishSensorDataBatch();
-      bufferIndex = 0;
-      bufferReady = false;
-    } else {
-      Serial.println(F("No readings in buffer"));
-    }
-  } else if (strcmp(command, "START_MQTT") == 0) {
-    sendToMQTT = true;
-    Serial.println(F("✓ MQTT publishing ENABLED"));
-    publishStatus("mqtt_enabled");
-  } else if (strcmp(command, "STOP_MQTT") == 0) {
-    sendToMQTT = false;
-    Serial.println(F("✓ MQTT publishing DISABLED"));
-    publishStatus("mqtt_disabled");
-  } else {
-    Serial.println(F("Unknown command"));
-  }
-}
+// Command handling removed - not used in UI
 
 // ===========================
 // DEVICE REGISTRATION
@@ -617,28 +519,4 @@ void publishSensorDataBatch() {
   Serial.println(F(" bytes"));
 }
 
-void publishStatus(const char* status) {
-  if (!mqttConnected) return;
-  
-  // Allow status messages for START/STOP commands even when disabled
-  bool isControlStatus = (strcmp(status, "mqtt_enabled") == 0 || strcmp(status, "mqtt_disabled") == 0);
-  
-  if (!sendToMQTT && !isControlStatus) {
-    return;  // Silent skip for regular status
-  }
-  
-  StaticJsonDocument<128> doc;
-  doc["status"] = status;
-  doc["uptime"] = millis();
-  doc["rssi"] = WiFi.RSSI();
-  
-  String payload;
-  serializeJson(doc, payload);
-  
-  mqttClient.beginMessage(TOPIC_STATUS);
-  mqttClient.print(payload);
-  mqttClient.endMessage();
-  
-  Serial.print(F("✓ Status published: "));
-  Serial.println(status);
-}
+// publishStatus function removed - status tracking no longer needed

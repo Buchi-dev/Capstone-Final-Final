@@ -46,14 +46,6 @@ export function getEmailCredentials(): { user: string; password: string } {
   return {user, password};
 }
 
-/**
- * Export secret references for use in function declarations
- * Usage in function definition:
- *   export const sendEmails = onSchedule(
- *     { schedule: 'every 1 hours', secrets: [EMAIL_USER_SECRET_REF, EMAIL_PASSWORD_SECRET_REF] },
- *     async (event) => { ... }
- *   );
- */
 export const EMAIL_USER_SECRET_REF = EMAIL_USER_SECRET;
 export const EMAIL_PASSWORD_SECRET_REF = EMAIL_PASSWORD_SECRET;
 

@@ -17,7 +17,11 @@ import * as admin from "firebase-admin";
 import {logger} from "firebase-functions/v2";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 
-import {sendStaleAlertEmail} from "../config/email";
+import {
+  sendStaleAlertEmail,
+  EMAIL_USER_SECRET_REF,
+  EMAIL_PASSWORD_SECRET_REF,
+} from "../config/email";
 import type {StaleAlertEmailData} from "../config/email";
 import {db} from "../config/firebase";
 import {
@@ -179,6 +183,7 @@ export const checkStaleAlerts = onSchedule(
     schedule: SCHEDULER_CONFIG.STALE_ALERT_SCHEDULE,
     timeZone: SCHEDULER_CONFIG.TIMEZONE,
     retryCount: SCHEDULER_CONFIG.RETRY_COUNT,
+    secrets: [EMAIL_USER_SECRET_REF, EMAIL_PASSWORD_SECRET_REF],
   },
   async () => {
     logger.info("Starting stale alerts check...");

@@ -35,14 +35,11 @@
 #define DEVICE_ID "esp32_dev_001"
 #define DEVICE_NAME "Water Quality Monitor ESP32"
 #define DEVICE_TYPE "ESP32 Dev Module"
-#define FIRMWARE_VERSION "1.0.0"
+#define FIRMWARE_VERSION "3.2.2"
 
 // MQTT Topics
 #define TOPIC_SENSOR_DATA "device/sensordata/" DEVICE_ID
 #define TOPIC_REGISTRATION "device/registration/" DEVICE_ID
-#define TOPIC_STATUS "device/status/" DEVICE_ID
-#define TOPIC_COMMAND "device/command/" DEVICE_ID
-#define TOPIC_DISCOVERY "device/discovery/request"
 
 // Sensor Pin Configuration (ESP32 ADC pins)
 #define TDS_PIN 34          // GPIO34 (ADC1_CH6)
@@ -234,13 +231,7 @@ void loop() {
     lastMqttPublish = currentMillis;
   }
   
-  // Send heartbeat every 5 minutes (aligned with batch)
-  if (currentMillis - lastHeartbeat >= HEARTBEAT_INTERVAL) {
-    lastHeartbeat = currentMillis;
-    if (sendToMQTT) {
-      publishStatus("online");
-    }
-  }
+  // Heartbeat removed - status tracking no longer needed
   
   delay(100);
 }
@@ -294,7 +285,6 @@ void connectMQTT() {
   wifiClient.setInsecure();  // For production, use proper certificate validation
   
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-  mqttClient.setCallback(onMqttMessage);
   mqttClient.setKeepAlive(60);
   mqttClient.setSocketTimeout(15);
   
@@ -305,14 +295,6 @@ void connectMQTT() {
     if (mqttClient.connect(DEVICE_ID, MQTT_USERNAME, MQTT_PASSWORD)) {
       Serial.println(F("\n✓ MQTT connected"));
       mqttConnected = true;
-      
-      Serial.print(F("Subscribing to: "));
-      Serial.println(TOPIC_COMMAND);
-      mqttClient.subscribe(TOPIC_COMMAND);
-      
-      Serial.print(F("Subscribing to: "));
-      Serial.println(TOPIC_DISCOVERY);
-      mqttClient.subscribe(TOPIC_DISCOVERY);
     } else {
       Serial.print(F("failed, rc="));
       Serial.print(mqttClient.state());
@@ -328,84 +310,7 @@ void connectMQTT() {
   }
 }
 
-void onMqttMessage(char* topic, byte* payload, unsigned int length) {
-  String payloadStr = "";
-  payloadStr.reserve(length);
-  
-  for (unsigned int i = 0; i < length; i++) {
-    payloadStr += (char)payload[i];
-  }
-  
-  Serial.println(F("\n--- Incoming MQTT Message ---"));
-  Serial.print(F("Topic: "));
-  Serial.println(topic);
-  Serial.print(F("Payload: "));
-  Serial.println(payloadStr);
-  Serial.println(F("-----------------------------\n"));
-  
-  StaticJsonDocument<256> doc;
-  DeserializationError error = deserializeJson(doc, payloadStr);
-  
-  if (error) {
-    Serial.print(F("JSON parse error: "));
-    Serial.println(error.c_str());
-    return;
-  }
-  
-  if (String(topic) == String(TOPIC_COMMAND)) {
-    handleCommand(doc);
-  } else if (String(topic) == String(TOPIC_DISCOVERY)) {
-    Serial.println(F("Discovery request received - Re-registering device"));
-    registerDevice();
-  }
-}
-
-void handleCommand(JsonDocument& doc) {
-  const char* command = doc["command"];
-  
-  if (!command) {
-    Serial.println(F("No command in payload"));
-    return;
-  }
-  
-  Serial.print(F("Executing command: "));
-  Serial.println(command);
-  
-  if (strcmp(command, "DISCOVER") == 0) {
-    registerDevice();
-  } else if (strcmp(command, "STATUS") == 0) {
-    publishStatus("online");
-  } else if (strcmp(command, "RESET") == 0) {
-    Serial.println(F("Resetting device..."));
-    delay(1000);
-    ESP.restart();
-  } else if (strcmp(command, "READ_SENSORS") == 0) {
-    readSensors();
-    publishSensorData();
-  } else if (strcmp(command, "PUBLISH_BATCH") == 0) {
-    // Force publish current buffer (for testing)
-    if (bufferIndex > 0) {
-      Serial.print(F("Force publishing partial batch ("));
-      Serial.print(bufferIndex);
-      Serial.println(F(" readings)"));
-      publishSensorDataBatch();
-      bufferIndex = 0;
-      bufferReady = false;
-    } else {
-      Serial.println(F("No readings in buffer"));
-    }
-  } else if (strcmp(command, "START_MQTT") == 0) {
-    sendToMQTT = true;
-    Serial.println(F("✓ MQTT publishing ENABLED"));
-    publishStatus("mqtt_enabled");
-  } else if (strcmp(command, "STOP_MQTT") == 0) {
-    sendToMQTT = false;
-    Serial.println(F("✓ MQTT publishing DISABLED"));
-    publishStatus("mqtt_disabled");
-  } else {
-    Serial.println(F("Unknown command"));
-  }
-}
+// Command handling removed - not used in UI
 
 // ===========================
 // DEVICE REGISTRATION
@@ -662,29 +567,4 @@ void publishSensorDataBatch() {
   }
 }
 
-void publishStatus(const char* status) {
-  if (!mqttConnected) return;
-  
-  // Allow status messages for START/STOP commands even when disabled
-  bool isControlStatus = (strcmp(status, "mqtt_enabled") == 0 || strcmp(status, "mqtt_disabled") == 0);
-  
-  if (!sendToMQTT && !isControlStatus) {
-    return;  // Silent skip for regular status
-  }
-  
-  StaticJsonDocument<128> doc;
-  doc["status"] = status;
-  doc["uptime"] = millis();
-  doc["rssi"] = WiFi.RSSI();
-  doc["freeHeap"] = ESP.getFreeHeap();
-  
-  String payload;
-  serializeJson(doc, payload);
-  
-  if (mqttClient.publish(TOPIC_STATUS, payload.c_str())) {
-    Serial.print(F("✓ Status published: "));
-    Serial.println(status);
-  } else {
-    Serial.println(F("✗ Status publish failed"));
-  }
-}
+// publishStatus function removed - status tracking no longer needed

@@ -16,7 +16,11 @@
 import {logger} from "firebase-functions/v2";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 
-import {sendAnalyticsEmail} from "../config/email";
+import {
+  sendAnalyticsEmail,
+  EMAIL_USER_SECRET_REF,
+  EMAIL_PASSWORD_SECRET_REF,
+} from "../config/email";
 import type {AnalyticsEmailData} from "../config/email";
 import {db} from "../config/firebase";
 import {COLLECTIONS, SCHEDULER_CONFIG, SCHEDULER_MESSAGES, ANALYTICS_PERIODS} from "../constants";
@@ -50,6 +54,7 @@ export const sendMonthlyAnalytics = onSchedule(
     schedule: SCHEDULER_CONFIG.MONTHLY_ANALYTICS_SCHEDULE,
     timeZone: SCHEDULER_CONFIG.TIMEZONE,
     retryCount: SCHEDULER_CONFIG.RETRY_COUNT,
+    secrets: [EMAIL_USER_SECRET_REF, EMAIL_PASSWORD_SECRET_REF],
   },
   async () => {
     logger.info("[MONTHLY][Asia/Manila] Starting monthly analytics report generation...");
