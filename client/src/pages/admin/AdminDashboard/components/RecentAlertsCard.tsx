@@ -77,8 +77,14 @@ export const RecentAlertsCard = ({
           View All Alerts
         </Button>
       }
-      bordered={false}
+      variant="borderless"
       loading={loading}
+      style={{ 
+        position: 'sticky', 
+        top: 64,
+        maxHeight: 'calc(100vh - 80px)',
+        overflow: 'auto',
+      }}
     >
       {recentAlerts.length === 0 ? (
         <Empty 

@@ -52,7 +52,7 @@ export const SensorReadingsCard = ({
           <Badge count={onlineDevices} style={{ backgroundColor: token.colorSuccess }} />
         </Space>
       }
-      bordered={false}
+      variant="borderless"
     >
       {loading ? (
         <div style={{ textAlign: 'center', padding: '40px' }}>

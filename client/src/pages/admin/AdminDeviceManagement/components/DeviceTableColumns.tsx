@@ -252,9 +252,9 @@ export const useDeviceColumns = ({
       title: 'Device ID',
       dataIndex: 'deviceId',
       key: 'deviceId',
-      fixed: 'left',
-      width: 160,
-      ellipsis: true,
+      ellipsis: {
+        showTitle: false,
+      },
       render: (text) => (
         <Tooltip title={text}>
           <Space size="small">
@@ -269,7 +269,6 @@ export const useDeviceColumns = ({
     {
       title: 'Device Information',
       key: 'deviceInfo',
-      width: 280,
       render: (_, record) => (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <Space size="small" style={{ width: '100%' }}>
@@ -296,7 +295,6 @@ export const useDeviceColumns = ({
       title: 'Status',
       dataIndex: 'status',
       key: 'status',
-      width: 120,
       align: 'center',
       filters: [
         { text: 'Online', value: 'online' },
@@ -318,33 +316,38 @@ export const useDeviceColumns = ({
       title: 'Sensors Detected',
       dataIndex: 'sensors',
       key: 'sensors',
-      width: 250,
-      responsive: ['lg'],
       render: (sensors: string[]) => (
         <Space wrap size={4}>
-          {sensors.slice(0, 4).map((sensor) => (
-            <Tag
-              key={sensor}
-              color="blue"
-              style={{ margin: 0, fontSize: '11px', padding: '2px 6px' }}
-            >
-              {sensor}
-            </Tag>
-          ))}
-          {sensors.length > 4 && (
-            <Tooltip title={sensors.slice(4).join(', ')}>
-              <Tag color="default" style={{ margin: 0, fontSize: '11px', padding: '2px 6px' }}>
-                +{sensors.length - 4} more
-              </Tag>
-            </Tooltip>
+          {sensors && sensors.length > 0 ? (
+            <>
+              {sensors.slice(0, 4).map((sensor) => (
+                <Tag
+                  key={sensor}
+                  color="blue"
+                  style={{ margin: 0, fontSize: '11px', padding: '2px 6px' }}
+                >
+                  {sensor}
+                </Tag>
+              ))}
+              {sensors.length > 4 && (
+                <Tooltip title={sensors.slice(4).join(', ')}>
+                  <Tag color="default" style={{ margin: 0, fontSize: '11px', padding: '2px 6px' }}>
+                    +{sensors.length - 4} more
+                  </Tag>
+                </Tooltip>
+              )}
+            </>
+          ) : (
+            <Text type="secondary" style={{ fontSize: '11px' }}>
+              No sensors detected
+            </Text>
           )}
         </Space>
       ),
     },
     {
-      title: 'Registration Status',
+      title: 'Registration',
       key: 'registrationStatus',
-      width: 180,
       align: 'center',
       render: () => (
         <Space direction="vertical" size={2} style={{ width: '100%' }}>
@@ -355,13 +358,12 @@ export const useDeviceColumns = ({
               fontSize: '11px',
               fontWeight: 500,
               padding: '4px 8px',
-              width: '100%',
             }}
           >
             UNREGISTERED
           </Tag>
-          <Text type="secondary" style={{ fontSize: '11px' }}>
-            Location not assigned
+          <Text type="secondary" style={{ fontSize: '10px' }}>
+            No location
           </Text>
         </Space>
       ),
@@ -369,8 +371,6 @@ export const useDeviceColumns = ({
     {
       title: 'Action Required',
       key: 'actions',
-      fixed: 'right',
-      width: 150,
       align: 'center',
       render: (_, record) => (
         <Tooltip title="Assign this device to a building and floor location">

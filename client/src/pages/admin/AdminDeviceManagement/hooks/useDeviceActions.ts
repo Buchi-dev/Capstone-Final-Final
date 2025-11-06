@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Modal, message } from 'antd';
 import { deviceManagementService } from '../../../../services/deviceManagement.Service';
 import type { Device } from '../../../../schemas';
@@ -9,6 +9,19 @@ export const useDeviceActions = (loadDevices: () => Promise<void>) => {
   const [isViewModalVisible, setIsViewModalVisible] = useState(false);
   const [isRegisterModalVisible, setIsRegisterModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
+  
+  // Track ongoing registration to prevent duplicate submissions
+  const isRegisteringRef = useRef(false);
+  const registerTimeoutRef = useRef<number | null>(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (registerTimeoutRef.current) {
+        window.clearTimeout(registerTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleDelete = (device: Device) => {
     Modal.confirm({
@@ -74,7 +87,20 @@ export const useDeviceActions = (loadDevices: () => Promise<void>) => {
     deviceId: string,
     locationData: { building: string; floor: string; notes?: string }
   ) => {
+    // Prevent multiple simultaneous registrations
+    if (isRegisteringRef.current) {
+      message.warning('Registration is already in progress. Please wait...');
+      return false;
+    }
+
+    // Clear any existing timeout
+    if (registerTimeoutRef.current) {
+      window.clearTimeout(registerTimeoutRef.current);
+    }
+
     try {
+      isRegisteringRef.current = true;
+
       await deviceManagementService.registerDevice(
         deviceId,
         locationData.building,
@@ -87,10 +113,18 @@ export const useDeviceActions = (loadDevices: () => Promise<void>) => {
       setSelectedDevice(null);
       await loadDevices();
       
+      // Reset the registration flag after a delay to prevent rapid re-registration
+      registerTimeoutRef.current = window.setTimeout(() => {
+        isRegisteringRef.current = false;
+      }, 2000);
+      
       return true;
     } catch (error) {
       message.error('Failed to register device');
       console.error('Error registering device:', error);
+      
+      // Reset the flag immediately on error
+      isRegisteringRef.current = false;
       return false;
     }
   };

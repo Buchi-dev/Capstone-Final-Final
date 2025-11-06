@@ -25,7 +25,7 @@ export const StatisticsCards = ({
   return (
     <Row gutter={[16, 16]}>
       <Col xs={24} sm={12} lg={6}>
-        <Card bordered={false}>
+        <Card variant="outlined">
           <Statistic
             title="Total Devices"
             value={totalDevices}
@@ -35,7 +35,7 @@ export const StatisticsCards = ({
         </Card>
       </Col>
       <Col xs={24} sm={12} lg={6}>
-        <Card bordered={false}>
+        <Card variant="outlined">
           <Statistic
             title="Online Devices"
             value={onlineDevices}
@@ -45,7 +45,7 @@ export const StatisticsCards = ({
         </Card>
       </Col>
       <Col xs={24} sm={12} lg={6}>
-        <Card bordered={false}>
+        <Card variant="outlined">
           <Statistic
             title="Active Alerts"
             value={activeAlerts}
@@ -55,7 +55,7 @@ export const StatisticsCards = ({
         </Card>
       </Col>
       <Col xs={24} sm={12} lg={6}>
-        <Card bordered={false}>
+        <Card variant="outlined">
           <Statistic
             title="Critical Alerts"
             value={criticalAlerts}

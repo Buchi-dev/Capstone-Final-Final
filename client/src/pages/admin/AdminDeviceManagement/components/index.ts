@@ -4,3 +4,5 @@ export { DeviceTable } from './DeviceTable';
 export { AddEditDeviceModal } from './AddEditDeviceModal';
 export { ViewDeviceModal } from './ViewDeviceModal';
 export { RegisterDeviceModal } from './RegisterDeviceModal';
+export { UnregisteredDeviceCard } from './UnregisteredDeviceCard';
+export { UnregisteredDevicesGrid } from './UnregisteredDevicesGrid';

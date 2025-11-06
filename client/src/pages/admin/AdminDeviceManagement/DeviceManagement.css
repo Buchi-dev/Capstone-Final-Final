@@ -37,3 +37,50 @@
 .unregistered-devices-table .ant-table-thead > tr > th {
   background-color: #fff7e6 !important;
 }
+
+/* Unregistered Device Card Styles */
+.unregistered-device-card {
+  height: 100%;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.unregistered-device-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.unregistered-device-card .ant-card-body {
+  height: 100%;
+}
+
+/* Add/Edit Device Modal Styles */
+.ant-modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ant-modal-body::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.ant-modal-body::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.ant-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Form input focus styles */
+.ant-form-item-has-error .ant-input,
+.ant-form-item-has-error .ant-input-affix-wrapper,
+.ant-form-item-has-error .ant-select-selector {
+  border-width: 2px !important;
+}
+
+/* Enhanced form labels */
+.ant-form-item-label > label {
+  height: auto !important;
+}

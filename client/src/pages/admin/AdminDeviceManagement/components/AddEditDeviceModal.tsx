@@ -1,11 +1,10 @@
-import { Modal, Form, Input, Select, Space, Typography, Row, Col, Card } from 'antd';
+import { Modal, Form, Input, Select, Space, Typography, Row, Col } from 'antd';
 import { useEffect } from 'react';
 import type { Device } from '../../../../schemas';
 import { 
   ApiOutlined, 
   EditOutlined,
   EnvironmentOutlined,
-  SettingOutlined,
   InfoCircleOutlined,
   WifiOutlined,
   ToolOutlined,
@@ -15,9 +14,6 @@ import {
   FireOutlined,
   CloudOutlined,
   DashboardOutlined,
-  SoundOutlined,
-  BulbOutlined,
-  RadarChartOutlined,
 } from '@ant-design/icons';
 import { useThemeToken } from '../../../../theme';
 
@@ -54,14 +50,10 @@ export const AddEditDeviceModal = ({
           macAddress: device.macAddress,
           ipAddress: device.ipAddress,
           sensors: device.sensors,
-          status: device.status,
           // Location fields
           building: device.metadata?.location?.building || '',
           floor: device.metadata?.location?.floor || '',
           locationNotes: device.metadata?.location?.notes || '',
-          // Other metadata
-          description: device.metadata?.description || '',
-          owner: device.metadata?.owner || '',
         });
       } else {
         form.resetFields();
@@ -74,10 +66,7 @@ export const AddEditDeviceModal = ({
       const values = await form.validateFields();
       
       // Build metadata object with location
-      const metadata: any = {
-        description: values.description || '',
-        owner: values.owner || '',
-      };
+      const metadata: any = {};
 
       // Add location if building and floor are provided
       if (values.building && values.floor) {
@@ -96,9 +85,13 @@ export const AddEditDeviceModal = ({
         macAddress: values.macAddress,
         ipAddress: values.ipAddress,
         sensors: values.sensors || [],
-        status: values.status,
         metadata,
       };
+
+      // Only include status when adding a new device
+      if (mode === 'add') {
+        deviceData.status = values.status;
+      }
 
       onSave(deviceData);
     } catch (error) {
@@ -109,37 +102,49 @@ export const AddEditDeviceModal = ({
   return (
     <Modal
       title={
-        <Space size="middle">
-          {mode === 'add' ? (
-            <ApiOutlined style={{ color: token.colorPrimary, fontSize: '20px' }} />
-          ) : (
-            <EditOutlined style={{ color: token.colorPrimary, fontSize: '20px' }} />
-          )}
-          <Title level={4} style={{ margin: 0 }}>
-            {mode === 'add' ? 'Add New Device' : 'Edit Device'}
-          </Title>
-        </Space>
+        <div style={{ 
+          padding: '8px 0',
+          borderBottom: `2px solid ${token.colorPrimary}`,
+          marginBottom: '16px'
+        }}>
+          <Space size="middle">
+            {mode === 'add' ? (
+              <ApiOutlined style={{ color: token.colorPrimary, fontSize: '24px' }} />
+            ) : (
+              <EditOutlined style={{ color: token.colorPrimary, fontSize: '24px' }} />
+            )}
+            <Title level={3} style={{ margin: 0 }}>
+              {mode === 'add' ? 'Add New Device' : 'Edit Device'}
+            </Title>
+          </Space>
+        </div>
       }
       open={visible}
       onOk={handleOk}
       onCancel={onCancel}
-      width={1000}
-      okText={mode === 'add' ? 'Add Device' : 'Update Device'}
+      width={900}
+      centered
+      okText={mode === 'add' ? 'Add Device' : 'Save Changes'}
       cancelText="Cancel"
       okButtonProps={{ 
         size: 'large',
-        style: { minWidth: '120px', fontWeight: 500 }
+        style: { minWidth: '140px', fontWeight: 500, height: '44px' }
       }}
       cancelButtonProps={{ 
         size: 'large',
-        style: { minWidth: '100px' }
+        style: { minWidth: '120px', height: '44px' }
       }}
       styles={{
         body: {
-          paddingTop: '24px',
-          paddingBottom: '24px',
+          maxHeight: '70vh',
+          overflowY: 'auto',
+          padding: '24px 24px 16px',
+        },
+        header: {
+          padding: '20px 24px 0',
         }
       }}
+      destroyOnClose
     >
       <Form
         form={form}
@@ -147,42 +152,33 @@ export const AddEditDeviceModal = ({
         initialValues={{
           status: 'offline',
           sensors: [],
-          metadata: '{}',
         }}
-        style={{ marginTop: '8px' }}
       >
         {/* Basic Information Section */}
-        <Card 
-          size="small"
-          style={{ 
-            marginBottom: '20px',
-            borderRadius: '8px',
-            backgroundColor: token.colorBgContainer
-          }}
-          styles={{
-            body: { padding: '20px' }
-          }}
-        >
-          <Space size="small" style={{ marginBottom: '16px' }}>
-            <InfoCircleOutlined style={{ color: token.colorPrimary, fontSize: '18px' }} />
-            <Title level={5} style={{ margin: 0 }}>Basic Information</Title>
+        <div style={{ marginBottom: '32px' }}>
+          <Space size="small" style={{ marginBottom: '20px' }}>
+            <InfoCircleOutlined style={{ color: token.colorPrimary, fontSize: '20px' }} />
+            <Title level={4} style={{ margin: 0, color: token.colorPrimary }}>
+              Basic Information
+            </Title>
           </Space>
 
-          <Row gutter={[24, 0]}>
-            {mode === 'add' && (
-              <>
-                <Col xs={24} md={12}>
+          <div style={{ 
+            backgroundColor: token.colorBgLayout,
+            padding: '24px',
+            borderRadius: '8px',
+            border: `1px solid ${token.colorBorder}`
+          }}>
+            {mode === 'add' ? (
+              <Row gutter={[24, 16]}>
+                <Col xs={24} lg={12}>
                   <Form.Item
-                    label={<Text strong>Device ID</Text>}
+                    label={<Text strong style={{ fontSize: '14px' }}>Device ID</Text>}
                     name="deviceId"
                     rules={[
-                      { required: true, message: 'Please enter device ID' },
-                      { pattern: /^[A-Z0-9-_a-z]+$/, message: 'Only alphanumeric, hyphens, and underscores' },
+                      { required: true, message: 'Device ID is required' },
+                      { pattern: /^[A-Z0-9-_a-z]+$/, message: 'Only alphanumeric, hyphens, and underscores allowed' },
                     ]}
-                    tooltip={{
-                      title: 'Unique identifier for the device (e.g., DEV-001)',
-                      icon: <InfoCircleOutlined />
-                    }}
                   >
                     <Input
                       placeholder="e.g., arduino_uno_r4_wifi_1"
@@ -192,15 +188,11 @@ export const AddEditDeviceModal = ({
                   </Form.Item>
                 </Col>
 
-                <Col xs={24} md={12}>
+                <Col xs={24} lg={12}>
                   <Form.Item
-                    label={<Text strong>Device Type</Text>}
+                    label={<Text strong style={{ fontSize: '14px' }}>Device Type</Text>}
                     name="type"
-                    rules={[{ required: true, message: 'Please select device type' }]}
-                    tooltip={{
-                      title: 'Category of the device',
-                      icon: <InfoCircleOutlined />
-                    }}
+                    rules={[{ required: true, message: 'Device type is required' }]}
                   >
                     <Select 
                       placeholder="Select device type"
@@ -212,422 +204,290 @@ export const AddEditDeviceModal = ({
                           Arduino UNO R4 WiFi
                         </Space>
                       </Option>
-                      <Option value="sensor">Sensor</Option>
-                      <Option value="actuator">Actuator</Option>
-                      <Option value="controller">Controller</Option>
-                      <Option value="gateway">Gateway</Option>
-                      <Option value="monitor">Monitor</Option>
-                      <Option value="other">Other</Option>
+                      <Option value="ESP32 Dev Module">
+                        <Space>
+                          <ApiOutlined />
+                          ESP32 Dev Module
+                        </Space>
+                      </Option>
+                      <Option value="Sensor">Sensor</Option>
+                      <Option value="Gateway">Gateway</Option>
+                      <Option value="Monitor">Monitor</Option>
                     </Select>
                   </Form.Item>
                 </Col>
-              </>
-            )}
 
-            <Col xs={24} md={mode === 'add' ? 24 : 12}>
+                <Col xs={24}>
+                  <Form.Item
+                    label={<Text strong style={{ fontSize: '14px' }}>Device Name</Text>}
+                    name="name"
+                    rules={[{ required: true, message: 'Device name is required' }]}
+                  >
+                    <Input 
+                      placeholder="e.g., Water Quality Monitor 1" 
+                      size="large"
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+            ) : (
               <Form.Item
-                label={<Text strong>Device Name</Text>}
+                label={<Text strong style={{ fontSize: '14px' }}>Device Name</Text>}
                 name="name"
-                rules={[{ required: true, message: 'Please enter device name' }]}
-                tooltip={{
-                  title: 'Human-readable name for the device',
-                  icon: <InfoCircleOutlined />
-                }}
+                rules={[{ required: true, message: 'Device name is required' }]}
               >
                 <Input 
                   placeholder="e.g., Water Quality Monitor 1" 
                   size="large"
                 />
               </Form.Item>
-            </Col>
-
-            {mode === 'edit' && (
-              <Col xs={24} md={12}>
-                <Form.Item
-                  label={<Text strong>Status</Text>}
-                  name="status"
-                  rules={[{ required: true, message: 'Please select status' }]}
-                  tooltip={{
-                    title: 'Current operational status of the device',
-                    icon: <InfoCircleOutlined />
-                  }}
-                >
-                  <Select 
-                    placeholder="Select status"
-                    size="large"
-                  >
-                    <Option value="online">
-                      <Space>
-                        <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                        Online
-                      </Space>
-                    </Option>
-                    <Option value="offline">
-                      <Space>
-                        <CloseCircleOutlined style={{ color: '#8c8c8c' }} />
-                        Offline
-                      </Space>
-                    </Option>
-                    <Option value="maintenance">
-                      <Space>
-                        <ToolOutlined style={{ color: '#faad14' }} />
-                        Maintenance
-                      </Space>
-                    </Option>
-                  </Select>
-                </Form.Item>
-              </Col>
             )}
-          </Row>
-        </Card>
+          </div>
+        </div>
 
         {/* Network Information - Only visible in Add mode */}
         {mode === 'add' && (
-          <Card 
-            size="small"
-            style={{ 
-              marginBottom: '20px',
-              borderRadius: '8px',
-              backgroundColor: token.colorBgContainer
-            }}
-            styles={{
-              body: { padding: '20px' }
-            }}
-          >
-            <Space size="small" style={{ marginBottom: '16px' }}>
-              <WifiOutlined style={{ color: token.colorPrimary, fontSize: '18px' }} />
-              <Title level={5} style={{ margin: 0 }}>Network Information</Title>
+          <div style={{ marginBottom: '32px' }}>
+            <Space size="small" style={{ marginBottom: '20px' }}>
+              <WifiOutlined style={{ color: token.colorPrimary, fontSize: '20px' }} />
+              <Title level={4} style={{ margin: 0, color: token.colorPrimary }}>
+                Network Configuration
+              </Title>
             </Space>
 
-            <Row gutter={[24, 0]}>
-              <Col xs={24} md={12}>
-                <Form.Item
-                  label={<Text strong>MAC Address</Text>}
-                  name="macAddress"
-                  rules={[
-                    { required: true, message: 'Please enter MAC address' },
-                    { 
-                      pattern: /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/, 
-                      message: 'Invalid MAC address format' 
-                    },
-                  ]}
-                  tooltip={{
-                    title: 'Physical address of the network interface',
-                    icon: <InfoCircleOutlined />
-                  }}
-                >
-                  <Input 
-                    placeholder="00:1A:2B:3C:4D:5E" 
-                    size="large"
-                    style={{ fontFamily: 'monospace' }}
-                  />
-                </Form.Item>
-              </Col>
+            <div style={{ 
+              backgroundColor: token.colorBgLayout,
+              padding: '24px',
+              borderRadius: '8px',
+              border: `1px solid ${token.colorBorder}`
+            }}>
+              <Row gutter={[24, 16]}>
+                <Col xs={24} lg={12}>
+                  <Form.Item
+                    label={<Text strong style={{ fontSize: '14px' }}>MAC Address</Text>}
+                    name="macAddress"
+                    rules={[
+                      { required: true, message: 'MAC address is required' },
+                      { 
+                        pattern: /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/, 
+                        message: 'Invalid MAC address format (e.g., 00:1A:2B:3C:4D:5E)' 
+                      },
+                    ]}
+                  >
+                    <Input 
+                      placeholder="00:1A:2B:3C:4D:5E" 
+                      size="large"
+                      style={{ fontFamily: 'monospace' }}
+                    />
+                  </Form.Item>
+                </Col>
 
-              <Col xs={24} md={12}>
-                <Form.Item
-                  label={<Text strong>IP Address</Text>}
-                  name="ipAddress"
-                  rules={[
-                    { required: true, message: 'Please enter IP address' },
-                    { 
-                      pattern: /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/, 
-                      message: 'Invalid IP address format' 
-                    },
-                  ]}
-                  tooltip={{
-                    title: 'Network IP address of the device',
-                    icon: <InfoCircleOutlined />
-                  }}
-                >
-                  <Input 
-                    placeholder="192.168.1.100" 
-                    size="large"
-                    style={{ fontFamily: 'monospace' }}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-          </Card>
+                <Col xs={24} lg={12}>
+                  <Form.Item
+                    label={<Text strong style={{ fontSize: '14px' }}>IP Address</Text>}
+                    name="ipAddress"
+                    rules={[
+                      { required: true, message: 'IP address is required' },
+                      { 
+                        pattern: /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/, 
+                        message: 'Invalid IP address format (e.g., 192.168.1.100)' 
+                      },
+                    ]}
+                  >
+                    <Input 
+                      placeholder="192.168.1.100" 
+                      size="large"
+                      style={{ fontFamily: 'monospace' }}
+                    />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} lg={12}>
+                  <Form.Item
+                    label={<Text strong style={{ fontSize: '14px' }}>Firmware Version</Text>}
+                    name="firmwareVersion"
+                    rules={[{ required: true, message: 'Firmware version is required' }]}
+                  >
+                    <Input 
+                      placeholder="v1.0.0" 
+                      size="large"
+                    />
+                  </Form.Item>
+                </Col>
+
+                <Col xs={24} lg={12}>
+                  <Form.Item
+                    label={<Text strong style={{ fontSize: '14px' }}>Device Status</Text>}
+                    name="status"
+                    rules={[{ required: true, message: 'Status is required' }]}
+                  >
+                    <Select 
+                      placeholder="Select initial status"
+                      size="large"
+                    >
+                      <Option value="online">
+                        <Space>
+                          <CheckCircleOutlined style={{ color: '#52c41a' }} />
+                          Online
+                        </Space>
+                      </Option>
+                      <Option value="offline">
+                        <Space>
+                          <CloseCircleOutlined style={{ color: '#8c8c8c' }} />
+                          Offline
+                        </Space>
+                      </Option>
+                      <Option value="maintenance">
+                        <Space>
+                          <ToolOutlined style={{ color: '#faad14' }} />
+                          Maintenance
+                        </Space>
+                      </Option>
+                    </Select>
+                  </Form.Item>
+                </Col>
+              </Row>
+            </div>
+          </div>
         )}
 
         {/* Device Configuration - Only visible in Add mode */}
         {mode === 'add' && (
-          <Card 
-            size="small"
-            style={{ 
-              marginBottom: '20px',
-              borderRadius: '8px',
-              backgroundColor: token.colorBgContainer
-            }}
-            styles={{
-              body: { padding: '20px' }
-            }}
-          >
-            <Space size="small" style={{ marginBottom: '16px' }}>
-              <ToolOutlined style={{ color: token.colorPrimary, fontSize: '18px' }} />
-              <Title level={5} style={{ margin: 0 }}>Device Configuration</Title>
+          <div style={{ marginBottom: '32px' }}>
+            <Space size="small" style={{ marginBottom: '20px' }}>
+              <ToolOutlined style={{ color: token.colorPrimary, fontSize: '20px' }} />
+              <Title level={4} style={{ margin: 0, color: token.colorPrimary }}>
+                Sensors & Configuration
+              </Title>
             </Space>
 
-            <Row gutter={[24, 0]}>
-              <Col xs={24} md={12}>
+            <div style={{ 
+              backgroundColor: token.colorBgLayout,
+              padding: '24px',
+              borderRadius: '8px',
+              border: `1px solid ${token.colorBorder}`
+            }}>
+              <Form.Item
+                label={<Text strong style={{ fontSize: '14px' }}>Available Sensors</Text>}
+                name="sensors"
+                extra={<Text type="secondary" style={{ fontSize: '12px' }}>Select all sensors available on this device</Text>}
+              >
+                <Select
+                  mode="multiple"
+                  placeholder="Select sensor types"
+                  style={{ width: '100%' }}
+                  size="large"
+                  allowClear
+                >
+                  <Option value="turbidity">
+                    <Space>
+                      <ExperimentOutlined />
+                      Turbidity Sensor
+                    </Space>
+                  </Option>
+                  <Option value="tds">
+                    <Space>
+                      <DashboardOutlined />
+                      TDS (Total Dissolved Solids)
+                    </Space>
+                  </Option>
+                  <Option value="ph">
+                    <Space>
+                      <ExperimentOutlined />
+                      pH Level Sensor
+                    </Space>
+                  </Option>
+                  <Option value="temperature">
+                    <Space>
+                      <FireOutlined />
+                      Temperature Sensor
+                    </Space>
+                  </Option>
+                  <Option value="humidity">
+                    <Space>
+                      <CloudOutlined />
+                      Humidity Sensor
+                    </Space>
+                  </Option>
+                  <Option value="pressure">
+                    <Space>
+                      <DashboardOutlined />
+                      Pressure Sensor
+                    </Space>
+                  </Option>
+                </Select>
+              </Form.Item>
+            </div>
+          </div>
+        )}
+
+        {/* Location Information */}
+        <div style={{ marginBottom: '16px' }}>
+          <Space size="small" style={{ marginBottom: '20px' }}>
+            <EnvironmentOutlined style={{ color: token.colorSuccess, fontSize: '20px' }} />
+            <Title level={4} style={{ margin: 0, color: token.colorSuccess }}>
+              Location Assignment
+            </Title>
+            <Text type="secondary" style={{ fontSize: '13px' }}>(Required for registration)</Text>
+          </Space>
+
+          <div style={{ 
+            backgroundColor: token.colorSuccessBg,
+            padding: '24px',
+            borderRadius: '8px',
+            border: `2px solid ${token.colorSuccess}`
+          }}>
+            <Row gutter={[24, 16]}>
+              <Col xs={24} lg={12}>
                 <Form.Item
-                  label={<Text strong>Firmware Version</Text>}
-                  name="firmwareVersion"
-                  rules={[{ required: true, message: 'Please enter firmware version' }]}
-                  tooltip={{
-                    title: 'Current firmware version installed on the device',
-                    icon: <InfoCircleOutlined />
-                  }}
+                  label={<Text strong style={{ fontSize: '14px' }}>Building</Text>}
+                  name="building"
+                  rules={[{ required: true, message: 'Building is required' }]}
                 >
                   <Input 
-                    placeholder="v1.0.0" 
+                    placeholder="e.g., Main Building, Building A, Science Block" 
                     size="large"
+                    prefix={<EnvironmentOutlined />}
                   />
                 </Form.Item>
               </Col>
 
-              <Col xs={24} md={12}>
+              <Col xs={24} lg={12}>
                 <Form.Item
-                  label={<Text strong>Status</Text>}
-                  name="status"
-                  rules={[{ required: true, message: 'Please select status' }]}
-                  tooltip={{
-                    title: 'Current operational status of the device',
-                    icon: <InfoCircleOutlined />
-                  }}
+                  label={<Text strong style={{ fontSize: '14px' }}>Floor</Text>}
+                  name="floor"
+                  rules={[{ required: true, message: 'Floor is required' }]}
                 >
                   <Select 
-                    placeholder="Select status"
+                    placeholder="Select floor level" 
                     size="large"
                   >
-                    <Option value="online">
-                      <Space>
-                        <CheckCircleOutlined style={{ color: '#52c41a' }} />
-                        Online
-                      </Space>
-                    </Option>
-                    <Option value="offline">
-                      <Space>
-                        <CloseCircleOutlined style={{ color: '#8c8c8c' }} />
-                        Offline
-                      </Space>
-                    </Option>
-                    <Option value="maintenance">
-                      <Space>
-                        <ToolOutlined style={{ color: '#faad14' }} />
-                        Maintenance
-                      </Space>
-                    </Option>
+                    <Option value="Ground Floor">Ground Floor</Option>
+                    <Option value="1st Floor">1st Floor</Option>
+                    <Option value="2nd Floor">2nd Floor</Option>
+                    <Option value="3rd Floor">3rd Floor</Option>
+                    <Option value="4th Floor">4th Floor</Option>
+                    <Option value="5th Floor">5th Floor</Option>
                   </Select>
                 </Form.Item>
               </Col>
 
               <Col xs={24}>
                 <Form.Item
-                  label={<Text strong>Sensors</Text>}
-                  name="sensors"
-                  tooltip={{
-                    title: 'Select the types of sensors available on this device',
-                    icon: <InfoCircleOutlined />
-                  }}
+                  label={<Text strong style={{ fontSize: '14px' }}>Location Notes (Optional)</Text>}
+                  name="locationNotes"
                 >
-                  <Select
-                    mode="tags"
-                    placeholder="Select or type sensor types (e.g., turbidity, tds, ph)"
-                    style={{ width: '100%' }}
-                    size="large"
-                  >
-                    <Option value="turbidity">
-                      <Space>
-                        <ExperimentOutlined />
-                        Turbidity
-                      </Space>
-                    </Option>
-                    <Option value="tds">
-                      <Space>
-                        <DashboardOutlined />
-                        TDS (Total Dissolved Solids)
-                      </Space>
-                    </Option>
-                    <Option value="ph">
-                      <Space>
-                        <ExperimentOutlined />
-                        pH Level
-                      </Space>
-                    </Option>
-                    <Option value="temperature">
-                      <Space>
-                        <FireOutlined />
-                        Temperature
-                      </Space>
-                    </Option>
-                    <Option value="humidity">
-                      <Space>
-                        <CloudOutlined />
-                        Humidity
-                      </Space>
-                    </Option>
-                    <Option value="pressure">
-                      <Space>
-                        <DashboardOutlined />
-                        Pressure
-                      </Space>
-                    </Option>
-                    <Option value="motion">
-                      <Space>
-                        <RadarChartOutlined />
-                        Motion
-                      </Space>
-                    </Option>
-                    <Option value="light">
-                      <Space>
-                        <BulbOutlined />
-                        Light
-                      </Space>
-                    </Option>
-                    <Option value="sound">
-                      <Space>
-                        <SoundOutlined />
-                        Sound
-                      </Space>
-                    </Option>
-                  </Select>
+                  <TextArea
+                    rows={3}
+                    placeholder="e.g., Near the main entrance, Room 201, Lab 3, Next to water tank"
+                    maxLength={200}
+                    showCount
+                  />
                 </Form.Item>
               </Col>
             </Row>
-          </Card>
-        )}
-
-        {/* Location Information */}
-        <Card 
-          size="small"
-          style={{ 
-            marginBottom: '20px',
-            borderRadius: '8px',
-            backgroundColor: token.colorBgContainer,
-            borderColor: token.colorPrimary
-          }}
-          styles={{
-            body: { padding: '20px' }
-          }}
-        >
-          <Space size="small" style={{ marginBottom: '16px' }}>
-            <EnvironmentOutlined style={{ color: token.colorPrimary, fontSize: '18px' }} />
-            <Title level={5} style={{ margin: 0 }}>Location Information</Title>
-            <Text type="secondary" style={{ fontSize: '12px' }}>(Required for device registration)</Text>
-          </Space>
-
-          <Row gutter={[24, 0]}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={<Text strong>Building</Text>}
-                name="building"
-                rules={[{ required: true, message: 'Please enter building name' }]}
-                tooltip={{
-                  title: 'Building where the device is located',
-                  icon: <InfoCircleOutlined />
-                }}
-              >
-                <Input 
-                  placeholder="e.g., asd, Main Building, Building A" 
-                  size="large"
-                />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={<Text strong>Floor</Text>}
-                name="floor"
-                rules={[{ required: true, message: 'Please select floor' }]}
-                tooltip={{
-                  title: 'Floor where the device is located',
-                  icon: <InfoCircleOutlined />
-                }}
-              >
-                <Select 
-                  placeholder="Select floor" 
-                  size="large"
-                >
-                  <Option value="1st Floor">1st Floor</Option>
-                  <Option value="2nd Floor">2nd Floor</Option>
-                  <Option value="3rd Floor">3rd Floor</Option>
-                  <Option value="4th Floor">4th Floor</Option>
-                  <Option value="5th Floor">5th Floor</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-
-            <Col xs={24}>
-              <Form.Item
-                label={<Text strong>Notes</Text>}
-                name="locationNotes"
-                tooltip={{
-                  title: 'Optional notes about the device location',
-                  icon: <InfoCircleOutlined />
-                }}
-              >
-                <TextArea
-                  rows={3}
-                  placeholder="e.g., asx, Near the main entrance, Room 201, Lab 3"
-                  size="large"
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
-
-        {/* Advanced Settings */}
-        <Card 
-          size="small"
-          style={{ 
-            borderRadius: '8px',
-            backgroundColor: token.colorBgContainer
-          }}
-          styles={{
-            body: { padding: '20px' }
-          }}
-        >
-          <Space size="small" style={{ marginBottom: '16px' }}>
-            <SettingOutlined style={{ color: token.colorPrimary, fontSize: '18px' }} />
-            <Title level={5} style={{ margin: 0 }}>Advanced Settings</Title>
-          </Space>
-
-          <Row gutter={[24, 0]}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={<Text strong>Description</Text>}
-                name="description"
-                tooltip={{
-                  title: 'Device description or purpose',
-                  icon: <InfoCircleOutlined />
-                }}
-              >
-                <Input 
-                  placeholder="e.g., Water quality monitoring sensor" 
-                  size="large"
-                />
-              </Form.Item>
-            </Col>
-
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={<Text strong>Owner</Text>}
-                name="owner"
-                tooltip={{
-                  title: 'Device owner or responsible person',
-                  icon: <InfoCircleOutlined />
-                }}
-              >
-                <Input 
-                  placeholder="e.g., John Doe, Maintenance Team" 
-                  size="large"
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Card>
+          </div>
+        </div>
       </Form>
     </Modal>
   );

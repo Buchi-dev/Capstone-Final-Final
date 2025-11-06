@@ -1,5 +1,5 @@
 import { Modal, Form, Input, Select, Space, Typography, Divider, Alert } from 'antd';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { Device } from '../../../../schemas';
 import { EnvironmentOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useThemeToken } from '../../../../theme';
@@ -23,6 +23,7 @@ export const RegisterDeviceModal = ({
 }: RegisterDeviceModalProps) => {
   const [form] = Form.useForm();
   const token = useThemeToken();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -32,24 +33,41 @@ export const RegisterDeviceModal = ({
         floor: device.metadata?.location?.floor || '',
         notes: device.metadata?.location?.notes || '',
       });
+      setIsSubmitting(false);
     } else {
       form.resetFields();
+      setIsSubmitting(false);
     }
   }, [visible, device, form]);
 
   const handleOk = async () => {
+    // Prevent multiple submissions
+    if (isSubmitting) {
+      return;
+    }
+
     try {
+      setIsSubmitting(true);
       const values = await form.validateFields();
       
-      if (!device) return;
+      if (!device) {
+        setIsSubmitting(false);
+        return;
+      }
 
-      onRegister(device.deviceId, {
+      await onRegister(device.deviceId, {
         building: values.building,
         floor: values.floor,
         notes: values.notes || '',
       });
+      
+      // Reset submission state after a delay to ensure the modal has time to close
+      setTimeout(() => {
+        setIsSubmitting(false);
+      }, 1000);
     } catch (error) {
       console.error('Form validation failed:', error);
+      setIsSubmitting(false);
     }
   };
 
@@ -67,7 +85,16 @@ export const RegisterDeviceModal = ({
       width={600}
       okText="Register Device"
       cancelText="Cancel"
-      okButtonProps={{ type: 'primary' }}
+      okButtonProps={{ 
+        type: 'primary',
+        loading: isSubmitting,
+        disabled: isSubmitting,
+      }}
+      cancelButtonProps={{
+        disabled: isSubmitting,
+      }}
+      closable={!isSubmitting}
+      maskClosable={!isSubmitting}
     >
       {device && (
         <>

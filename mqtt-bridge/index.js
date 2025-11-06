@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const cors = require('cors');
 const mqtt = require('mqtt');
 const { PubSub } = require('@google-cloud/pubsub');
 const pino = require('pino');
@@ -536,6 +537,15 @@ const initializeMQTTClient = () => {
 
 const app = express();
 app.disable('x-powered-by');
+
+// Enable CORS for all origins (or configure specific origins)
+app.use(cors({
+  origin: true, // Allow all origins in development
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(compression());
 app.use(express.json());
 

@@ -66,7 +66,7 @@ export const HistoricalTrendsCard = ({
           ))}
         </Select>
       }
-      bordered={false}
+      variant="borderless"
     >
       {chartData.length === 0 ? (
         <Empty description="No historical data available" />
