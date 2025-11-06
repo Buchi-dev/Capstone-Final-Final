@@ -2,7 +2,10 @@
  * Notification Preferences Service
  * 
  * Provides API functions for managing user notification preferences
- * Communicates with Firebase Callable Function: notificationPreferences
+ * Communicates with Firebase Callable Function: UserCalls
+ * 
+ * Note: Notification preferences are stored as a SUBCOLLECTION within each user document:
+ * Structure: users/{userId}/notificationPreferences/{prefId}
  * 
  * @module services/notificationPreferencesService
  */
@@ -117,7 +120,7 @@ export interface ErrorResponse {
  */
 export class NotificationPreferencesService {
   private functions;
-  private functionName = 'notificationPreferences';
+  private functionName = 'UserCalls'; // Updated to match backend function name
 
   constructor() {
     this.functions = getFunctions();

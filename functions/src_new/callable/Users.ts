@@ -352,13 +352,19 @@ async function handleGetUserPreferences(
         return {success: true, message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND, data: null};
       }
 
-      const preferences = userDoc.get(
-        FIELD_NAMES.NOTIFICATION_PREFERENCES
-      ) as NotificationPreferences | undefined;
+      // Get preferences from subcollection
+      const prefsSnapshot = await db
+        .collection(COLLECTIONS.USERS)
+        .doc(userId)
+        .collection("notificationPreferences")
+        .limit(1)
+        .get();
 
-      if (!preferences) {
+      if (prefsSnapshot.empty) {
         return {success: true, message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND, data: null};
       }
+
+      const preferences = prefsSnapshot.docs[0].data() as NotificationPreferences;
 
       return {
         success: true,
@@ -425,9 +431,9 @@ async function handleSetupPreferences(
         throw new HttpsError("not-found", NOTIFICATION_PREFERENCES_ERRORS.USER_NOT_FOUND);
       }
 
-      const existingPrefs = userDoc.get(
-        FIELD_NAMES.NOTIFICATION_PREFERENCES
-      ) as NotificationPreferences | undefined;
+      // Check if preferences already exist in subcollection
+      const prefsCollectionRef = userRef.collection("notificationPreferences");
+      const existingPrefsSnapshot = await prefsCollectionRef.limit(1).get();
 
       const preferencesData: Record<string, unknown> = {
         userId,
@@ -446,23 +452,25 @@ async function handleSetupPreferences(
       };
 
       // eslint-disable-next-line new-cap
-      if (!existingPrefs) preferencesData.createdAt = FieldValue.serverTimestamp();
+      if (existingPrefsSnapshot.empty) {
+        // Create new document
+        preferencesData.createdAt = FieldValue.serverTimestamp();
+        await prefsCollectionRef.add(preferencesData);
+      } else {
+        // Update existing document
+        await existingPrefsSnapshot.docs[0].ref.update(preferencesData);
+      }
 
-      await userRef.set(
-        {[FIELD_NAMES.NOTIFICATION_PREFERENCES]: preferencesData},
-        {merge: true}
-      );
-
-      const savedDoc = await userRef.get();
-      const savedPrefs = savedDoc.get(
-        FIELD_NAMES.NOTIFICATION_PREFERENCES
-      ) as NotificationPreferences | undefined;
+      // Retrieve the saved preferences
+      const savedPrefsSnapshot = await prefsCollectionRef.limit(1).get();
+      const savedPrefs = savedPrefsSnapshot.empty ? null :
+        savedPrefsSnapshot.docs[0].data() as NotificationPreferences;
 
       return {
         success: true,
-        message: existingPrefs ?
-          NOTIFICATION_PREFERENCES_MESSAGES.UPDATE_SUCCESS :
-          NOTIFICATION_PREFERENCES_MESSAGES.CREATE_SUCCESS,
+        message: existingPrefsSnapshot.empty ?
+          NOTIFICATION_PREFERENCES_MESSAGES.CREATE_SUCCESS :
+          NOTIFICATION_PREFERENCES_MESSAGES.UPDATE_SUCCESS,
         data: savedPrefs ? {...savedPrefs, userId} : null,
       };
     },

@@ -1,26 +1,12 @@
-/**
- * Database Constants
- * Firestore collection names and database-related constants
- *
- * @module constants/Database.Constants
- */
-
-// ===========================
-// FIRESTORE COLLECTION NAMES
-// ===========================
-
-/**
- * Primary Firestore collection names
- * Use these constants instead of hardcoded strings
- */
 export const COLLECTIONS = {
   USERS: "users",
   LOGIN_LOGS: "login_logs",
   BUSINESS_LOGS: "business_logs",
   ALERTS: "alerts",
-  NOTIFICATION_PREFERENCES: "notification_preferences",
   DEVICES: "devices",
   SENSOR_READINGS: "sensor_readings",
+  // Subcollections
+  NOTIFICATION_PREFERENCES: "notificationPreferences", // Subcollection of users
 } as const;
 
 // ===========================
@@ -42,7 +28,6 @@ export const FIELD_NAMES = {
   STATUS: "status",
   ROLE: "role",
   UPDATED_BY: "updatedBy",
-  NOTIFICATION_PREFERENCES: "notificationPreferences",
 
   // Common fields
   EMAIL: "email",

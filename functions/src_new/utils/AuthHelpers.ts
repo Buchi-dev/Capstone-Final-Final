@@ -212,14 +212,14 @@ export async function createUserProfile(userInfo: ParsedUserInfo): Promise<void>
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       };
 
-      // Create user document with notification preferences
-      await db
-        .collection(COLLECTIONS.USERS)
-        .doc(userInfo.uid)
-        .set({
-          ...userProfileData,
-          [FIELD_NAMES.NOTIFICATION_PREFERENCES]: defaultNotificationPreferences,
-        });
+      // Create user document
+      const userRef = db.collection(COLLECTIONS.USERS).doc(userInfo.uid);
+      await userRef.set(userProfileData);
+
+      // Create notification preferences in subcollection
+      await userRef
+        .collection(COLLECTIONS.NOTIFICATION_PREFERENCES)
+        .add(defaultNotificationPreferences);
     },
     "creating user profile",
     "Failed to create user profile in database"

@@ -67,8 +67,11 @@ service cloud.firestore {
     // COLLECTION: users
     // =========================================================================
     // Purpose: User authentication profiles with RBAC
-    // Functions: auth/beforeCreate.ts, auth/beforeSignIn.ts, callable/userManagement.ts
+    // Functions: auth/beforeCreate.ts, auth/beforeSignIn.ts, callable/Users.ts
     // Queries: orderBy("createdAt", "desc") - userManagement.ts
+    // 
+    // Subcollections:
+    // - notificationPreferences: User notification settings (managed via callable/Users.ts)
     
     match /users/{userId} {
       /**
@@ -125,6 +128,53 @@ service cloud.firestore {
        * Related: auth/beforeCreate.ts
        */
       allow create, delete: if false;
+      
+      // =======================================================================
+      // SUBCOLLECTION: users/{userId}/notificationPreferences
+      // =======================================================================
+      // Purpose: User notification settings and preferences
+      // Functions: callable/Users.ts (getUserPreferences, setupPreferences)
+      // Structure: Each user can have preference documents in this subcollection
+      
+      match /notificationPreferences/{prefId} {
+        /**
+         * READ ACCESS
+         * - Users can read their own notification preferences
+         * - Admins can read all preferences (for notification targeting)
+         * 
+         * Related: callable/Users.ts (getUserPreferences)
+         */
+        allow read: if isAuthenticated() && (
+          isOwner(userId) || isAdmin()
+        );
+        
+        /**
+         * CREATE/UPDATE ACCESS
+         * - Users can create/update their own notification preferences
+         * - Must validate email domain if email field is present
+         * - Admins can manage all preferences
+         * 
+         * Related: callable/Users.ts (setupPreferences)
+         */
+        allow create, update: if isAuthenticated() && (
+          (isOwner(userId) && (
+            !('email' in request.resource.data) || 
+            isValidEmail(request.resource.data.email)
+          )) || 
+          isAdmin()
+        );
+        
+        /**
+         * DELETE ACCESS
+         * - Users can delete their own preferences
+         * - Admins can delete any preferences
+         * 
+         * Related: callable/Users.ts (deletePreferences)
+         */
+        allow delete: if isAuthenticated() && (
+          isOwner(userId) || isAdmin()
+        );
+      }
     }
     
     // =========================================================================
@@ -274,79 +324,6 @@ service cloud.firestore {
        * - Only Cloud Functions can delete digests
        */
       allow delete: if false;
-    }
-    
-    // =========================================================================
-    // COLLECTION: notification_preferences
-    // =========================================================================
-    // Purpose: User notification settings and preferences
-    // Functions: callable/notificationPreferences.ts, scheduler/* (recipient lookup)
-    // Queries: emailNotifications + sendScheduledAlerts (requires index)
-    
-    match /notification_preferences/{userId} {
-      /**
-       * READ ACCESS
-       * - Users can read their own preferences
-       * - Admins can read all preferences (for recipient lookup)
-       * 
-       * Related:
-       * - callable/notificationPreferences.ts (getUserPreferences)
-       * - utils/alertHelpers.ts (getNotificationRecipients)
-       */
-      allow read: if isAuthenticated() && (
-        isOwner(userId) || isAdmin()
-      );
-      
-      /**
-       * CREATE ACCESS
-       * - Users can create their own preferences
-       * - Must match their userId and email
-       * - Email must be valid @smu.edu.ph domain
-       * 
-       * Related: callable/notificationPreferences.ts (setupPreferences)
-       */
-      allow create: if isOwner(userId)
-                    && request.resource.data.userId == request.auth.uid
-                    && request.resource.data.email == request.auth.token.email
-                    && isValidEmail(request.resource.data.email);
-      
-      /**
-       * UPDATE ACCESS
-       * - Users can update their own preferences
-       * - Cannot change userId or email
-       * - Validates field types and values
-       * 
-       * Related: callable/notificationPreferences.ts (setupPreferences)
-       */
-      allow update: if isOwner(userId)
-                    && !request.resource.data.diff(resource.data)
-                         .affectedKeys()
-                         .hasAny(['userId', 'email'])
-                    && (
-                      // Validate boolean fields if present
-                      !('emailNotifications' in request.resource.data) ||
-                      request.resource.data.emailNotifications is bool
-                    )
-                    && (
-                      !('pushNotifications' in request.resource.data) ||
-                      request.resource.data.pushNotifications is bool
-                    )
-                    && (
-                      !('sendScheduledAlerts' in request.resource.data) ||
-                      request.resource.data.sendScheduledAlerts is bool
-                    )
-                    && (
-                      !('quietHoursEnabled' in request.resource.data) ||
-                      request.resource.data.quietHoursEnabled is bool
-                    );
-      
-      /**
-       * DELETE ACCESS
-       * - Users can delete their own preferences
-       * 
-       * Related: callable/notificationPreferences.ts (deletePreferences)
-       */
-      allow delete: if isOwner(userId);
     }
     
     // =========================================================================
