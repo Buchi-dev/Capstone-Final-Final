@@ -5,7 +5,7 @@
  * @module utils/ErrorHandlers
  */
 
-import { HttpsError } from "firebase-functions/v2/https";
+import {HttpsError} from "firebase-functions/v2/https";
 
 /**
  * @param {unknown} error - The error that was caught
@@ -28,8 +28,9 @@ export function handleOperationError(
 }
 
 /**
- * @template T - Return type of the async operation
- * @param {() => Promise<T>} operation - The async operation to execute
+ * Wraps an async operation with standardized error handling.
+ * @template T
+ * @param {function(): Promise<T>} operation - The async operation to execute
  * @param {string} context - Description of the operation
  * @param {string} fallbackError - Error message for non-HttpsErrors
  * @return {Promise<T>} Result of the operation

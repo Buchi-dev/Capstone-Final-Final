@@ -9,12 +9,12 @@ import * as admin from "firebase-admin";
 import {HttpsError} from "firebase-functions/v2/identity";
 
 import {db} from "../config/firebase";
-import {COLLECTIONS, FIELD_NAMES} from "../constants/Database.Constants";
 import {
   ALLOWED_EMAIL_DOMAIN,
   DEFAULT_USER_ROLE,
   DEFAULT_USER_STATUS,
 } from "../constants/Auth.Constants";
+import {COLLECTIONS, FIELD_NAMES} from "../constants/Database.Constants";
 import {DEFAULT_NOTIFICATION_PREFERENCES} from "../constants/User.Constants";
 import type {
   ParsedUserInfo,
@@ -25,6 +25,7 @@ import type {
   UserProfile,
   LoginResult,
 } from "../types/Auth.Types";
+
 import {withErrorHandling} from "./ErrorHandlers";
 
 // ===========================
@@ -221,7 +222,7 @@ export async function createUserProfile(userInfo: ParsedUserInfo): Promise<void>
         });
     },
     "creating user profile",
-    `Failed to create user profile in database`
+    "Failed to create user profile in database"
   );
 }
 

@@ -22,7 +22,7 @@ export interface UserManagementRequest {
     | "listUsers"
     | "getUserPreferences"
     | "setupPreferences";
-    
+
   userId?: string;
   status?: UserStatus;
   role?: UserRole;

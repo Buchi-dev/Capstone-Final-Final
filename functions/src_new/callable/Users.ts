@@ -4,12 +4,12 @@
  */
 
 import * as admin from "firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import type { CallableRequest } from "firebase-functions/v2/https";
+import {FieldValue} from "firebase-admin/firestore";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
+import type {CallableRequest} from "firebase-functions/v2/https";
 
-import { db } from "../config/firebase";
-import type { UserStatus, UserRole } from "../constants";
+import {db} from "../config/firebase";
+import type {UserStatus, UserRole} from "../constants";
 import {
   USER_MANAGEMENT_ERRORS,
   USER_MANAGEMENT_MESSAGES,
@@ -22,7 +22,6 @@ import {
   FIELD_NAMES,
   SORT_ORDERS,
 } from "../constants";
-
 import type {
   UserManagementRequest,
   UserManagementResponse,
@@ -33,32 +32,48 @@ import type {
   NotificationPreferences,
   ListUserData,
 } from "../types";
-
-import { createRoutedFunction } from "../utils/SwitchCaseRouting";
-import { withErrorHandling } from "../utils/ErrorHandlers";
+import {withErrorHandling} from "../utils/ErrorHandlers";
+import {createRoutedFunction} from "../utils/SwitchCaseRouting";
 
 // ==================================================
 // 🔹 VALIDATION HELPERS
 // ==================================================
 
+/**
+ * Validates that the provided status is a valid user status.
+ * @param {UserStatus} status - The status to validate
+ * @throws {HttpsError} If the status is invalid
+ */
 function validateStatus(status: UserStatus): void {
   if (!VALID_USER_STATUSES.includes(status)) {
     throw new HttpsError(
       "invalid-argument",
-      USER_MANAGEMENT_ERRORS.INVALID_STATUS(VALID_USER_STATUSES)
+      USER_MANAGEMENT_ERRORS.INVALID_STATUS(VALID_USER_STATUSES) // eslint-disable-line new-cap
     );
   }
 }
 
+/**
+ * Validates that the provided role is a valid user role.
+ * @param {UserRole} role - The role to validate
+ * @throws {HttpsError} If the role is invalid
+ */
 function validateRole(role: UserRole): void {
   if (!VALID_USER_ROLES.includes(role)) {
     throw new HttpsError(
       "invalid-argument",
-      USER_MANAGEMENT_ERRORS.INVALID_ROLE(VALID_USER_ROLES)
+      USER_MANAGEMENT_ERRORS.INVALID_ROLE(VALID_USER_ROLES) // eslint-disable-line new-cap
     );
   }
 }
 
+/**
+ * Validates that a user is not attempting to suspend themselves.
+ * @param {string} currentUserId - The ID of the user performing the action
+ * @param {string} targetUserId - The ID of the target user
+ * @param {UserStatus} newStatus - The new status being set
+ * @throws {HttpsError} If user attempts to suspend themselves
+ */
 function validateNotSuspendingSelf(
   currentUserId: string,
   targetUserId: string,
@@ -72,6 +87,13 @@ function validateNotSuspendingSelf(
   }
 }
 
+/**
+ * Validates that a user is not attempting to change their own role to Staff.
+ * @param {string} currentUserId - The ID of the user performing the action
+ * @param {string} targetUserId - The ID of the target user
+ * @param {UserRole} newRole - The new role being set
+ * @throws {HttpsError} If user attempts to change own role to Staff
+ */
 function validateNotChangingOwnRole(
   currentUserId: string,
   targetUserId: string,
@@ -89,6 +111,12 @@ function validateNotChangingOwnRole(
 // 🔹 TRANSFORMERS & UTILITIES
 // ==================================================
 
+/**
+ * Transforms a Firestore document into ListUserData format.
+ * @param {string} docId - The document ID
+ * @param {FirebaseFirestore.DocumentData} data - The document data
+ * @return {ListUserData} Transformed user data
+ */
 function transformUserDocToListData(
   docId: string,
   data: FirebaseFirestore.DocumentData
@@ -110,12 +138,21 @@ function transformUserDocToListData(
   };
 }
 
+/**
+ * Builds an update data object for Firestore operations.
+ * @param {string} performedBy - The ID of the user performing the update
+ * @param {object} updates - The updates to apply
+ * @param {UserStatus} [updates.status] - Optional status update
+ * @param {UserRole} [updates.role] - Optional role update
+ * @return {Record<string, unknown>} The update data object
+ */
 function buildUpdateData(
   performedBy: string,
   updates: Partial<{ status: UserStatus; role: UserRole }>
 ): Record<string, unknown> {
   const updateData: Record<string, unknown> = {
-    [FIELD_NAMES.UPDATED_AT]: admin.firestore.FieldValue.serverTimestamp(),
+    // eslint-disable-next-line new-cap
+    [FIELD_NAMES.UPDATED_AT]: FieldValue.serverTimestamp(),
     [FIELD_NAMES.UPDATED_BY]: performedBy,
   };
 
@@ -125,6 +162,14 @@ function buildUpdateData(
   return updateData;
 }
 
+/**
+ * Updates custom claims for a user in Firebase Authentication.
+ * @param {string} userId - The user ID
+ * @param {object} claims - The claims to update
+ * @param {UserStatus} [claims.status] - Optional status claim
+ * @param {UserRole} [claims.role] - Optional role claim
+ * @return {Promise<void>}
+ */
 async function updateUserCustomClaims(
   userId: string,
   claims: Partial<{ status: UserStatus; role: UserRole }>
@@ -147,12 +192,19 @@ async function updateUserCustomClaims(
 // 🔹 HANDLERS: USER MANAGEMENT
 // ==================================================
 
+/**
+ * Handles updating a user's status (Active, Suspended).
+ * @param {CallableRequest<UserManagementRequest>} request - The callable request
+ * @return {Promise<UpdateStatusResponse>} Response with updated status
+ * @throws {HttpsError} If validation fails or user not found
+ */
 async function handleUpdateStatus(
   request: CallableRequest<UserManagementRequest>
 ): Promise<UpdateStatusResponse> {
-  const { userId, status } = request.data;
-  if (!userId || !status)
+  const {userId, status} = request.data;
+  if (!userId || !status) {
     throw new HttpsError("invalid-argument", USER_MANAGEMENT_ERRORS.STATUS_REQUIRED);
+  }
 
   validateStatus(status);
 
@@ -161,16 +213,18 @@ async function handleUpdateStatus(
       const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
       const userDoc = await userRef.get();
 
-      if (!userDoc.exists)
+      if (!userDoc.exists) {
         throw new HttpsError("not-found", USER_MANAGEMENT_ERRORS.USER_NOT_FOUND);
+      }
 
       validateNotSuspendingSelf(request.auth!.uid, userId, status);
 
-      await userRef.update(buildUpdateData(request.auth!.uid, { status }));
-      await updateUserCustomClaims(userId, { status });
+      await userRef.update(buildUpdateData(request.auth!.uid, {status}));
+      await updateUserCustomClaims(userId, {status});
 
       return {
         success: true,
+        // eslint-disable-next-line new-cap
         message: USER_MANAGEMENT_MESSAGES.STATUS_UPDATED(status),
         userId,
         status,
@@ -181,15 +235,23 @@ async function handleUpdateStatus(
   );
 }
 
+/**
+ * Handles updating a user's status and/or role.
+ * @param {CallableRequest<UserManagementRequest>} request - The callable request
+ * @return {Promise<UpdateUserResponse>} Response with updated user data
+ * @throws {HttpsError} If validation fails or user not found
+ */
 async function handleUpdateUser(
   request: CallableRequest<UserManagementRequest>
 ): Promise<UpdateUserResponse> {
-  const { userId, status, role } = request.data;
+  const {userId, status, role} = request.data;
 
-  if (!userId)
+  if (!userId) {
     throw new HttpsError("invalid-argument", USER_MANAGEMENT_ERRORS.USER_ID_REQUIRED);
-  if (!status && !role)
+  }
+  if (!status && !role) {
     throw new HttpsError("invalid-argument", USER_MANAGEMENT_ERRORS.UPDATE_FIELD_REQUIRED);
+  }
 
   if (status) validateStatus(status);
   if (role) validateRole(role);
@@ -199,25 +261,28 @@ async function handleUpdateUser(
       const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
       const userDoc = await userRef.get();
 
-      if (!userDoc.exists)
+      if (!userDoc.exists) {
         throw new HttpsError("not-found", USER_MANAGEMENT_ERRORS.USER_NOT_FOUND);
+      }
 
       const isSelfUpdate = request.auth!.uid === userId;
       if (isSelfUpdate) {
-        if (status === "Suspended")
+        if (status === "Suspended") {
           validateNotSuspendingSelf(request.auth!.uid, userId, status);
-        if (role === "Staff")
+        }
+        if (role === "Staff") {
           validateNotChangingOwnRole(request.auth!.uid, userId, role);
+        }
       }
 
-      await userRef.update(buildUpdateData(request.auth!.uid, { status, role }));
-      await updateUserCustomClaims(userId, { status, role });
+      await userRef.update(buildUpdateData(request.auth!.uid, {status, role}));
+      await updateUserCustomClaims(userId, {status, role});
 
       return {
         success: true,
         message: USER_MANAGEMENT_MESSAGES.USER_UPDATED,
         userId,
-        updates: { status, role },
+        updates: {status, role},
       };
     },
     "updating user",
@@ -225,8 +290,14 @@ async function handleUpdateUser(
   );
 }
 
+/**
+ * Handles listing all users in the system.
+ * @param {CallableRequest<UserManagementRequest>} _request - The callable request (unused)
+ * @return {Promise<ListUsersResponse>} Response with list of users
+ * @throws {HttpsError} If operation fails
+ */
 async function handleListUsers(
-  _request: CallableRequest<UserManagementRequest>
+  _request: CallableRequest<UserManagementRequest> // eslint-disable-line @typescript-eslint/no-unused-vars
 ): Promise<ListUsersResponse> {
   return await withErrorHandling(
     async () => {
@@ -239,7 +310,7 @@ async function handleListUsers(
         transformUserDocToListData(doc.id, doc.data())
       );
 
-      return { success: true, users, count: users.length };
+      return {success: true, users, count: users.length};
     },
     "listing users",
     USER_MANAGEMENT_ERRORS.LIST_USERS_FAILED
@@ -250,38 +321,49 @@ async function handleListUsers(
 // 🔹 HANDLERS: NOTIFICATION PREFERENCES
 // ==================================================
 
+/**
+ * Handles retrieving notification preferences for a user.
+ * @param {CallableRequest<UserManagementRequest>} request - The callable request
+ * @return {Promise<PreferencesResponse>} Response with user preferences
+ * @throws {HttpsError} If validation fails or permission denied
+ */
 async function handleGetUserPreferences(
   request: CallableRequest<UserManagementRequest>
 ): Promise<PreferencesResponse> {
-  const { userId } = request.data;
+  const {userId} = request.data;
   const requestingUserId = request.auth?.uid;
   const isAdmin = request.auth?.token?.role === "Admin";
 
-  if (!userId)
+  if (!userId) {
     throw new HttpsError("invalid-argument", NOTIFICATION_PREFERENCES_ERRORS.MISSING_USER_ID);
-  if (!requestingUserId)
+  }
+  if (!requestingUserId) {
     throw new HttpsError("unauthenticated", NOTIFICATION_PREFERENCES_ERRORS.UNAUTHENTICATED);
-  if (userId !== requestingUserId && !isAdmin)
+  }
+  if (userId !== requestingUserId && !isAdmin) {
     throw new HttpsError("permission-denied", NOTIFICATION_PREFERENCES_ERRORS.PERMISSION_DENIED);
+  }
 
   return await withErrorHandling(
     async () => {
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
 
-      if (!userDoc.exists)
-        return { success: true, message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND, data: null };
+      if (!userDoc.exists) {
+        return {success: true, message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND, data: null};
+      }
 
       const preferences = userDoc.get(
         FIELD_NAMES.NOTIFICATION_PREFERENCES
       ) as NotificationPreferences | undefined;
 
-      if (!preferences)
-        return { success: true, message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND, data: null };
+      if (!preferences) {
+        return {success: true, message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND, data: null};
+      }
 
       return {
         success: true,
         message: NOTIFICATION_PREFERENCES_MESSAGES.GET_SUCCESS,
-        data: { ...preferences, userId: preferences.userId ?? userId },
+        data: {...preferences, userId: preferences.userId ?? userId},
       };
     },
     "getting user preferences",
@@ -289,6 +371,12 @@ async function handleGetUserPreferences(
   );
 }
 
+/**
+ * Handles setting up or updating notification preferences for a user.
+ * @param {CallableRequest<UserManagementRequest>} request - The callable request
+ * @return {Promise<PreferencesResponse>} Response with saved preferences
+ * @throws {HttpsError} If validation fails or user not found
+ */
 async function handleSetupPreferences(
   request: CallableRequest<UserManagementRequest>
 ): Promise<PreferencesResponse> {
@@ -309,28 +397,33 @@ async function handleSetupPreferences(
   const requestingUserId = request.auth?.uid;
   const isAdmin = request.auth?.token?.role === "Admin";
 
-  if (!userId || !email)
+  if (!userId || !email) {
     throw new HttpsError(
       "invalid-argument",
       NOTIFICATION_PREFERENCES_ERRORS.MISSING_REQUIRED_FIELDS
     );
+  }
 
-  if (!requestingUserId)
+  if (!requestingUserId) {
     throw new HttpsError("unauthenticated", NOTIFICATION_PREFERENCES_ERRORS.UNAUTHENTICATED);
+  }
 
-  if (userId !== requestingUserId && !isAdmin)
+  if (userId !== requestingUserId && !isAdmin) {
     throw new HttpsError("permission-denied", NOTIFICATION_PREFERENCES_ERRORS.PERMISSION_DENIED);
+  }
 
-  if (emailNotifications && !email)
+  if (emailNotifications && !email) {
     throw new HttpsError("invalid-argument", NOTIFICATION_PREFERENCES_ERRORS.EMAIL_REQUIRED);
+  }
 
   return await withErrorHandling(
     async () => {
       const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
       const userDoc = await userRef.get();
 
-      if (!userDoc.exists)
+      if (!userDoc.exists) {
         throw new HttpsError("not-found", NOTIFICATION_PREFERENCES_ERRORS.USER_NOT_FOUND);
+      }
 
       const existingPrefs = userDoc.get(
         FIELD_NAMES.NOTIFICATION_PREFERENCES
@@ -348,14 +441,16 @@ async function handleSetupPreferences(
         quietHoursEnabled: quietHoursEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_ENABLED,
         quietHoursStart: quietHoursStart ?? DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_START,
         quietHoursEnd: quietHoursEnd ?? DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_END,
+        // eslint-disable-next-line new-cap
         updatedAt: FieldValue.serverTimestamp(),
       };
 
+      // eslint-disable-next-line new-cap
       if (!existingPrefs) preferencesData.createdAt = FieldValue.serverTimestamp();
 
       await userRef.set(
-        { [FIELD_NAMES.NOTIFICATION_PREFERENCES]: preferencesData },
-        { merge: true }
+        {[FIELD_NAMES.NOTIFICATION_PREFERENCES]: preferencesData},
+        {merge: true}
       );
 
       const savedDoc = await userRef.get();
@@ -365,10 +460,10 @@ async function handleSetupPreferences(
 
       return {
         success: true,
-        message: existingPrefs
-          ? NOTIFICATION_PREFERENCES_MESSAGES.UPDATE_SUCCESS
-          : NOTIFICATION_PREFERENCES_MESSAGES.CREATE_SUCCESS,
-        data: savedPrefs ? { ...savedPrefs, userId } : null,
+        message: existingPrefs ?
+          NOTIFICATION_PREFERENCES_MESSAGES.UPDATE_SUCCESS :
+          NOTIFICATION_PREFERENCES_MESSAGES.CREATE_SUCCESS,
+        data: savedPrefs ? {...savedPrefs, userId} : null,
       };
     },
     "setting up preferences",

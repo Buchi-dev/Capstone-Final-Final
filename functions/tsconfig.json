@@ -12,5 +12,5 @@
     "resolveJsonModule": true
   },
   "compileOnSave": true,
-  "include": ["src", "src_new"]
+  "include": ["src_new"]
 }
