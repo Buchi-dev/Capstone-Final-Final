@@ -8,24 +8,18 @@ import {
   ALERT_MANAGEMENT_ERRORS,
   ALERT_MANAGEMENT_MESSAGES,
   COLLECTIONS,
-  DIGEST_COLLECTION,
-  DIGEST_ERRORS,
-  DIGEST_MESSAGES,
 } from "../constants";
 import type {
   AcknowledgeAlertRequest,
   ResolveAlertRequest,
-  AcknowledgeDigestRequest,
   AlertResponse,
   WaterQualityAlert,
-  AlertDigest,
 } from "../types";
 import {createRoutedFunction} from "../utils";
 
 type AlertManagementRequest =
   | AcknowledgeAlertRequest
-  | ResolveAlertRequest
-  | AcknowledgeDigestRequest;
+  | ResolveAlertRequest;
 
 // ============================================================================
 // HELPERS
@@ -168,47 +162,6 @@ async function handleResolveAlert(
   };
 }
 
-/**
- * Handles acknowledging an alert digest using a token.
- * @param {CallableRequest<AlertManagementRequest>} request - The callable request
- * @return {Promise<AlertResponse>} Response with acknowledgment status
- * @throws {HttpsError} If validation fails, token invalid, or digest not found
- */
-async function handleAcknowledgeDigest(
-  request: CallableRequest<AlertManagementRequest>
-): Promise<AlertResponse> {
-  const {digestId, token} = request.data as AcknowledgeDigestRequest;
-
-  if (!digestId || !token) {
-    throw new HttpsError("invalid-argument", "Missing required parameters: digestId and token");
-  }
-
-  const digest = await getDocument<AlertDigest>(
-    DIGEST_COLLECTION,
-    digestId,
-    DIGEST_ERRORS.DIGEST_NOT_FOUND
-  );
-
-  if (digest.ackToken !== token) {
-    logger.warn(`Invalid ack token for digest ${digestId}`);
-    throw new HttpsError("permission-denied", DIGEST_ERRORS.INVALID_TOKEN);
-  }
-
-  if (digest.isAcknowledged) {
-    return {success: true, message: DIGEST_ERRORS.ALREADY_ACKNOWLEDGED};
-  }
-
-  await db.collection(DIGEST_COLLECTION).doc(digestId).update({
-    isAcknowledged: true,
-    acknowledgedAt: FieldValue.serverTimestamp(),
-    acknowledgedBy: digest.recipientUid,
-  });
-
-  logger.info(`Digest ${digestId} acknowledged by ${digest.recipientEmail}`);
-
-  return {success: true, message: DIGEST_MESSAGES.ACKNOWLEDGED};
-}
-
 // ============================================================================
 // EXPORT
 // ============================================================================
@@ -218,7 +171,6 @@ export const AlertsCalls = onCall<AlertManagementRequest, Promise<AlertResponse>
     {
       acknowledgeAlert: handleAcknowledgeAlert,
       resolveAlert: handleResolveAlert,
-      acknowledgeDigest: handleAcknowledgeDigest,
     },
     {
       requireAuth: true,

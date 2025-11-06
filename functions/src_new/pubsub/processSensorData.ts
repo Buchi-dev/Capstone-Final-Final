@@ -28,6 +28,7 @@ import {logger} from "firebase-functions/v2";
 import type {MessagePublishedData} from "firebase-functions/v2/pubsub";
 import {onMessagePublished} from "firebase-functions/v2/pubsub";
 
+import {EMAIL_USER_SECRET_REF, EMAIL_PASSWORD_SECRET_REF} from "../config/email";
 import {db, rtdb} from "../config/firebase";
 import {COLLECTIONS} from "../constants/Database.Constants";
 import {
@@ -91,6 +92,7 @@ export const processSensorData = onMessagePublished(
     retry: SENSOR_DATA_PUBSUB_CONFIG.RETRY,
     minInstances: SENSOR_DATA_PUBSUB_CONFIG.MIN_INSTANCES,
     maxInstances: SENSOR_DATA_PUBSUB_CONFIG.MAX_INSTANCES,
+    secrets: [EMAIL_USER_SECRET_REF, EMAIL_PASSWORD_SECRET_REF],
   },
   async (event: CloudEvent<MessagePublishedData<SensorData | BatchSensorData>>): Promise<void> => {
     try {

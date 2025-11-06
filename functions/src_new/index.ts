@@ -20,7 +20,6 @@ export {UserCalls} from "./callable/Users";
 // ===========================
 // PUB/SUB TRIGGERS
 // ===========================
-export {aggregateAlertsToDigest} from "./pubsub/aggregateAlertsToDigest";
 export {autoRegisterDevice} from "./pubsub/autoRegisterDevice";
 export {processSensorData} from "./pubsub/processSensorData";
 
@@ -28,6 +27,4 @@ export {processSensorData} from "./pubsub/processSensorData";
 // SCHEDULED FUNCTIONS
 // ===========================
 export {checkOfflineDevices} from "./schedulers/checkOfflineDevices";
-export {checkStaleAlerts} from "./schedulers/checkStaleAlerts";
-export {sendAlertDigests} from "./schedulers/sendAlertDigests";
 export {sendUnifiedAnalytics} from "./schedulers/send_DWM_Schedulers";
