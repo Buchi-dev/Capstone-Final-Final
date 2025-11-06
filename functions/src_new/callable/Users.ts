@@ -1,7 +1,13 @@
+/**
+ * User Management & Notification Preferences Function
+ * Centralized single callable for all user-related operations.
+ */
+
 import * as admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { CallableRequest } from "firebase-functions/v2/https";
+
 import { db } from "../config/firebase";
 import type { UserStatus, UserRole } from "../constants";
 import {
@@ -16,6 +22,7 @@ import {
   FIELD_NAMES,
   SORT_ORDERS,
 } from "../constants";
+
 import type {
   UserManagementRequest,
   UserManagementResponse,
@@ -26,8 +33,13 @@ import type {
   NotificationPreferences,
   ListUserData,
 } from "../types";
+
 import { createRoutedFunction } from "../utils/SwitchCaseRouting";
 import { withErrorHandling } from "../utils/ErrorHandlers";
+
+// ==================================================
+// 🔹 VALIDATION HELPERS
+// ==================================================
 
 function validateStatus(status: UserStatus): void {
   if (!VALID_USER_STATUSES.includes(status)) {
@@ -40,7 +52,10 @@ function validateStatus(status: UserStatus): void {
 
 function validateRole(role: UserRole): void {
   if (!VALID_USER_ROLES.includes(role)) {
-    throw new HttpsError("invalid-argument", USER_MANAGEMENT_ERRORS.INVALID_ROLE(VALID_USER_ROLES));
+    throw new HttpsError(
+      "invalid-argument",
+      USER_MANAGEMENT_ERRORS.INVALID_ROLE(VALID_USER_ROLES)
+    );
   }
 }
 
@@ -50,7 +65,10 @@ function validateNotSuspendingSelf(
   newStatus: UserStatus
 ): void {
   if (currentUserId === targetUserId && newStatus === "Suspended") {
-    throw new HttpsError("failed-precondition", USER_MANAGEMENT_ERRORS.CANNOT_SUSPEND_SELF);
+    throw new HttpsError(
+      "failed-precondition",
+      USER_MANAGEMENT_ERRORS.CANNOT_SUSPEND_SELF
+    );
   }
 }
 
@@ -60,9 +78,16 @@ function validateNotChangingOwnRole(
   newRole: UserRole
 ): void {
   if (currentUserId === targetUserId && newRole === "Staff") {
-    throw new HttpsError("failed-precondition", USER_MANAGEMENT_ERRORS.CANNOT_CHANGE_OWN_ROLE);
+    throw new HttpsError(
+      "failed-precondition",
+      USER_MANAGEMENT_ERRORS.CANNOT_CHANGE_OWN_ROLE
+    );
   }
 }
+
+// ==================================================
+// 🔹 TRANSFORMERS & UTILITIES
+// ==================================================
 
 function transformUserDocToListData(
   docId: string,
@@ -87,39 +112,29 @@ function transformUserDocToListData(
 
 function buildUpdateData(
   performedBy: string,
-  updates: Partial<{status: UserStatus; role: UserRole}>
+  updates: Partial<{ status: UserStatus; role: UserRole }>
 ): Record<string, unknown> {
   const updateData: Record<string, unknown> = {
     [FIELD_NAMES.UPDATED_AT]: admin.firestore.FieldValue.serverTimestamp(),
     [FIELD_NAMES.UPDATED_BY]: performedBy,
   };
 
-  if (updates.status) {
-    updateData[FIELD_NAMES.STATUS] = updates.status;
-  }
-
-  if (updates.role) {
-    updateData[FIELD_NAMES.ROLE] = updates.role;
-  }
+  if (updates.status) updateData[FIELD_NAMES.STATUS] = updates.status;
+  if (updates.role) updateData[FIELD_NAMES.ROLE] = updates.role;
 
   return updateData;
 }
 
 async function updateUserCustomClaims(
   userId: string,
-  claims: Partial<{status: UserStatus; role: UserRole}>
+  claims: Partial<{ status: UserStatus; role: UserRole }>
 ): Promise<void> {
   return await withErrorHandling(
     async () => {
       const customClaims: Record<string, string> = {};
 
-      if (claims.status) {
-        customClaims[FIELD_NAMES.STATUS] = claims.status;
-      }
-
-      if (claims.role) {
-        customClaims[FIELD_NAMES.ROLE] = claims.role;
-      }
+      if (claims.status) customClaims[FIELD_NAMES.STATUS] = claims.status;
+      if (claims.role) customClaims[FIELD_NAMES.ROLE] = claims.role;
 
       await admin.auth().setCustomUserClaims(userId, customClaims);
     },
@@ -128,37 +143,16 @@ async function updateUserCustomClaims(
   );
 }
 
-export const userManagement = onCall<
-  UserManagementRequest,
-  Promise<UserManagementResponse>
->(
-  createRoutedFunction<UserManagementRequest, UserManagementResponse>(
-    {
-      updateStatus: handleUpdateStatus,
-      updateUser: handleUpdateUser,
-      listUsers: handleListUsers,
-      getUserPreferences: handleGetUserPreferences,
-      setupPreferences: handleSetupPreferences,
-    },
-    {
-      requireAuth: true,
-      requireAdmin: false,
-      actionField: "action",
-    }
-  )
-);
+// ==================================================
+// 🔹 HANDLERS: USER MANAGEMENT
+// ==================================================
 
 async function handleUpdateStatus(
   request: CallableRequest<UserManagementRequest>
 ): Promise<UpdateStatusResponse> {
   const { userId, status } = request.data;
-
-  if (!userId || !status) {
-    throw new HttpsError(
-      "invalid-argument",
-      USER_MANAGEMENT_ERRORS.STATUS_REQUIRED
-    );
-  }
+  if (!userId || !status)
+    throw new HttpsError("invalid-argument", USER_MANAGEMENT_ERRORS.STATUS_REQUIRED);
 
   validateStatus(status);
 
@@ -167,15 +161,12 @@ async function handleUpdateStatus(
       const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
       const userDoc = await userRef.get();
 
-      if (!userDoc.exists) {
+      if (!userDoc.exists)
         throw new HttpsError("not-found", USER_MANAGEMENT_ERRORS.USER_NOT_FOUND);
-      }
 
       validateNotSuspendingSelf(request.auth!.uid, userId, status);
 
-      const updateData = buildUpdateData(request.auth!.uid, { status });
-      await userRef.update(updateData);
-
+      await userRef.update(buildUpdateData(request.auth!.uid, { status }));
       await updateUserCustomClaims(userId, { status });
 
       return {
@@ -195,19 +186,10 @@ async function handleUpdateUser(
 ): Promise<UpdateUserResponse> {
   const { userId, status, role } = request.data;
 
-  if (!userId) {
-    throw new HttpsError(
-      "invalid-argument",
-      USER_MANAGEMENT_ERRORS.USER_ID_REQUIRED
-    );
-  }
-
-  if (!status && !role) {
-    throw new HttpsError(
-      "invalid-argument",
-      USER_MANAGEMENT_ERRORS.UPDATE_FIELD_REQUIRED
-    );
-  }
+  if (!userId)
+    throw new HttpsError("invalid-argument", USER_MANAGEMENT_ERRORS.USER_ID_REQUIRED);
+  if (!status && !role)
+    throw new HttpsError("invalid-argument", USER_MANAGEMENT_ERRORS.UPDATE_FIELD_REQUIRED);
 
   if (status) validateStatus(status);
   if (role) validateRole(role);
@@ -217,23 +199,18 @@ async function handleUpdateUser(
       const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
       const userDoc = await userRef.get();
 
-      if (!userDoc.exists) {
+      if (!userDoc.exists)
         throw new HttpsError("not-found", USER_MANAGEMENT_ERRORS.USER_NOT_FOUND);
-      }
 
       const isSelfUpdate = request.auth!.uid === userId;
       if (isSelfUpdate) {
-        if (status === "Suspended") {
+        if (status === "Suspended")
           validateNotSuspendingSelf(request.auth!.uid, userId, status);
-        }
-        if (role === "Staff") {
+        if (role === "Staff")
           validateNotChangingOwnRole(request.auth!.uid, userId, role);
-        }
       }
 
-      const updateData = buildUpdateData(request.auth!.uid, { status, role });
-      await userRef.update(updateData);
-
+      await userRef.update(buildUpdateData(request.auth!.uid, { status, role }));
       await updateUserCustomClaims(userId, { status, role });
 
       return {
@@ -262,16 +239,16 @@ async function handleListUsers(
         transformUserDocToListData(doc.id, doc.data())
       );
 
-      return {
-        success: true,
-        users,
-        count: users.length,
-      };
+      return { success: true, users, count: users.length };
     },
     "listing users",
     USER_MANAGEMENT_ERRORS.LIST_USERS_FAILED
   );
 }
+
+// ==================================================
+// 🔹 HANDLERS: NOTIFICATION PREFERENCES
+// ==================================================
 
 async function handleGetUserPreferences(
   request: CallableRequest<UserManagementRequest>
@@ -280,60 +257,31 @@ async function handleGetUserPreferences(
   const requestingUserId = request.auth?.uid;
   const isAdmin = request.auth?.token?.role === "Admin";
 
-  if (!userId) {
-    throw new HttpsError(
-      "invalid-argument",
-      NOTIFICATION_PREFERENCES_ERRORS.MISSING_USER_ID
-    );
-  }
-
-  if (!requestingUserId) {
-    throw new HttpsError(
-      "unauthenticated",
-      NOTIFICATION_PREFERENCES_ERRORS.UNAUTHENTICATED
-    );
-  }
-
-  if (userId !== requestingUserId && !isAdmin) {
-    throw new HttpsError(
-      "permission-denied",
-      NOTIFICATION_PREFERENCES_ERRORS.PERMISSION_DENIED
-    );
-  }
+  if (!userId)
+    throw new HttpsError("invalid-argument", NOTIFICATION_PREFERENCES_ERRORS.MISSING_USER_ID);
+  if (!requestingUserId)
+    throw new HttpsError("unauthenticated", NOTIFICATION_PREFERENCES_ERRORS.UNAUTHENTICATED);
+  if (userId !== requestingUserId && !isAdmin)
+    throw new HttpsError("permission-denied", NOTIFICATION_PREFERENCES_ERRORS.PERMISSION_DENIED);
 
   return await withErrorHandling(
     async () => {
       const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
 
-      if (!userDoc.exists) {
-        return {
-          success: true,
-          message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND,
-          data: null,
-        };
-      }
+      if (!userDoc.exists)
+        return { success: true, message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND, data: null };
 
       const preferences = userDoc.get(
         FIELD_NAMES.NOTIFICATION_PREFERENCES
       ) as NotificationPreferences | undefined;
 
-      if (!preferences) {
-        return {
-          success: true,
-          message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND,
-          data: null,
-        };
-      }
-
-      const preferencesWithUserId: NotificationPreferences = {
-        ...preferences,
-        userId: preferences.userId ?? userId,
-      };
+      if (!preferences)
+        return { success: true, message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND, data: null };
 
       return {
         success: true,
         message: NOTIFICATION_PREFERENCES_MESSAGES.GET_SUCCESS,
-        data: preferencesWithUserId,
+        data: { ...preferences, userId: preferences.userId ?? userId },
       };
     },
     "getting user preferences",
@@ -344,9 +292,9 @@ async function handleGetUserPreferences(
 async function handleSetupPreferences(
   request: CallableRequest<UserManagementRequest>
 ): Promise<PreferencesResponse> {
-  const { 
-    userId, 
-    email, 
+  const {
+    userId,
+    email,
     emailNotifications,
     pushNotifications,
     sendScheduledAlerts,
@@ -357,58 +305,40 @@ async function handleSetupPreferences(
     quietHoursStart,
     quietHoursEnd,
   } = request.data;
+
   const requestingUserId = request.auth?.uid;
   const isAdmin = request.auth?.token?.role === "Admin";
 
-  if (!userId || !email) {
+  if (!userId || !email)
     throw new HttpsError(
       "invalid-argument",
       NOTIFICATION_PREFERENCES_ERRORS.MISSING_REQUIRED_FIELDS
     );
-  }
 
-  if (!requestingUserId) {
-    throw new HttpsError(
-      "unauthenticated",
-      NOTIFICATION_PREFERENCES_ERRORS.UNAUTHENTICATED
-    );
-  }
+  if (!requestingUserId)
+    throw new HttpsError("unauthenticated", NOTIFICATION_PREFERENCES_ERRORS.UNAUTHENTICATED);
 
-  if (userId !== requestingUserId && !isAdmin) {
-    throw new HttpsError(
-      "permission-denied",
-      NOTIFICATION_PREFERENCES_ERRORS.PERMISSION_DENIED
-    );
-  }
+  if (userId !== requestingUserId && !isAdmin)
+    throw new HttpsError("permission-denied", NOTIFICATION_PREFERENCES_ERRORS.PERMISSION_DENIED);
 
-  if (emailNotifications && !email) {
-    throw new HttpsError(
-      "invalid-argument",
-      NOTIFICATION_PREFERENCES_ERRORS.EMAIL_REQUIRED
-    );
-  }
+  if (emailNotifications && !email)
+    throw new HttpsError("invalid-argument", NOTIFICATION_PREFERENCES_ERRORS.EMAIL_REQUIRED);
 
   return await withErrorHandling(
     async () => {
       const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
       const userDoc = await userRef.get();
 
-      if (!userDoc.exists) {
-        throw new HttpsError(
-          "not-found",
-          NOTIFICATION_PREFERENCES_ERRORS.USER_NOT_FOUND
-        );
-      }
+      if (!userDoc.exists)
+        throw new HttpsError("not-found", NOTIFICATION_PREFERENCES_ERRORS.USER_NOT_FOUND);
 
-      const existingPreferences = userDoc.get(
+      const existingPrefs = userDoc.get(
         FIELD_NAMES.NOTIFICATION_PREFERENCES
       ) as NotificationPreferences | undefined;
 
-      const isNewPreference = !existingPreferences;
-
       const preferencesData: Record<string, unknown> = {
-        userId: userId,
-        email: email,
+        userId,
+        email,
         emailNotifications: emailNotifications ?? DEFAULT_NOTIFICATION_PREFERENCES.EMAIL_NOTIFICATIONS,
         pushNotifications: pushNotifications ?? DEFAULT_NOTIFICATION_PREFERENCES.PUSH_NOTIFICATIONS,
         sendScheduledAlerts: sendScheduledAlerts ?? DEFAULT_NOTIFICATION_PREFERENCES.SEND_SCHEDULED_ALERTS,
@@ -421,9 +351,7 @@ async function handleSetupPreferences(
         updatedAt: FieldValue.serverTimestamp(),
       };
 
-      if (isNewPreference) {
-        preferencesData.createdAt = FieldValue.serverTimestamp();
-      }
+      if (!existingPrefs) preferencesData.createdAt = FieldValue.serverTimestamp();
 
       await userRef.set(
         { [FIELD_NAMES.NOTIFICATION_PREFERENCES]: preferencesData },
@@ -435,20 +363,39 @@ async function handleSetupPreferences(
         FIELD_NAMES.NOTIFICATION_PREFERENCES
       ) as NotificationPreferences | undefined;
 
-      const savedPreferences: NotificationPreferences | null = savedPrefs ? {
-        ...savedPrefs,
-        userId: savedPrefs.userId ?? userId,
-      } : null;
-
       return {
         success: true,
-        message: existingPreferences
+        message: existingPrefs
           ? NOTIFICATION_PREFERENCES_MESSAGES.UPDATE_SUCCESS
           : NOTIFICATION_PREFERENCES_MESSAGES.CREATE_SUCCESS,
-        data: savedPreferences,
+        data: savedPrefs ? { ...savedPrefs, userId } : null,
       };
     },
     "setting up preferences",
     NOTIFICATION_PREFERENCES_ERRORS.SETUP_FAILED
   );
 }
+
+// ==================================================
+// 🔹 EXPORT FUNCTION ENTRYPOINT
+// ==================================================
+
+export const userManagement = onCall<
+  UserManagementRequest,
+  Promise<UserManagementResponse>
+>(
+  createRoutedFunction<UserManagementRequest, UserManagementResponse>(
+    {
+      updateStatus: handleUpdateStatus,
+      updateUser: handleUpdateUser,
+      listUsers: handleListUsers,
+      getUserPreferences: handleGetUserPreferences,
+      setupPreferences: handleSetupPreferences,
+    },
+    {
+      requireAuth: true,
+      requireAdmin: false,
+      actionField: "action",
+    }
+  )
+);
