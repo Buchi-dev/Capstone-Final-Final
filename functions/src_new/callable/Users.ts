@@ -380,7 +380,7 @@ async function handleSetupPreferences(
 // 🔹 EXPORT FUNCTION ENTRYPOINT
 // ==================================================
 
-export const userManagement = onCall<
+export const UserCalls = onCall<
   UserManagementRequest,
   Promise<UserManagementResponse>
 >(

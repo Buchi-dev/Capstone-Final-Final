@@ -140,7 +140,7 @@ const handleDeleteDevice: ActionHandler<DeviceManagementRequest, DeviceManagemen
 // ============================================================================
 // 🚀 EXPORT - Cloud Function Endpoint
 // ============================================================================
-export const deviceManagement = onCall<
+export const DevicesCalls = onCall<
   DeviceManagementRequest,
   Promise<DeviceManagementResponse>
 >(

@@ -482,7 +482,7 @@ function formatUptime(ms: number): string {
  *   reportType: 'device_status'
  * });
  */
-export const generateReport = onCall(
+export const ReportCalls = onCall(
   createRoutedFunction<ReportGenerationRequest, ReportResponse>(
     {
       generateWaterQualityReport: handleGenerateWaterQualityReport,
