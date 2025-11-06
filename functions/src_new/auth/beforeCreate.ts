@@ -78,7 +78,7 @@ export const beforeCreate = beforeUserCreated(
         console.log(
           `${LOG_PREFIXES.SUCCESS} User profile created - Email: ${userInfo.email}, ` +
             `Role: ${DEFAULT_USER_ROLE}, Status: ${DEFAULT_USER_STATUS}, ` +
-            `Notification Preferences: Initialized with defaults`
+            "Notification Preferences: Initialized with defaults"
         );
 
         // Log account creation for audit trail

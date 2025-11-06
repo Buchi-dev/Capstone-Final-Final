@@ -4,19 +4,17 @@
 
 // Firebase Admin SDK
 import * as admin from "firebase-admin";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import type { CallableRequest } from "firebase-functions/v2/https";
+import {onCall, HttpsError} from "firebase-functions/v2/https";
+import type {CallableRequest} from "firebase-functions/v2/https";
 
 // Configurations
-import { db, rtdb } from "../config/firebase";
-
+import {db, rtdb} from "../config/firebase";
 // Constants
 import {
   DEVICE_MANAGEMENT_ERRORS,
   DEVICE_MANAGEMENT_MESSAGES,
   DEVICE_DEFAULTS,
 } from "../constants/Device.Constants";
-
 // Types
 import type {
   Device,
@@ -24,10 +22,9 @@ import type {
   DeviceManagementRequest,
   DeviceManagementResponse,
 } from "../types/Device.Types";
-
 // Utilities
-import { createRoutedFunction } from "../utils/SwitchCaseRouting";
-import type { ActionHandler } from "../utils/SwitchCaseRouting";
+import {createRoutedFunction} from "../utils/SwitchCaseRouting";
+import type {ActionHandler} from "../utils/SwitchCaseRouting";
 
 
 // ============================================================================
@@ -40,7 +37,7 @@ import type { ActionHandler } from "../utils/SwitchCaseRouting";
 const handleAddDevice: ActionHandler<DeviceManagementRequest, DeviceManagementResponse> = async (
   req: CallableRequest<DeviceManagementRequest>
 ) => {
-  const { deviceId, deviceData } = req.data;
+  const {deviceId, deviceData} = req.data;
 
   if (!deviceId) {
     throw new HttpsError("invalid-argument", DEVICE_MANAGEMENT_ERRORS.MISSING_DEVICE_ID);
@@ -76,7 +73,7 @@ const handleAddDevice: ActionHandler<DeviceManagementRequest, DeviceManagementRe
     status: "waiting_for_data",
   });
 
-  return { success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_ADDED, device: newDevice };
+  return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_ADDED, device: newDevice};
 };
 
 
@@ -86,7 +83,7 @@ const handleAddDevice: ActionHandler<DeviceManagementRequest, DeviceManagementRe
 const handleUpdateDevice: ActionHandler<DeviceManagementRequest, DeviceManagementResponse> = async (
   req: CallableRequest<DeviceManagementRequest>
 ) => {
-  const { deviceId, deviceData } = req.data;
+  const {deviceId, deviceData} = req.data;
 
   if (!deviceId) {
     throw new HttpsError("invalid-argument", DEVICE_MANAGEMENT_ERRORS.MISSING_DEVICE_ID);
@@ -105,7 +102,7 @@ const handleUpdateDevice: ActionHandler<DeviceManagementRequest, DeviceManagemen
     lastSeen: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  return { success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_UPDATED };
+  return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_UPDATED};
 };
 
 
@@ -115,7 +112,7 @@ const handleUpdateDevice: ActionHandler<DeviceManagementRequest, DeviceManagemen
 const handleDeleteDevice: ActionHandler<DeviceManagementRequest, DeviceManagementResponse> = async (
   req: CallableRequest<DeviceManagementRequest>
 ) => {
-  const { deviceId } = req.data;
+  const {deviceId} = req.data;
 
   if (!deviceId) {
     throw new HttpsError("invalid-argument", DEVICE_MANAGEMENT_ERRORS.MISSING_DEVICE_ID);
@@ -133,7 +130,7 @@ const handleDeleteDevice: ActionHandler<DeviceManagementRequest, DeviceManagemen
     rtdb.ref(`sensorReadings/${deviceId}`).remove(),
   ]);
 
-  return { success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_DELETED };
+  return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_DELETED};
 };
 
 
