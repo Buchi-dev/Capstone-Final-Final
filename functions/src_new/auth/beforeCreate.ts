@@ -34,6 +34,7 @@ import {
   logBusinessAction,
   createPermissionDeniedError,
 } from "../utils/AuthHelpers";
+import {withErrorHandling} from "../utils/ErrorHandlers";
 
 /**
  * Before User Created - Account Registration Hook
@@ -67,38 +68,34 @@ export const beforeCreate = beforeUserCreated(
 
     console.log(`${LOG_PREFIXES.CREATING} Initializing user profile for: ${userInfo.email}`);
 
-    try {
-      // Create user profile with default values
-      // Includes notification preferences with default settings
-      await createUserProfile(userInfo);
+    // Create user profile with error handling
+    await withErrorHandling(
+      async () => {
+        // Create user profile with default values
+        // Includes notification preferences with default settings
+        await createUserProfile(userInfo);
 
-      console.log(
-        `${LOG_PREFIXES.SUCCESS} User profile created - Email: ${userInfo.email}, ` +
-          `Role: ${DEFAULT_USER_ROLE}, Status: ${DEFAULT_USER_STATUS}, ` +
-          `Notification Preferences: Initialized with defaults`
-      );
+        console.log(
+          `${LOG_PREFIXES.SUCCESS} User profile created - Email: ${userInfo.email}, ` +
+            `Role: ${DEFAULT_USER_ROLE}, Status: ${DEFAULT_USER_STATUS}, ` +
+            `Notification Preferences: Initialized with defaults`
+        );
 
-      // Log account creation for audit trail
-      await logBusinessAction(AUTH_ACTIONS.USER_CREATED, userInfo.uid, userInfo.email, "system", {
-        role: DEFAULT_USER_ROLE,
-        status: DEFAULT_USER_STATUS,
-        provider: AUTH_PROVIDERS.GOOGLE,
-        firstname: userInfo.firstname,
-        lastname: userInfo.lastname,
-        notificationPreferencesInitialized: true,
-      });
+        // Log account creation for audit trail
+        await logBusinessAction(AUTH_ACTIONS.USER_CREATED, userInfo.uid, userInfo.email, "system", {
+          role: DEFAULT_USER_ROLE,
+          status: DEFAULT_USER_STATUS,
+          provider: AUTH_PROVIDERS.GOOGLE,
+          firstname: userInfo.firstname,
+          lastname: userInfo.lastname,
+          notificationPreferencesInitialized: true,
+        });
+      },
+      "creating user profile",
+      `Failed to create user profile for ${userInfo.email}`
+    );
 
-      // Allow user creation to proceed
-      return;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      console.error(
-        `${LOG_PREFIXES.ERROR} Failed to create user profile for ${userInfo.email}: ${errorMessage}`
-      );
-
-      // Allow creation to proceed even if profile creation fails
-      // The user can complete their profile later through the UI
-      return;
-    }
+    // Allow user creation to proceed
+    return;
   }
 );

@@ -12,21 +12,30 @@ import type {UserStatus, UserRole} from "../constants/User.Constants";
 // ===========================
 
 /**
- * Request payload for updating user status
+ * User management request payload
+ * Unified request type for all user management operations
  */
-export interface UpdateUserStatusRequest {
-  userId: string;
-  status: UserStatus;
-}
-
-/**
- * Request payload for updating user information
- * Can update status and/or role
- */
-export interface UpdateUserRequest {
-  userId: string;
+export interface UserManagementRequest {
+  action:
+    | "updateStatus"
+    | "updateUser"
+    | "listUsers"
+    | "getUserPreferences"
+    | "setupPreferences";
+    
+  userId?: string;
   status?: UserStatus;
   role?: UserRole;
+  email?: string;
+  emailNotifications?: boolean;
+  pushNotifications?: boolean;
+  sendScheduledAlerts?: boolean;
+  alertSeverities?: string[];
+  parameters?: string[];
+  devices?: string[];
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
 }
 
 // ===========================
@@ -34,25 +43,31 @@ export interface UpdateUserRequest {
 // ===========================
 
 /**
- * Standard success response for user operations
+ * Union type for all user management responses
  */
-export interface UserOperationResponse {
-  success: boolean;
-  message: string;
-  userId: string;
-}
+export type UserManagementResponse =
+  | UpdateStatusResponse
+  | UpdateUserResponse
+  | ListUsersResponse
+  | PreferencesResponse;
 
 /**
  * Response for status update operation
  */
-export interface UpdateStatusResponse extends UserOperationResponse {
+export interface UpdateStatusResponse {
+  success: boolean;
+  message: string;
+  userId: string;
   status: UserStatus;
 }
 
 /**
  * Response for user update operation
  */
-export interface UpdateUserResponse extends UserOperationResponse {
+export interface UpdateUserResponse {
+  success: boolean;
+  message: string;
+  userId: string;
   updates: {
     status?: UserStatus;
     role?: UserRole;
@@ -106,7 +121,7 @@ export interface NotificationPreferences {
   email: string;
   emailNotifications: boolean;
   pushNotifications: boolean;
-  sendScheduledAlerts: boolean; // NEW: Enable/disable scheduled analytics reports
+  sendScheduledAlerts: boolean;
   alertSeverities: string[];
   parameters: string[];
   devices: string[];
@@ -115,51 +130,6 @@ export interface NotificationPreferences {
   quietHoursEnd?: string;
   createdAt?: FirebaseFirestore.Timestamp;
   updatedAt?: FirebaseFirestore.Timestamp;
-}
-
-// ===========================
-// REQUEST TYPES
-// ===========================
-
-/**
- * Request to get user preferences
- */
-export interface GetUserPreferencesRequest {
-  action: "getUserPreferences";
-  userId: string;
-}
-
-/**
- * Request to list all preferences (admin only)
- */
-export interface ListAllPreferencesRequest {
-  action: "listAllPreferences";
-}
-
-/**
- * Request to setup/update preferences
- */
-export interface SetupPreferencesRequest {
-  action: "setupPreferences";
-  userId: string;
-  email: string;
-  emailNotifications: boolean;
-  pushNotifications: boolean;
-  sendScheduledAlerts: boolean; // NEW: Enable/disable scheduled analytics
-  alertSeverities: string[];
-  parameters: string[];
-  devices: string[];
-  quietHoursEnabled: boolean;
-  quietHoursStart?: string;
-  quietHoursEnd?: string;
-}
-
-/**
- * Request to delete preferences
- */
-export interface DeletePreferencesRequest {
-  action: "deletePreferences";
-  userId: string;
 }
 
 // ===========================
@@ -173,15 +143,5 @@ export interface PreferencesResponse {
   success: boolean;
   message?: string;
   data?: NotificationPreferences | null;
-  error?: string;
-}
-
-/**
- * Response for list preferences operation
- */
-export interface ListPreferencesResponse {
-  success: boolean;
-  message?: string;
-  data?: NotificationPreferences[];
   error?: string;
 }

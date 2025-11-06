@@ -39,6 +39,7 @@ import {
   createNotFoundError,
   createInternalError,
 } from "../utils/AuthHelpers";
+import {withErrorHandling} from "../utils/ErrorHandlers";
 
 /**
  * Before User Signed In - Sign-In Validation Hook
@@ -82,78 +83,59 @@ export const beforeSignIn = beforeUserSignedIn(
 
     console.log(`${LOG_PREFIXES.SIGN_IN} Authentication attempt by: ${userInfo.email}`);
 
-    try {
-      // Retrieve user profile from Firestore
-      const userProfile = await getUserProfile(userInfo.uid);
+    return await withErrorHandling(
+      async () => {
+        // Retrieve user profile from Firestore
+        const userProfile = await getUserProfile(userInfo.uid);
 
-      if (!userProfile) {
-        console.error(
-          `${LOG_PREFIXES.ERROR} User profile not found for ${userInfo.email} (UID: ${userInfo.uid})`
+        if (!userProfile) {
+          console.error(
+            `${LOG_PREFIXES.ERROR} User profile not found for ${userInfo.email} (UID: ${userInfo.uid})`
+          );
+
+          // Log error for missing profile
+          await logSignInAttempt(
+            userInfo.uid,
+            userInfo.email,
+            userInfo.displayName,
+            USER_STATUSES.PENDING,
+            LOGIN_RESULTS.ERROR,
+            "User profile not found in database - possible sync issue"
+          );
+
+          throw createNotFoundError(AUTH_ERROR_MESSAGES.USER_NOT_FOUND);
+        }
+
+        const userStatus = userProfile.status;
+
+        console.log(
+          `${LOG_PREFIXES.AUTHENTICATED} User ${userInfo.email} signed in - Status: ${userStatus}`
         );
 
-        // Log error for missing profile
+        // Log successful sign-in attempt
         await logSignInAttempt(
           userInfo.uid,
           userInfo.email,
           userInfo.displayName,
-          USER_STATUSES.PENDING,
-          LOGIN_RESULTS.ERROR,
-          "User profile not found in database - possible sync issue"
+          userStatus,
+          LOGIN_RESULTS.SUCCESS,
+          `Sign-in successful - User status: ${userStatus}`
         );
 
-        throw createNotFoundError(AUTH_ERROR_MESSAGES.USER_NOT_FOUND);
-      }
+        // Update last login timestamp
+        await updateLastLogin(userInfo.uid);
 
-      const userStatus = userProfile.status;
-
-      console.log(
-        `${LOG_PREFIXES.AUTHENTICATED} User ${userInfo.email} signed in - Status: ${userStatus}`
-      );
-
-      // Log successful sign-in attempt
-      await logSignInAttempt(
-        userInfo.uid,
-        userInfo.email,
-        userInfo.displayName,
-        userStatus,
-        LOGIN_RESULTS.SUCCESS,
-        `Sign-in successful - User status: ${userStatus}`
-      );
-
-      // Update last login timestamp
-      await updateLastLogin(userInfo.uid);
-
-      // Set custom claims for authorization
-      // This allows the token to carry role and status information
-      return {
-        customClaims: {
-          role: userProfile.role || "Staff",
-          status: userProfile.status || "Pending",
-        },
-      };
-    } catch (error) {
-      // Re-throw HttpsError instances (already handled)
-      if (error instanceof HttpsError) {
-        throw error;
-      }
-
-      // Handle unexpected errors
-      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-      console.error(
-        `${LOG_PREFIXES.ERROR} Unexpected error during sign-in for ${userInfo.email}: ${errorMessage}`
-      );
-
-      // Log unexpected error
-      await logSignInAttempt(
-        userInfo.uid,
-        userInfo.email,
-        userInfo.displayName,
-        USER_STATUSES.PENDING,
-        LOGIN_RESULTS.ERROR,
-        `Unexpected error: ${errorMessage}`
-      );
-
-      throw createInternalError(AUTH_ERROR_MESSAGES.SIGN_IN_ERROR);
-    }
+        // Set custom claims for authorization
+        // This allows the token to carry role and status information
+        return {
+          customClaims: {
+            role: userProfile.role || "Staff",
+            status: userProfile.status || "Pending",
+          },
+        };
+      },
+      `sign-in for ${userInfo.email}`,
+      AUTH_ERROR_MESSAGES.SIGN_IN_ERROR
+    );
   }
 );

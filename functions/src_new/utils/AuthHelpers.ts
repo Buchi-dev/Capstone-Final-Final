@@ -25,6 +25,7 @@ import type {
   UserProfile,
   LoginResult,
 } from "../types/Auth.Types";
+import {withErrorHandling} from "./ErrorHandlers";
 
 // ===========================
 // VALIDATION FUNCTIONS
@@ -129,8 +130,8 @@ export async function logSignInAttempt(
   try {
     await db.collection(COLLECTIONS.LOGIN_LOGS).add(loginLog);
   } catch (error) {
-    console.error("Failed to log sign-in attempt:", error);
     // Don't throw - logging failure shouldn't block authentication
+    console.error("Failed to log sign-in attempt:", error);
   }
 }
 
@@ -162,8 +163,8 @@ export async function logBusinessAction(
   try {
     await db.collection(COLLECTIONS.BUSINESS_LOGS).add(businessLog);
   } catch (error) {
-    console.error("Failed to log business action:", error);
     // Don't throw - logging failure shouldn't block operations
+    console.error("Failed to log business action:", error);
   }
 }
 
@@ -178,44 +179,50 @@ export async function logBusinessAction(
  * @return {Promise<void>}
  */
 export async function createUserProfile(userInfo: ParsedUserInfo): Promise<void> {
-  const userProfileData: UserProfile = {
-    uuid: userInfo.uid,
-    firstname: userInfo.firstname,
-    lastname: userInfo.lastname,
-    middlename: "",
-    department: "",
-    phoneNumber: userInfo.phoneNumber,
-    email: userInfo.email,
-    role: DEFAULT_USER_ROLE,
-    status: DEFAULT_USER_STATUS,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  };
+  return await withErrorHandling(
+    async () => {
+      const userProfileData: UserProfile = {
+        uuid: userInfo.uid,
+        firstname: userInfo.firstname,
+        lastname: userInfo.lastname,
+        middlename: "",
+        department: "",
+        phoneNumber: userInfo.phoneNumber,
+        email: userInfo.email,
+        role: DEFAULT_USER_ROLE,
+        status: DEFAULT_USER_STATUS,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
 
-  // Default notification preferences for new users
-  const defaultNotificationPreferences = {
-    userId: userInfo.uid,
-    email: userInfo.email,
-    emailNotifications: DEFAULT_NOTIFICATION_PREFERENCES.EMAIL_NOTIFICATIONS,
-    pushNotifications: DEFAULT_NOTIFICATION_PREFERENCES.PUSH_NOTIFICATIONS,
-    sendScheduledAlerts: DEFAULT_NOTIFICATION_PREFERENCES.SEND_SCHEDULED_ALERTS,
-    alertSeverities: DEFAULT_NOTIFICATION_PREFERENCES.ALERT_SEVERITIES,
-    parameters: DEFAULT_NOTIFICATION_PREFERENCES.PARAMETERS,
-    devices: DEFAULT_NOTIFICATION_PREFERENCES.DEVICES,
-    quietHoursEnabled: DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_ENABLED,
-    quietHoursStart: DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_START,
-    quietHoursEnd: DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_END,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  };
+      // Default notification preferences for new users
+      const defaultNotificationPreferences = {
+        userId: userInfo.uid,
+        email: userInfo.email,
+        emailNotifications: DEFAULT_NOTIFICATION_PREFERENCES.EMAIL_NOTIFICATIONS,
+        pushNotifications: DEFAULT_NOTIFICATION_PREFERENCES.PUSH_NOTIFICATIONS,
+        sendScheduledAlerts: DEFAULT_NOTIFICATION_PREFERENCES.SEND_SCHEDULED_ALERTS,
+        alertSeverities: DEFAULT_NOTIFICATION_PREFERENCES.ALERT_SEVERITIES,
+        parameters: DEFAULT_NOTIFICATION_PREFERENCES.PARAMETERS,
+        devices: DEFAULT_NOTIFICATION_PREFERENCES.DEVICES,
+        quietHoursEnabled: DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_ENABLED,
+        quietHoursStart: DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_START,
+        quietHoursEnd: DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_END,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
 
-  // Create user document with notification preferences
-  await db
-    .collection(COLLECTIONS.USERS)
-    .doc(userInfo.uid)
-    .set({
-      ...userProfileData,
-      [FIELD_NAMES.NOTIFICATION_PREFERENCES]: defaultNotificationPreferences,
-    });
+      // Create user document with notification preferences
+      await db
+        .collection(COLLECTIONS.USERS)
+        .doc(userInfo.uid)
+        .set({
+          ...userProfileData,
+          [FIELD_NAMES.NOTIFICATION_PREFERENCES]: defaultNotificationPreferences,
+        });
+    },
+    "creating user profile",
+    `Failed to create user profile in database`
+  );
 }
 
 /**
@@ -224,13 +231,19 @@ export async function createUserProfile(userInfo: ParsedUserInfo): Promise<void>
  * @return {Promise<UserProfile | null>} User profile or null if not found
  */
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  const userDoc = await db.collection(COLLECTIONS.USERS).doc(uid).get();
+  return await withErrorHandling(
+    async () => {
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(uid).get();
 
-  if (!userDoc.exists) {
-    return null;
-  }
+      if (!userDoc.exists) {
+        return null;
+      }
 
-  return userDoc.data() as UserProfile;
+      return userDoc.data() as UserProfile;
+    },
+    "retrieving user profile",
+    "Failed to retrieve user profile from database"
+  );
 }
 
 /**
@@ -239,10 +252,16 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
  * @return {Promise<void>}
  */
 export async function updateLastLogin(uid: string): Promise<void> {
-  await db.collection(COLLECTIONS.USERS).doc(uid).update({
-    [FIELD_NAMES.LAST_LOGIN]: admin.firestore.FieldValue.serverTimestamp(),
-    [FIELD_NAMES.UPDATED_AT]: admin.firestore.FieldValue.serverTimestamp(),
-  });
+  return await withErrorHandling(
+    async () => {
+      await db.collection(COLLECTIONS.USERS).doc(uid).update({
+        [FIELD_NAMES.LAST_LOGIN]: admin.firestore.FieldValue.serverTimestamp(),
+        [FIELD_NAMES.UPDATED_AT]: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    },
+    "updating last login timestamp",
+    "Failed to update last login timestamp"
+  );
 }
 
 // ===========================
