@@ -19,8 +19,6 @@ export interface UserManagementRequest {
   action:
     | "updateStatus"
     | "updateUser"
-    | "listUsers"
-    | "getUserPreferences"
     | "setupPreferences";
 
   userId?: string;
@@ -28,7 +26,6 @@ export interface UserManagementRequest {
   role?: UserRole;
   email?: string;
   emailNotifications?: boolean;
-  pushNotifications?: boolean;
   sendScheduledAlerts?: boolean;
   alertSeverities?: string[];
   parameters?: string[];
@@ -48,7 +45,6 @@ export interface UserManagementRequest {
 export type UserManagementResponse =
   | UpdateStatusResponse
   | UpdateUserResponse
-  | ListUsersResponse
   | PreferencesResponse;
 
 /**
@@ -75,34 +71,6 @@ export interface UpdateUserResponse {
 }
 
 /**
- * User data returned from list operation
- */
-export interface ListUserData {
-  id: string;
-  uuid: string;
-  firstname: string;
-  lastname: string;
-  middlename: string;
-  department: string;
-  phoneNumber: string;
-  email: string;
-  role: UserRole;
-  status: UserStatus;
-  createdAt: string;
-  updatedAt?: string;
-  lastLogin?: string;
-}
-
-/**
- * Response for list users operation
- */
-export interface ListUsersResponse {
-  success: boolean;
-  users: ListUserData[];
-  count: number;
-}
-
-/**
  * Notification Preferences Types
  * Type definitions for notification preference operations
  *
@@ -120,7 +88,6 @@ export interface NotificationPreferences {
   userId: string;
   email: string;
   emailNotifications: boolean;
-  pushNotifications: boolean;
   sendScheduledAlerts: boolean;
   alertSeverities: string[];
   parameters: string[];

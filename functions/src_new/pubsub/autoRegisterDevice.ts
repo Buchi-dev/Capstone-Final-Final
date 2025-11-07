@@ -53,7 +53,7 @@ export interface Device {
   macAddress?: string;
   ipAddress?: string;
   sensors?: string[];
-  status: "online" | "offline" | "unknown";
+  status: "online" | "offline";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   registeredAt: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -123,11 +123,10 @@ export const autoRegisterDevice = onMessagePublished(
       const doc = await deviceRef.get();
 
       if (doc.exists) {
-        logger.info(`Device ${deviceId} already registered, updating last seen`);
-        await deviceRef.update({
-          lastSeen: admin.firestore.FieldValue.serverTimestamp(),
-          status: "online",
-        });
+        logger.info(`Device ${deviceId} already registered - will be updated by sensor data`);
+        // NOTE: Status is intentionally NOT updated here to avoid redundancy
+        // processSensorData will update status when actual sensor data arrives
+        // This prevents race conditions and maintains single source of truth
         return;
       }
 

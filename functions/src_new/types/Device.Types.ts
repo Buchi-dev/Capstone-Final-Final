@@ -12,7 +12,7 @@
 /**
  * Device operational status
  */
-export type DeviceStatus = "online" | "offline" | "error" | "maintenance";
+export type DeviceStatus = "online" | "offline";
 
 /**
  * Device management actions

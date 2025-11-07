@@ -233,8 +233,6 @@ async function handleGenerateDeviceStatusReport(
     const statusCounts = {
       online: 0,
       offline: 0,
-      error: 0,
-      maintenance: 0,
     };
 
     // Process each device

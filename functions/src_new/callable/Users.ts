@@ -3,7 +3,6 @@
  * Centralized single callable for all user-related operations.
  */
 
-import * as admin from "firebase-admin";
 import {FieldValue} from "firebase-admin/firestore";
 import {onCall, HttpsError} from "firebase-functions/v2/https";
 import type {CallableRequest} from "firebase-functions/v2/https";
@@ -20,20 +19,23 @@ import {
   VALID_USER_ROLES,
   COLLECTIONS,
   FIELD_NAMES,
-  SORT_ORDERS,
 } from "../constants";
 import type {
   UserManagementRequest,
   UserManagementResponse,
   UpdateStatusResponse,
   UpdateUserResponse,
-  ListUsersResponse,
   PreferencesResponse,
   NotificationPreferences,
-  ListUserData,
 } from "../types";
 import {withErrorHandling} from "../utils/ErrorHandlers";
 import {createRoutedFunction} from "../utils/SwitchCaseRouting";
+import {
+  isValidEmail,
+  sanitizeStringArray,
+  isValidTimeString,
+  isValidAlertSeverity,
+} from "../utils/validators";
 
 // ==================================================
 // 🔹 VALIDATION HELPERS
@@ -112,33 +114,6 @@ function validateNotChangingOwnRole(
 // ==================================================
 
 /**
- * Transforms a Firestore document into ListUserData format.
- * @param {string} docId - The document ID
- * @param {FirebaseFirestore.DocumentData} data - The document data
- * @return {ListUserData} Transformed user data
- */
-function transformUserDocToListData(
-  docId: string,
-  data: FirebaseFirestore.DocumentData
-): ListUserData {
-  return {
-    id: docId,
-    uuid: data.uuid,
-    firstname: data.firstname || "",
-    lastname: data.lastname || "",
-    middlename: data.middlename || "",
-    department: data.department || "",
-    phoneNumber: data.phoneNumber || "",
-    email: data.email,
-    role: data.role,
-    status: data.status,
-    createdAt: data.createdAt?.toDate().toISOString(),
-    updatedAt: data.updatedAt?.toDate().toISOString(),
-    lastLogin: data.lastLogin?.toDate().toISOString(),
-  };
-}
-
-/**
  * Builds an update data object for Firestore operations.
  * @param {string} performedBy - The ID of the user performing the update
  * @param {object} updates - The updates to apply
@@ -160,32 +135,6 @@ function buildUpdateData(
   if (updates.role) updateData[FIELD_NAMES.ROLE] = updates.role;
 
   return updateData;
-}
-
-/**
- * Updates custom claims for a user in Firebase Authentication.
- * @param {string} userId - The user ID
- * @param {object} claims - The claims to update
- * @param {UserStatus} [claims.status] - Optional status claim
- * @param {UserRole} [claims.role] - Optional role claim
- * @return {Promise<void>}
- */
-async function updateUserCustomClaims(
-  userId: string,
-  claims: Partial<{ status: UserStatus; role: UserRole }>
-): Promise<void> {
-  return await withErrorHandling(
-    async () => {
-      const customClaims: Record<string, string> = {};
-
-      if (claims.status) customClaims[FIELD_NAMES.STATUS] = claims.status;
-      if (claims.role) customClaims[FIELD_NAMES.ROLE] = claims.role;
-
-      await admin.auth().setCustomUserClaims(userId, customClaims);
-    },
-    "updating user custom claims",
-    "Failed to update authentication claims"
-  );
 }
 
 // ==================================================
@@ -220,7 +169,6 @@ async function handleUpdateStatus(
       validateNotSuspendingSelf(request.auth!.uid, userId, status);
 
       await userRef.update(buildUpdateData(request.auth!.uid, {status}));
-      await updateUserCustomClaims(userId, {status});
 
       return {
         success: true,
@@ -276,7 +224,6 @@ async function handleUpdateUser(
       }
 
       await userRef.update(buildUpdateData(request.auth!.uid, {status, role}));
-      await updateUserCustomClaims(userId, {status, role});
 
       return {
         success: true,
@@ -290,92 +237,9 @@ async function handleUpdateUser(
   );
 }
 
-/**
- * Handles listing all users in the system.
- * @param {CallableRequest<UserManagementRequest>} _request - The callable request (unused)
- * @return {Promise<ListUsersResponse>} Response with list of users
- * @throws {HttpsError} If operation fails
- */
-async function handleListUsers(
-  _request: CallableRequest<UserManagementRequest> // eslint-disable-line @typescript-eslint/no-unused-vars
-): Promise<ListUsersResponse> {
-  return await withErrorHandling(
-    async () => {
-      const snapshot = await db
-        .collection(COLLECTIONS.USERS)
-        .orderBy(SORT_ORDERS.CREATED_AT_DESC.field, SORT_ORDERS.CREATED_AT_DESC.direction)
-        .get();
-
-      const users = snapshot.docs.map((doc) =>
-        transformUserDocToListData(doc.id, doc.data())
-      );
-
-      return {success: true, users, count: users.length};
-    },
-    "listing users",
-    USER_MANAGEMENT_ERRORS.LIST_USERS_FAILED
-  );
-}
-
 // ==================================================
 // 🔹 HANDLERS: NOTIFICATION PREFERENCES
 // ==================================================
-
-/**
- * Handles retrieving notification preferences for a user.
- * @param {CallableRequest<UserManagementRequest>} request - The callable request
- * @return {Promise<PreferencesResponse>} Response with user preferences
- * @throws {HttpsError} If validation fails or permission denied
- */
-async function handleGetUserPreferences(
-  request: CallableRequest<UserManagementRequest>
-): Promise<PreferencesResponse> {
-  const {userId} = request.data;
-  const requestingUserId = request.auth?.uid;
-  const isAdmin = request.auth?.token?.role === "Admin";
-
-  if (!userId) {
-    throw new HttpsError("invalid-argument", NOTIFICATION_PREFERENCES_ERRORS.MISSING_USER_ID);
-  }
-  if (!requestingUserId) {
-    throw new HttpsError("unauthenticated", NOTIFICATION_PREFERENCES_ERRORS.UNAUTHENTICATED);
-  }
-  if (userId !== requestingUserId && !isAdmin) {
-    throw new HttpsError("permission-denied", NOTIFICATION_PREFERENCES_ERRORS.PERMISSION_DENIED);
-  }
-
-  return await withErrorHandling(
-    async () => {
-      const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
-
-      if (!userDoc.exists) {
-        return {success: true, message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND, data: null};
-      }
-
-      // Get preferences from subcollection
-      const prefsSnapshot = await db
-        .collection(COLLECTIONS.USERS)
-        .doc(userId)
-        .collection("notificationPreferences")
-        .limit(1)
-        .get();
-
-      if (prefsSnapshot.empty) {
-        return {success: true, message: NOTIFICATION_PREFERENCES_MESSAGES.NOT_FOUND, data: null};
-      }
-
-      const preferences = prefsSnapshot.docs[0].data() as NotificationPreferences;
-
-      return {
-        success: true,
-        message: NOTIFICATION_PREFERENCES_MESSAGES.GET_SUCCESS,
-        data: {...preferences, userId: preferences.userId ?? userId},
-      };
-    },
-    "getting user preferences",
-    NOTIFICATION_PREFERENCES_ERRORS.GET_FAILED
-  );
-}
 
 /**
  * Handles setting up or updating notification preferences for a user.
@@ -390,7 +254,6 @@ async function handleSetupPreferences(
     userId,
     email,
     emailNotifications,
-    pushNotifications,
     sendScheduledAlerts,
     alertSeverities,
     parameters,
@@ -403,6 +266,7 @@ async function handleSetupPreferences(
   const requestingUserId = request.auth?.uid;
   const isAdmin = request.auth?.token?.role === "Admin";
 
+  // Validation: Required fields
   if (!userId || !email) {
     throw new HttpsError(
       "invalid-argument",
@@ -410,17 +274,48 @@ async function handleSetupPreferences(
     );
   }
 
+  // Validation: Email format
+  if (!isValidEmail(email)) {
+    throw new HttpsError("invalid-argument", "Invalid email format");
+  }
+
+  // Validation: Authentication
   if (!requestingUserId) {
     throw new HttpsError("unauthenticated", NOTIFICATION_PREFERENCES_ERRORS.UNAUTHENTICATED);
   }
 
+  // Validation: Authorization
   if (userId !== requestingUserId && !isAdmin) {
     throw new HttpsError("permission-denied", NOTIFICATION_PREFERENCES_ERRORS.PERMISSION_DENIED);
   }
 
+  // Validation: Email required if notifications enabled
   if (emailNotifications && !email) {
     throw new HttpsError("invalid-argument", NOTIFICATION_PREFERENCES_ERRORS.EMAIL_REQUIRED);
   }
+
+  // Validation: Quiet hours time format
+  if (quietHoursStart && !isValidTimeString(quietHoursStart)) {
+    throw new HttpsError("invalid-argument", "Invalid quietHoursStart format. Use HH:MM (24-hour)");
+  }
+  if (quietHoursEnd && !isValidTimeString(quietHoursEnd)) {
+    throw new HttpsError("invalid-argument", "Invalid quietHoursEnd format. Use HH:MM (24-hour)");
+  }
+
+  // Sanitize: Alert severities
+  const sanitizedAlertSeverities = alertSeverities ?
+    sanitizeStringArray(alertSeverities, 10).filter(isValidAlertSeverity) :
+    undefined;
+
+  // Sanitize: Parameters
+  const sanitizedParameters = parameters ?
+    sanitizeStringArray(parameters, 20) :
+    undefined;
+
+  // Sanitize: Devices
+  const sanitizedDevices = devices ?
+    sanitizeStringArray(devices, 50) :
+    undefined;
 
   return await withErrorHandling(
     async () => {
@@ -439,11 +334,10 @@ async function handleSetupPreferences(
         userId,
         email,
         emailNotifications: emailNotifications ?? DEFAULT_NOTIFICATION_PREFERENCES.EMAIL_NOTIFICATIONS,
-        pushNotifications: pushNotifications ?? DEFAULT_NOTIFICATION_PREFERENCES.PUSH_NOTIFICATIONS,
         sendScheduledAlerts: sendScheduledAlerts ?? DEFAULT_NOTIFICATION_PREFERENCES.SEND_SCHEDULED_ALERTS,
-        alertSeverities: alertSeverities ?? DEFAULT_NOTIFICATION_PREFERENCES.ALERT_SEVERITIES,
-        parameters: parameters ?? DEFAULT_NOTIFICATION_PREFERENCES.PARAMETERS,
-        devices: devices ?? DEFAULT_NOTIFICATION_PREFERENCES.DEVICES,
+        alertSeverities: sanitizedAlertSeverities ?? DEFAULT_NOTIFICATION_PREFERENCES.ALERT_SEVERITIES,
+        parameters: sanitizedParameters ?? DEFAULT_NOTIFICATION_PREFERENCES.PARAMETERS,
+        devices: sanitizedDevices ?? DEFAULT_NOTIFICATION_PREFERENCES.DEVICES,
         quietHoursEnabled: quietHoursEnabled ?? DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_ENABLED,
         quietHoursStart: quietHoursStart ?? DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_START,
         quietHoursEnd: quietHoursEnd ?? DEFAULT_NOTIFICATION_PREFERENCES.QUIET_HOURS_END,
@@ -491,8 +385,6 @@ export const UserCalls = onCall<
     {
       updateStatus: handleUpdateStatus,
       updateUser: handleUpdateUser,
-      listUsers: handleListUsers,
-      getUserPreferences: handleGetUserPreferences,
       setupPreferences: handleSetupPreferences,
     },
     {

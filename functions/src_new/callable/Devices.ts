@@ -96,10 +96,13 @@ const handleUpdateDevice: ActionHandler<DeviceManagementRequest, DeviceManagemen
     throw new HttpsError("not-found", DEVICE_MANAGEMENT_ERRORS.DEVICE_NOT_FOUND);
   }
 
+  // OPTIMIZATION: Only update metadata and admin-controlled fields
+  // DO NOT update lastSeen here - that's handled by processSensorData
+  // This prevents manual updates from interfering with automatic status tracking
   await deviceRef.update({
     ...deviceData,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    lastSeen: admin.firestore.FieldValue.serverTimestamp(),
+    // lastSeen is REMOVED - only updated by actual sensor data
   });
 
   return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_UPDATED};

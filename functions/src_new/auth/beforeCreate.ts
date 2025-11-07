@@ -21,7 +21,6 @@ import {beforeUserCreated} from "firebase-functions/v2/identity";
 import {
   DEFAULT_USER_ROLE,
   DEFAULT_USER_STATUS,
-  AUTH_ACTIONS,
   AUTH_ERROR_MESSAGES,
   LOG_PREFIXES,
   AUTH_PROVIDERS,
@@ -31,7 +30,6 @@ import {
   validateEmailDomain,
   parseUserInfo,
   createUserProfile,
-  logBusinessAction,
   createPermissionDeniedError,
 } from "../utils/AuthHelpers";
 import {withErrorHandling} from "../utils/ErrorHandlers";
@@ -80,16 +78,6 @@ export const beforeCreate = beforeUserCreated(
             `Role: ${DEFAULT_USER_ROLE}, Status: ${DEFAULT_USER_STATUS}, ` +
             "Notification Preferences: Initialized with defaults"
         );
-
-        // Log account creation for audit trail
-        await logBusinessAction(AUTH_ACTIONS.USER_CREATED, userInfo.uid, userInfo.email, "system", {
-          role: DEFAULT_USER_ROLE,
-          status: DEFAULT_USER_STATUS,
-          provider: AUTH_PROVIDERS.GOOGLE,
-          firstname: userInfo.firstname,
-          lastname: userInfo.lastname,
-          notificationPreferencesInitialized: true,
-        });
       },
       "creating user profile",
       `Failed to create user profile for ${userInfo.email}`

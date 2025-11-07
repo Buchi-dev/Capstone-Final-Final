@@ -95,7 +95,6 @@ export const USER_MANAGEMENT_ERRORS = {
   // Operation errors
   UPDATE_STATUS_FAILED: "Failed to update user status",
   UPDATE_USER_FAILED: "Failed to update user",
-  LIST_USERS_FAILED: "Failed to list users",
 } as const;
 
 /**

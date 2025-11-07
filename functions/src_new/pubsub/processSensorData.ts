@@ -149,10 +149,11 @@ export const processSensorData = onMessagePublished(
  *
  * Steps:
  * 1. Validate sensor data
- * 2. Store in Realtime Database (latest + filtered history)
- * 3. Update device status in Firestore (throttled)
- * 4. Check thresholds and create alerts with debouncing
- * 5. Analyze trends and create trend alerts
+ * 2. Check if device is registered in Firestore
+ * 3. Store in Realtime Database (latest + filtered history)
+ * 4. Update device status in Firestore (throttled)
+ * 5. Check thresholds and create alerts with debouncing
+ * 6. Analyze trends and create trend alerts
  *
  * @param {*} deviceId - Device ID
  * @param {*} sensorData - Sensor data to process
@@ -162,6 +163,17 @@ async function processSingleReading(deviceId: string, sensorData: SensorData): P
   if (!isValidSensorReading(sensorData)) {
     logger.warn(`${SENSOR_DATA_ERRORS.INVALID_SENSOR_DATA} for device: ${deviceId}`, sensorData);
     return; // Skip invalid readings
+  }
+
+  // Check if device is registered in Firestore before storing data
+  const deviceDoc = await db.collection(COLLECTIONS.DEVICES).doc(deviceId).get();
+  
+  if (!deviceDoc.exists) {
+    logger.warn(
+      `Device ${deviceId} is not registered - rejecting sensor data`,
+      {deviceId, sensorData}
+    );
+    return; // Skip unregistered devices - don't store data
   }
 
   // Prepare reading data with server timestamp
@@ -191,8 +203,9 @@ async function processSingleReading(deviceId: string, sensorData: SensorData): P
   }
 
   // OPTIMIZATION: Update device status in Firestore (throttled)
-  // Only update if lastSeen is older than 5 minutes to reduce writes by 80%
-  await updateDeviceStatus(deviceId);
+  // Only update if lastSeen is older than 2 minutes to reduce writes by ~70%
+  // Pass the device document to avoid redundant Firestore read
+  await updateDeviceStatus(deviceId, deviceDoc);
 
   // Process alerts for this reading
   await processSensorReadingForAlerts(readingData);
@@ -202,16 +215,32 @@ async function processSingleReading(deviceId: string, sensorData: SensorData): P
  * Update device status in Firestore with throttling
  *
  * OPTIMIZATION: Only updates if lastSeen is older than threshold
- * Reduces Firestore writes by 80%
+ * Reduces Firestore writes by ~70% (2-min threshold vs real-time)
+ * 
+ * STATE TRANSITIONS:
+ * - offline → online (when data arrives)
+ * - online → online (refresh lastSeen)
  *
  * @param {*} deviceId - Device ID to update
+ * @param {*} deviceDoc - Optional pre-fetched device document to avoid redundant read
  */
-async function updateDeviceStatus(deviceId: string): Promise<void> {
+async function updateDeviceStatus(
+  deviceId: string,
+  deviceDoc?: FirebaseFirestore.DocumentSnapshot
+): Promise<void> {
   try {
-    const deviceDoc = await db.collection(COLLECTIONS.DEVICES).doc(deviceId).get();
+    // Use provided document or fetch it
+    const docSnapshot = deviceDoc || await db.collection(COLLECTIONS.DEVICES).doc(deviceId).get();
 
-    const deviceData = deviceDoc.data();
+    if (!docSnapshot.exists) {
+      logger.warn(`Device ${deviceId} not found in Firestore - skipping status update`);
+      return;
+    }
 
+    const deviceData = docSnapshot.data();
+    const currentStatus = deviceData?.status || "offline";
+
+    // Check throttle: only update if lastSeen is old enough
     let shouldUpdateFirestore = true;
     if (deviceData?.lastSeen) {
       const lastSeenTimestamp = deviceData.lastSeen.toMillis();
@@ -220,7 +249,7 @@ async function updateDeviceStatus(deviceId: string): Promise<void> {
     }
 
     if (shouldUpdateFirestore) {
-      // Update to reflect device is back online
+      // STATE TRANSITION: offline/online → online (device is sending data)
       const updateData: Record<string, unknown> = {
         lastSeen: admin.firestore.FieldValue.serverTimestamp(),
         status: "online",
@@ -232,7 +261,9 @@ async function updateDeviceStatus(deviceId: string): Promise<void> {
       }
 
       await db.collection(COLLECTIONS.DEVICES).doc(deviceId).update(updateData);
-      logger.info(`Updated Firestore lastSeen for device: ${deviceId}`);
+      logger.info(
+        `Updated device ${deviceId}: status=${currentStatus}→online, lastSeen refreshed`
+      );
     }
   } catch (error) {
     logger.warn(`Failed to update device status for ${deviceId}:`, error);

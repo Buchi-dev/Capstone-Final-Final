@@ -232,3 +232,140 @@ export function isValidAckToken(token: string): boolean {
   // 64 hex characters (32 bytes)
   return /^[a-f0-9]{64}$/i.test(token);
 }
+
+/**
+ * Sanitize and validate user name fields
+ *
+ * Rules:
+ * - Trim whitespace from both ends
+ * - Remove multiple consecutive spaces
+ * - Allow only letters, spaces, hyphens, and apostrophes
+ * - Length: 1-50 characters after sanitization
+ * - Used by: userManagement, beforeCreate
+ *
+ * @param {string} name - Name string to sanitize and validate
+ * @return {{ isValid: boolean; sanitized: string }} Validation result and sanitized value
+ *
+ * @example
+ * sanitizeUserName('  John  Doe  ')     // { isValid: true, sanitized: 'John Doe' }
+ * sanitizeUserName("O'Neill")           // { isValid: true, sanitized: "O'Neill" }
+ * sanitizeUserName('123')               // { isValid: false, sanitized: '' }
+ * sanitizeUserName('')                  // { isValid: false, sanitized: '' }
+ */
+export function sanitizeUserName(name: string): {isValid: boolean; sanitized: string} {
+  if (!name || typeof name !== "string") {
+    return {isValid: false, sanitized: ""};
+  }
+
+  // Trim and remove extra spaces
+  const sanitized = name.trim().replace(/\s+/g, " ");
+
+  // Validate: letters, spaces, hyphens, apostrophes only
+  const isValid = /^[a-zA-Z\s'-]{1,50}$/.test(sanitized);
+
+  return {isValid, sanitized};
+}
+
+/**
+ * Validate email and ensure it's from allowed domain
+ *
+ * Rules:
+ * - Must be valid email format
+ * - Must end with @smu.edu.ph (case-insensitive)
+ * - Normalized to lowercase
+ * - Used by: userManagement, beforeCreate, beforeSignIn
+ *
+ * @param {string} email - Email address to validate
+ * @param {string} allowedDomain - Allowed email domain (e.g., '@smu.edu.ph')
+ * @return {{ isValid: boolean; normalized: string }} Validation result and normalized email
+ *
+ * @example
+ * validateEmailWithDomain('user@smu.edu.ph', '@smu.edu.ph')
+ *   // { isValid: true, normalized: 'user@smu.edu.ph' }
+ * validateEmailWithDomain('USER@SMU.EDU.PH', '@smu.edu.ph')
+ *   // { isValid: true, normalized: 'user@smu.edu.ph' }
+ * validateEmailWithDomain('user@gmail.com', '@smu.edu.ph')
+ *   // { isValid: false, normalized: 'user@gmail.com' }
+ */
+export function validateEmailWithDomain(
+  email: string,
+  allowedDomain: string
+): {isValid: boolean; normalized: string} {
+  if (!email || typeof email !== "string") {
+    return {isValid: false, normalized: ""};
+  }
+
+  const normalized = email.toLowerCase().trim();
+
+  // Check basic email format first
+  if (!isValidEmail(normalized)) {
+    return {isValid: false, normalized};
+  }
+
+  // Check domain
+  const isValid = normalized.endsWith(allowedDomain.toLowerCase());
+
+  return {isValid, normalized};
+}
+
+/**
+ * Sanitize array of strings (for alert severities, parameters, devices)
+ *
+ * Rules:
+ * - Remove duplicates
+ * - Remove empty strings
+ * - Trim whitespace from each item
+ * - Limit array length to maxItems
+ * - Used by: notificationPreferences
+ *
+ * @param {string[]} items - Array of strings to sanitize
+ * @param {number} maxItems - Maximum number of items allowed
+ * @return {string[]} Sanitized array
+ *
+ * @example
+ * sanitizeStringArray(['  Critical  ', 'Warning', 'Critical', ''], 10)
+ *   // ['Critical', 'Warning']
+ * sanitizeStringArray(['a', 'b', 'c'], 2)
+ *   // ['a', 'b']
+ */
+export function sanitizeStringArray(items: string[], maxItems: number = 100): string[] {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  // Remove empty, trim, deduplicate, and limit
+  const sanitized = [...new Set(
+    items
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter((item) => item.length > 0)
+  )];
+
+  return sanitized.slice(0, maxItems);
+}
+
+/**
+ * Validate time string format (HH:MM)
+ *
+ * Rules:
+ * - Must match HH:MM format (24-hour)
+ * - Hours: 00-23
+ * - Minutes: 00-59
+ * - Used by: notificationPreferences (quiet hours)
+ *
+ * @param {string} time - Time string to validate
+ * @return {boolean} True if time format is valid
+ *
+ * @example
+ * isValidTimeString('09:30')  // true
+ * isValidTimeString('23:59')  // true
+ * isValidTimeString('24:00')  // false (invalid hour)
+ * isValidTimeString('9:30')   // false (missing leading zero)
+ */
+export function isValidTimeString(time: string): boolean {
+  if (!time || typeof time !== "string") {
+    return false;
+  }
+
+  const timeRegex = /^([0-1][0-9]|2[0-3]):([0-5][0-9])$/;
+  return timeRegex.test(time);
+}

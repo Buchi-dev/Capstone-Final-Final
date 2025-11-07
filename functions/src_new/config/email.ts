@@ -89,32 +89,3 @@ export interface AnalyticsEmailData {
     createdAt: Date;
   }>;
 }
-
-/**
- * Send analytics report email
- *
- * @deprecated Use sendAnalyticsNotification from utils/emailNotifications instead
- * @param {*} data - Email data with analytics information
- * @return {Promise<void>} Promise that resolves when email is sent
- *
- * @example
- * await sendAnalyticsEmail({
- *   recipientEmail: 'admin@example.com',
- *   recipientName: 'John Admin',
- *   reportType: 'daily',
- *   ...analyticsData
- * });
- */
-export async function sendAnalyticsEmail(data: AnalyticsEmailData): Promise<void> {
-  logger.info(
-    `[Analytics Email] Delegating to emailNotifications.sendAnalyticsNotification() for ${data.recipientEmail}`
-  );
-
-  // Delegate to the new unified notification handler
-  const {sendAnalyticsNotification} = await import("../utils/emailNotifications");
-  const success = await sendAnalyticsNotification(data);
-
-  if (!success) {
-    throw new Error(`Failed to send analytics email to ${data.recipientEmail}`);
-  }
-}

@@ -7,7 +7,6 @@ import {logger} from "firebase-functions/v2";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 
 import {
-  sendAnalyticsEmail,
   EMAIL_USER_SECRET_REF,
   EMAIL_PASSWORD_SECRET_REF,
   type AnalyticsEmailData,
@@ -20,6 +19,7 @@ import {
   ANALYTICS_PERIODS,
 } from "../constants";
 import type {NotificationPreferences, WaterQualityAlert} from "../types";
+import {sendAnalyticsNotification} from "../utils/emailNotifications";
 
 /**
  * Get device status summary
@@ -256,11 +256,18 @@ export const sendUnifiedAnalytics = onSchedule(
         };
 
         try {
-          await sendAnalyticsEmail(emailData);
-          emailsSent++;
-          logger.info(
-            `[UNIFIED][Asia/Manila] Sent ${reportType} analytics to ${preferences.email}`
-          );
+          const success = await sendAnalyticsNotification(emailData);
+          if (success) {
+            emailsSent++;
+            logger.info(
+              `[UNIFIED][Asia/Manila] Sent ${reportType} analytics to ${preferences.email}`
+            );
+          } else {
+            emailsFailed++;
+            logger.error(
+              `[UNIFIED][Asia/Manila] Failed to send ${reportType} analytics to ${preferences.email}`
+            );
+          }
         } catch (error) {
           emailsFailed++;
           logger.error(

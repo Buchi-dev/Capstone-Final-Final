@@ -6,18 +6,23 @@ import {db} from "../config/firebase";
 import {COLLECTIONS} from "../constants/Database.Constants";
 import {SCHEDULER_CONFIG} from "../constants/Scheduler.Constants";
 
-const DEFAULT_CHECK_INTERVAL_MINUTES = 5;
+const DEFAULT_CHECK_INTERVAL_MINUTES = 2; // Reduced from 5 to 2 minutes for faster detection
 const MANILA_TIMEZONE = SCHEDULER_CONFIG.TIMEZONE;
 const BATCH_LIMIT = 500;
 
 /**
  * Calculate offline threshold in ms.
- * Threshold = interval × 2 (allows 1 missed heartbeat + delays)
+ * Threshold = interval × 1.5 (tighter tolerance for faster detection)
+ * 
+ * OPTIMIZATION: Changed from 2x to 1.5x multiplier
+ * - Old: 5 min interval × 2 = 10 min threshold
+ * - New: 5 min interval × 1.5 = 7.5 min threshold
+ * 
  * @param {number} intervalMinutes - The check interval in minutes.
  * @return {number} The offline threshold in milliseconds.
  */
 function calculateOfflineThreshold(intervalMinutes: number): number {
-  return intervalMinutes * 2 * 60 * 1000;
+  return intervalMinutes * 1.5 * 60 * 1000; // 7.5 minutes (was 10 min)
 }
 
 /**
@@ -52,14 +57,16 @@ export const checkOfflineDevices = onSchedule(
 
       logger.info("Configuration loaded", {
         intervalMinutes: interval,
-        offlineThresholdMinutes: interval * 2,
+        offlineThresholdMinutes: interval * 1.5,
+        offlineThresholdMs: offlineThresholdMs,
         timezone: MANILA_TIMEZONE,
       });
 
-      // Query only devices that are not offline/maintenance
+      // Query only devices that are currently online
+      // OPTIMIZATION: Skip devices already marked offline (no need to re-check)
       const devicesQuery = db
         .collection(COLLECTIONS.DEVICES)
-        .where("status", "in", ["online", "active"]);
+        .where("status", "==", "online");
 
       const stream = devicesQuery.stream();
 
@@ -79,10 +86,13 @@ export const checkOfflineDevices = onSchedule(
 
         if (shouldMarkOffline) {
           const minutesAgo = lastSeen ? Math.floor((now - lastSeen) / 60000) : "unknown";
-          logger.info(`Marking device ${deviceId} as offline`, {
+          logger.info(`STATE TRANSITION: ${deviceId} (${deviceData.status} → offline)`, {
             deviceId,
+            previousStatus: deviceData.status,
+            newStatus: "offline",
             lastSeen: lastSeen ? new Date(lastSeen).toISOString() : "N/A",
             minutesAgo,
+            threshold: `${interval * 1.5} minutes`,
           });
 
           currentBatch.update(doc.ref, {

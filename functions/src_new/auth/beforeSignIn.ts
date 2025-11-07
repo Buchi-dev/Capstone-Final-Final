@@ -24,7 +24,6 @@ import {beforeUserSignedIn} from "firebase-functions/v2/identity";
 
 import {
   USER_STATUSES,
-  LOGIN_RESULTS,
   AUTH_ERROR_MESSAGES,
   LOG_PREFIXES,
 } from "../constants/Auth.constants";
@@ -34,7 +33,6 @@ import {
   parseUserInfo,
   getUserProfile,
   updateLastLogin,
-  logSignInAttempt,
   createPermissionDeniedError,
   createNotFoundError,
 } from "../utils/AuthHelpers";
@@ -67,16 +65,6 @@ export const beforeSignIn = beforeUserSignedIn(
         `${LOG_PREFIXES.BLOCKED} Sign-in attempt rejected for ${userInfo.email} - Domain not allowed`
       );
 
-      // Log rejected sign-in attempt
-      await logSignInAttempt(
-        userInfo.uid,
-        userInfo.email,
-        userInfo.displayName,
-        USER_STATUSES.PENDING,
-        LOGIN_RESULTS.REJECTED,
-        `Sign-in blocked: Email domain ${domainValidation.domain} not allowed`
-      );
-
       throw createPermissionDeniedError(AUTH_ERROR_MESSAGES.DOMAIN_NOT_ALLOWED);
     }
 
@@ -92,16 +80,6 @@ export const beforeSignIn = beforeUserSignedIn(
             `${LOG_PREFIXES.ERROR} User profile not found for ${userInfo.email} (UID: ${userInfo.uid})`
           );
 
-          // Log error for missing profile
-          await logSignInAttempt(
-            userInfo.uid,
-            userInfo.email,
-            userInfo.displayName,
-            USER_STATUSES.PENDING,
-            LOGIN_RESULTS.ERROR,
-            "User profile not found in database - possible sync issue"
-          );
-
           throw createNotFoundError(AUTH_ERROR_MESSAGES.USER_NOT_FOUND);
         }
 
@@ -109,16 +87,6 @@ export const beforeSignIn = beforeUserSignedIn(
 
         console.log(
           `${LOG_PREFIXES.AUTHENTICATED} User ${userInfo.email} signed in - Status: ${userStatus}`
-        );
-
-        // Log successful sign-in attempt
-        await logSignInAttempt(
-          userInfo.uid,
-          userInfo.email,
-          userInfo.displayName,
-          userStatus,
-          LOGIN_RESULTS.SUCCESS,
-          `Sign-in successful - User status: ${userStatus}`
         );
 
         // Update last login timestamp

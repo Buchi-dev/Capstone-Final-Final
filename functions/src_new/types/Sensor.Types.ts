@@ -69,7 +69,7 @@ export interface DeviceStatus {
   deviceId: string;
 
   /** Current device status */
-  status: "online" | "offline" | "unknown";
+  status: "online" | "offline";
 
   /** Last seen timestamp */
   lastSeen: admin.firestore.Timestamp;

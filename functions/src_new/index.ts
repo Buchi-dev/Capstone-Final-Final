@@ -10,6 +10,11 @@ export {beforeCreate} from "./auth/beforeCreate";
 export {beforeSignIn} from "./auth/beforeSignIn";
 
 // ===========================
+// FIRESTORE TRIGGERS
+// ===========================
+export {syncUserClaims} from "./firestore/syncUserClaims";
+
+// ===========================
 // CALLABLE FUNCTIONS
 // ===========================
 export {AlertsCalls} from "./callable/Alerts";

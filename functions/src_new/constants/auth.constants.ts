@@ -39,33 +39,17 @@ export const AUTH_PROVIDERS = {
 } as const;
 
 // ===========================
-// LOGGING CONSTANTS
+// USER STATUS CONSTANTS
 // ===========================
 
 /**
- * Authentication action types for logging
- */
-export const AUTH_ACTIONS = {
-  USER_CREATED: "user_account_created",
-} as const;
-
-/**
- * User status constants for logging purposes
+ * User status constants for authentication purposes
  * Maps to UserStatus type from userManagement constants
  */
 export const USER_STATUSES = {
   PENDING: "Pending" as UserStatus,
   APPROVED: "Approved" as UserStatus,
   SUSPENDED: "Suspended" as UserStatus,
-} as const;
-
-/**
- * Login result types
- */
-export const LOGIN_RESULTS = {
-  SUCCESS: "success",
-  REJECTED: "rejected",
-  ERROR: "error",
 } as const;
 
 // ===========================

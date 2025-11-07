@@ -76,8 +76,6 @@ export interface DeviceStatusSummary {
   statusBreakdown: {
     online: number;
     offline: number;
-    error: number;
-    maintenance: number;
   };
   healthScore: string;
 }
