@@ -11,4 +11,5 @@ export { AlertStatusCard } from './AlertStatusCard';
 export { MqttBridgeStatusCard } from './MqttBridgeStatusCard';
 export { DeviceStatusCard } from './DeviceStatusCard';
 export { SystemHealthCard } from './SystemHealthCard';
+export { MetricIndicator } from './MetricIndicator';
 export * from './types';
