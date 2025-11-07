@@ -1,42 +1,243 @@
-import { Card, Space, List, Empty, Tag, Typography, Statistic } from 'antd';
+import { 
+  Card, 
+  Space, 
+  List, 
+  Empty, 
+  Tag, 
+  Typography, 
+  Statistic, 
+  Button,
+  Row,
+  Col,
+  Dropdown,
+  Tooltip
+} from 'antd';
 import {
   FileTextOutlined,
   FilePdfOutlined,
   HistoryOutlined,
+  DownloadOutlined,
+  EyeOutlined,
+  DeleteOutlined,
+  MoreOutlined,
+  RightOutlined
 } from '@ant-design/icons';
 import type { ReportHistory } from '../../../../schemas';
 import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
 
-const { Text } = Typography;
+dayjs.extend(relativeTime);
+
+const { Text, Paragraph } = Typography;
 
 interface ReportHistorySidebarProps {
   reportHistory: ReportHistory[];
   token: any;
+  title?: string;
+  showViewAll?: boolean;
+  onViewAll?: () => void;
+  fullView?: boolean;
 }
 
 export const ReportHistorySidebar = ({
   reportHistory,
   token,
+  title = "Report History",
+  showViewAll = false,
+  onViewAll,
+  fullView = false,
 }: ReportHistorySidebarProps) => {
+  const getReportTypeColor = (type: string) => {
+    switch (type) {
+      case 'water_quality': return 'blue';
+      case 'device_status': return 'green';
+      case 'data_summary': return 'purple';
+      case 'compliance': return 'orange';
+      default: return 'default';
+    }
+  };
+
+  const getReportTypeLabel = (type: string) => {
+    switch (type) {
+      case 'water_quality': return 'Water Quality';
+      case 'device_status': return 'Device Status';
+      case 'data_summary': return 'Data Summary';
+      case 'compliance': return 'Compliance';
+      default: return type;
+    }
+  };
+
+  if (fullView) {
+    return (
+      <Space direction="vertical" style={{ width: '100%' }} size="large">
+        {/* Statistics Row */}
+        <Row gutter={16}>
+          <Col xs={24} sm={8}>
+            <Card>
+              <Statistic
+                title="Total Reports"
+                value={reportHistory.length}
+                prefix={<FileTextOutlined />}
+                valueStyle={{ color: token.colorPrimary }}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={8}>
+            <Card>
+              <Statistic
+                title="This Month"
+                value={reportHistory.filter(r => 
+                  dayjs(r.generatedAt).isAfter(dayjs().startOf('month'))
+                ).length}
+                prefix={<FilePdfOutlined />}
+                valueStyle={{ color: token.colorSuccess }}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={8}>
+            <Card>
+              <Statistic
+                title="Total Pages"
+                value={reportHistory.reduce((sum, r) => sum + (r.pages || 0), 0)}
+                prefix={<FileTextOutlined />}
+                valueStyle={{ color: token.colorInfo }}
+              />
+            </Card>
+          </Col>
+        </Row>
+
+        {/* Full Report List */}
+        <Card
+          title={
+            <Space>
+              <HistoryOutlined />
+              <span>All Generated Reports</span>
+            </Space>
+          }
+        >
+          {reportHistory.length === 0 ? (
+            <Empty
+              description="No reports generated yet"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
+          ) : (
+            <List
+              dataSource={reportHistory}
+              pagination={{
+                pageSize: 10,
+                showSizeChanger: true,
+                showTotal: (total) => `Total ${total} reports`,
+              }}
+              renderItem={item => (
+                <List.Item
+                  actions={[
+                    <Tooltip title="Download">
+                      <Button type="text" icon={<DownloadOutlined />} />
+                    </Tooltip>,
+                    <Dropdown
+                      menu={{
+                        items: [
+                          {
+                            key: 'view',
+                            label: 'View Details',
+                            icon: <EyeOutlined />,
+                          },
+                          {
+                            key: 'download',
+                            label: 'Download',
+                            icon: <DownloadOutlined />,
+                          },
+                          {
+                            type: 'divider',
+                          },
+                          {
+                            key: 'delete',
+                            label: 'Delete',
+                            icon: <DeleteOutlined />,
+                            danger: true,
+                          },
+                        ],
+                      }}
+                    >
+                      <Button type="text" icon={<MoreOutlined />} />
+                    </Dropdown>,
+                  ]}
+                >
+                  <List.Item.Meta
+                    avatar={
+                      <div style={{ 
+                        fontSize: 32, 
+                        color: token.colorError,
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}>
+                        <FilePdfOutlined />
+                      </div>
+                    }
+                    title={
+                      <Space direction="vertical" size={4}>
+                        <Text strong>{item.title}</Text>
+                        <Space size={4} wrap>
+                          <Tag color={getReportTypeColor(item.type || '')}>
+                            {getReportTypeLabel(item.type || '')}
+                          </Tag>
+                          <Tag color="blue">{item.devices} devices</Tag>
+                          <Tag color="green">{item.pages} pages</Tag>
+                        </Space>
+                      </Space>
+                    }
+                    description={
+                      <Space direction="vertical" size={0}>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          Generated {dayjs(item.generatedAt).format('MMM D, YYYY h:mm A')}
+                        </Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {dayjs(item.generatedAt).fromNow()}
+                        </Text>
+                      </Space>
+                    }
+                  />
+                </List.Item>
+              )}
+            />
+          )}
+        </Card>
+      </Space>
+    );
+  }
+
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="large">
       {/* Quick Stats */}
-      <Card>
-        <Statistic
-          title="Reports Generated"
-          value={reportHistory.length}
-          prefix={<FileTextOutlined />}
-          valueStyle={{ color: '#001f3f' }}
-        />
-      </Card>
+      {!showViewAll && (
+        <Card>
+          <Statistic
+            title="Reports Generated"
+            value={reportHistory.length}
+            prefix={<FileTextOutlined />}
+            valueStyle={{ color: token.colorPrimary }}
+          />
+        </Card>
+      )}
 
       {/* Report History */}
       <Card
         title={
           <Space>
             <HistoryOutlined />
-            <span>Recent Reports</span>
+            <span>{title}</span>
           </Space>
+        }
+        extra={
+          showViewAll && reportHistory.length > 0 ? (
+            <Button 
+              type="link" 
+              icon={<RightOutlined />}
+              onClick={onViewAll}
+            >
+              View All
+            </Button>
+          ) : null
         }
       >
         {reportHistory.length === 0 ? (
@@ -48,18 +249,47 @@ export const ReportHistorySidebar = ({
           <List
             dataSource={reportHistory}
             renderItem={item => (
-              <List.Item>
+              <List.Item
+                extra={
+                  <Tooltip title="Download PDF">
+                    <Button 
+                      type="text" 
+                      icon={<DownloadOutlined />} 
+                      size="small"
+                    />
+                  </Tooltip>
+                }
+              >
                 <List.Item.Meta
-                  avatar={<FilePdfOutlined style={{ fontSize: 24, color: token.colorError }} />}
-                  title={item.title}
+                  avatar={
+                    <FilePdfOutlined 
+                      style={{ fontSize: 24, color: token.colorError }} 
+                    />
+                  }
+                  title={
+                    <Paragraph 
+                      ellipsis={{ rows: 1 }} 
+                      style={{ marginBottom: 4 }}
+                      strong
+                    >
+                      {item.title}
+                    </Paragraph>
+                  }
                   description={
-                    <Space direction="vertical" size={0}>
+                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {dayjs(item.generatedAt).format('MMM D, YYYY h:mm A')}
                       </Text>
-                      <Space size={4}>
-                        <Tag color="blue">{item.devices} devices</Tag>
-                        <Tag color="green">{item.pages} pages</Tag>
+                      <Space size={4} wrap>
+                        <Tag color={getReportTypeColor(item.type || '')} style={{ fontSize: 11 }}>
+                          {getReportTypeLabel(item.type || '')}
+                        </Tag>
+                        <Tag color="blue" style={{ fontSize: 11 }}>
+                          {item.devices} devices
+                        </Tag>
+                        <Tag color="green" style={{ fontSize: 11 }}>
+                          {item.pages} pages
+                        </Tag>
                       </Space>
                     </Space>
                   }

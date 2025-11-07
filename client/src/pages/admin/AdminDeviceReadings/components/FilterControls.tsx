@@ -1,8 +1,6 @@
-import { Select, Space, Typography, Input, Row, Col } from 'antd';
+import { Select, Space, Input, Row, Col } from 'antd';
 import { FilterOutlined, SearchOutlined } from '@ant-design/icons';
 import { memo } from 'react';
-
-const { Text } = Typography;
 
 interface FilterControlsProps {
   severityFilter: string;

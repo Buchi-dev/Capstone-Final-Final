@@ -407,7 +407,7 @@ export const useReportGeneration = (
       // Add to history
       const newReport: ReportHistory = {
         id: Date.now().toString(),
-        type: config.title,
+        type: selectedType,
         title: config.title,
         generatedAt: new Date(),
         devices: config.deviceIds.length,
