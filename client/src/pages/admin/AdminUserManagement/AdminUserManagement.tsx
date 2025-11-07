@@ -1,682 +1,225 @@
 /**
- * User Management Component
- * Allows admins to manage users, approve pending accounts, and update user status
+ * Admin User Management Page
+ *
+ * Comprehensive user management interface with:
+ * - Real-time user data updates
+ * - User statistics dashboard
+ * - Advanced filtering and search
+ * - Quick actions and bulk operations
+ * - User editing with role and status management
+ *
+ * @module pages/admin/AdminUserManagement
  */
 
-import { useState, useEffect } from 'react';
-import { AdminLayout } from '../../../components/layouts';
+import React, { useState } from "react";
 import {
-  Card,
+  Layout,
   Typography,
   Space,
-  Table,
-  Tag,
   Button,
-  Tabs,
-  Badge,
-  Modal,
-  Select,
-  message,
-  Descriptions,
-  Input,
-  Tooltip,
-  Popconfirm,
+  Card,
+  Alert,
+  Spin,
+  Empty,
+  Breadcrumb,
   theme,
-} from 'antd';
+} from "antd";
 import {
-  TeamOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  StopOutlined,
-  EyeOutlined,
-  EditOutlined,
-  SearchOutlined,
-  MailOutlined,
-  PhoneOutlined,
-  CalendarOutlined,
+  UserOutlined,
   ReloadOutlined,
-  WarningOutlined,
-} from '@ant-design/icons';
-import type { UserProfile, UserStatus, UserRole } from '../../../contexts';
-import type { ColumnsType } from 'antd/es/table';
-import { userManagementService } from '../../../services/userManagement.Service';
+  PlusOutlined,
+  HomeOutlined,
+} from "@ant-design/icons";
+import { useUserManagement } from "./hooks";
+import { UsersTable } from "./components/UsersTable";
+import { UserEditModal } from "./components/UserEditModal";
+import { UsersStatistics } from "./components/UsersStatistics";
+import type { UserListData } from "../../../services/userManagement.Service";
+import type { UserRole, UserStatus } from "../../../contexts";
+import { AdminLayout } from "../../../components/layouts/AdminLayout";
 
-const { Title, Paragraph, Text } = Typography;
+const { Title, Text } = Typography;
+const { Content } = Layout;
 
-interface UserWithId extends UserProfile {
-  id: string;
-}
-
-export const AdminUserManagement = () => {
+export const AdminUserManagement: React.FC = () => {
   const { token } = theme.useToken();
-  const [loading, setLoading] = useState(true); // Start with true for initial load
-  const [users, setUsers] = useState<UserWithId[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<UserWithId[]>([]);
-  const [selectedUser, setSelectedUser] = useState<UserWithId | null>(null);
-  const [viewModalVisible, setViewModalVisible] = useState(false);
+  const {
+    users,
+    loading,
+    error,
+    updateUser,
+    updateUserStatus,
+    updateUserRole,
+    refreshing,
+  } = useUserManagement();
+
   const [editModalVisible, setEditModalVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>('all');
-  const [searchText, setSearchText] = useState('');
-  const [editStatus, setEditStatus] = useState<UserStatus>('Pending');
-  const [editRole, setEditRole] = useState<UserRole>('Staff');
-  const [refreshing, setRefreshing] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserListData | null>(null);
 
-  // Manual token refresh handler
-  const handleTokenRefresh = async () => {
-    setRefreshing(true);
-    try {
-      const { refreshAndVerifyAdmin, logAuthDebugInfo } = await import('../../../utils/authHelpers');
-      
-      // Log current auth info
-      await logAuthDebugInfo();
-      
-      // Refresh token
-      const result = await refreshAndVerifyAdmin();
-      
-      if (result.success) {
-        if (result.isAdmin) {
-          message.success('✅ Token refreshed successfully. Admin access confirmed.');
-          // Trigger a re-render by reloading
-          window.location.reload();
-        } else {
-          message.warning({
-            content: (
-              <div>
-                <div><WarningOutlined /> Your role is '{result.role}', not 'Admin'.</div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>
-                  Please contact your system administrator to grant Admin access.
-                </div>
-              </div>
-            ),
-            duration: 8,
-          });
-        }
-      } else {
-        message.error(`Failed to refresh token: ${result.message}`);
-      }
-    } catch (error: any) {
-      console.error('Token refresh error:', error);
-      message.error('Failed to refresh authentication token');
-    } finally {
-      setRefreshing(false);
-    }
+  // Handle edit user
+  const handleEdit = (user: UserListData) => {
+    setSelectedUser(user);
+    setEditModalVisible(true);
   };
 
-  // 📖 READ: Real-time subscription to users (Architecture Rule R1)
-  useEffect(() => {
-    setLoading(true);
-    
-    // Debug: Log auth info when component mounts
-    import('../../../utils/authHelpers').then(({ logAuthDebugInfo }) => {
-      logAuthDebugInfo();
-    });
-    
-    const unsubscribe = userManagementService.subscribeToUsers(
-      (usersList) => {
-        setUsers(usersList);
-        filterUsers(usersList, activeTab, searchText);
-        setLoading(false);
-      },
-      async (error) => {
-        console.error('Error subscribing to users:', error);
-        
-        // If permission denied, try refreshing token and retrying
-        if (error.message.includes('insufficient permissions')) {
-          console.log('⚠️ Permission denied. Attempting token refresh...');
-          try {
-            const { refreshAndVerifyAdmin } = await import('../../../utils/authHelpers');
-            const result = await refreshAndVerifyAdmin();
-            console.log('🔄 Token refresh result:', result);
-            
-            if (!result.isAdmin) {
-              message.error(`Access denied: Your account role is '${result.role}', but Admin access is required. Please contact your system administrator.`);
-            } else {
-              message.error('Permission denied. Please sign out and sign back in to refresh your access token.');
-            }
-          } catch (refreshError) {
-            console.error('Failed to refresh token:', refreshError);
-            message.error('Failed to load users. Please sign out and sign back in.');
-          }
-        } else {
-          message.error(error.message || 'Failed to load users');
-        }
-        setLoading(false);
-      }
-    );
-
-    // Cleanup listener on unmount (Architecture Rule R4)
-    return () => unsubscribe();
-  }, []); // Only run once on mount
-
-  // Filter users based on tab and search
-  const filterUsers = (usersList: UserWithId[], tab: string, search: string) => {
-    let filtered = usersList;
-
-    // Filter by tab
-    if (tab === 'pending') {
-      filtered = filtered.filter(u => u.status === 'Pending');
-    } else if (tab === 'approved') {
-      filtered = filtered.filter(u => u.status === 'Approved');
-    } else if (tab === 'suspended') {
-      filtered = filtered.filter(u => u.status === 'Suspended');
-    }
-
-    // Filter by search text
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filtered = filtered.filter(u =>
-        u.firstname.toLowerCase().includes(searchLower) ||
-        u.lastname.toLowerCase().includes(searchLower) ||
-        u.email.toLowerCase().includes(searchLower) ||
-        u.department.toLowerCase().includes(searchLower)
-      );
-    }
-
-    setFilteredUsers(filtered);
+  // Handle save user
+  const handleSaveUser = async (
+    userId: string,
+    status?: UserStatus,
+    role?: UserRole
+  ) => {
+    await updateUser(userId, status, role);
+    setEditModalVisible(false);
+    setSelectedUser(null);
   };
 
-  // ✍️ WRITE: Update user status via Cloud Function (Architecture Rule W1)
-  const updateUserStatusHandler = async (userId: string, newStatus: UserStatus) => {
-    try {
-      const result = await userManagementService.updateUserStatus(userId, newStatus);
-      message.success(result.message);
-      // ✅ No manual refresh needed - real-time listener updates automatically (Architecture Rule W6)
-    } catch (error: any) {
-      console.error('Error updating user status:', error);
-      message.error(error.message || 'Failed to update user status');
-    }
+  // Handle quick status change
+  const handleQuickStatusChange = async (
+    userId: string,
+    status: UserStatus
+  ) => {
+    await updateUserStatus(userId, status);
   };
 
-  // ✍️ WRITE: Handle edit user via Cloud Function (Architecture Rule W1)
-  const handleEditUser = async () => {
-    if (!selectedUser) return;
-
-    try {
-      const result = await userManagementService.updateUser(
-        selectedUser.id,
-        editStatus,
-        editRole
-      );
-
-      message.success(result.message);
-      setEditModalVisible(false);
-      // ✅ No manual refresh needed - real-time listener updates automatically (Architecture Rule W6)
-    } catch (error: any) {
-      console.error('Error updating user:', error);
-      message.error(error.message || 'Failed to update user');
-    }
+  // Handle quick role change
+  const handleQuickRoleChange = async (userId: string, role: UserRole) => {
+    await updateUserRole(userId, role);
   };
 
-  // Get status color
-  const getStatusColor = (status: UserStatus): string => {
-    switch (status) {
-      case 'Approved':
-        return 'success';
-      case 'Pending':
-        return 'warning';
-      case 'Suspended':
-        return 'error';
-      default:
-        return 'default';
-    }
+  // Handle cancel edit
+  const handleCancelEdit = () => {
+    setEditModalVisible(false);
+    setSelectedUser(null);
   };
-
-  // Get status icon
-  const getStatusIcon = (status: UserStatus) => {
-    switch (status) {
-      case 'Approved':
-        return <CheckCircleOutlined />;
-      case 'Pending':
-        return <ClockCircleOutlined />;
-      case 'Suspended':
-        return <StopOutlined />;
-      default:
-        return null;
-    }
-  };
-
-  // Table columns
-  const columns: ColumnsType<UserWithId> = [
-    {
-      title: 'Name',
-      key: 'name',
-      render: (_, record) => (
-        <Space direction="vertical" size={0}>
-          <Text strong>{`${record.firstname} ${record.lastname}`}</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>{record.email}</Text>
-        </Space>
-      ),
-      sorter: (a, b) => a.lastname.localeCompare(b.lastname),
-    },
-    {
-      title: 'Department',
-      dataIndex: 'department',
-      key: 'department',
-      sorter: (a, b) => a.department.localeCompare(b.department),
-    },
-    {
-      title: 'Role',
-      dataIndex: 'role',
-      key: 'role',
-      render: (role: UserRole) => (
-        <Tag color={role === 'Admin' ? 'blue' : 'default'}>
-          {role}
-        </Tag>
-      ),
-      filters: [
-        { text: 'Admin', value: 'Admin' },
-        { text: 'Staff', value: 'Staff' },
-      ],
-      onFilter: (value, record) => record.role === value,
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: UserStatus) => (
-        <Tag color={getStatusColor(status)} icon={getStatusIcon(status)}>
-          {status}
-        </Tag>
-      ),
-      filters: [
-        { text: 'Approved', value: 'Approved' },
-        { text: 'Pending', value: 'Pending' },
-        { text: 'Suspended', value: 'Suspended' },
-      ],
-      onFilter: (value, record) => record.status === value,
-    },
-    {
-      title: 'Created',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      render: (date: Date) => new Date(date).toLocaleDateString(),
-      sorter: (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-    },
-    {
-      title: 'Actions',
-      key: 'actions',
-      render: (_, record) => (
-        <Space size="small">
-          <Tooltip title="View Details">
-            <Button
-              type="text"
-              icon={<EyeOutlined />}
-              onClick={() => {
-                setSelectedUser(record);
-                setViewModalVisible(true);
-              }}
-            />
-          </Tooltip>
-          <Tooltip title="Edit User">
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              onClick={() => {
-                setSelectedUser(record);
-                setEditStatus(record.status);
-                setEditRole(record.role);
-                setEditModalVisible(true);
-              }}
-            />
-          </Tooltip>
-          {record.status === 'Pending' && (
-            <Popconfirm
-              title="Approve this user?"
-              description="This will grant the user access to the system."
-              onConfirm={() => updateUserStatusHandler(record.id, 'Approved')}
-              okText="Approve"
-              cancelText="Cancel"
-            >
-              <Tooltip title="Approve User">
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<CheckCircleOutlined />}
-                >
-                  Approve
-                </Button>
-              </Tooltip>
-            </Popconfirm>
-          )}
-          {record.status === 'Approved' && (
-            <Popconfirm
-              title="Suspend this user?"
-              description="This will revoke the user's access."
-              onConfirm={() => updateUserStatusHandler(record.id, 'Suspended')}
-              okText="Suspend"
-              cancelText="Cancel"
-              okButtonProps={{ danger: true }}
-            >
-              <Tooltip title="Suspend User">
-                <Button
-                  danger
-                  size="small"
-                  icon={<StopOutlined />}
-                >
-                  Suspend
-                </Button>
-              </Tooltip>
-            </Popconfirm>
-          )}
-          {record.status === 'Suspended' && (
-            <Popconfirm
-              title="Reactivate this user?"
-              description="This will restore the user's access."
-              onConfirm={() => updateUserStatusHandler(record.id, 'Approved')}
-              okText="Reactivate"
-              cancelText="Cancel"
-            >
-              <Tooltip title="Reactivate User">
-                <Button
-                  type="primary"
-                  size="small"
-                  icon={<CheckCircleOutlined />}
-                >
-                  Reactivate
-                </Button>
-              </Tooltip>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
-    },
-  ];
-
-  // Update filtered users when tab or search changes
-  useEffect(() => {
-    filterUsers(users, activeTab, searchText);
-  }, [activeTab, searchText, users]);
-
-  // Count users by status
-  const pendingCount = users.filter(u => u.status === 'Pending').length;
-  const approvedCount = users.filter(u => u.status === 'Approved').length;
-  const suspendedCount = users.filter(u => u.status === 'Suspended').length;
 
   return (
     <AdminLayout>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {/* Header */}
-        <div>
-          <Title level={2}>
-            <TeamOutlined /> User Management
-          </Title>
-          <Paragraph type="secondary">
-            Manage users, approve pending accounts, and control access
-          </Paragraph>
-        </div>
-
-        {/* Stats Cards */}
-        <Space size="middle" style={{ width: '100%', flexWrap: 'wrap' }}>
-          <Card size="small" style={{ minWidth: 200 }}>
-            <Space>
-              <ClockCircleOutlined style={{ fontSize: 24, color: token.colorWarning }} />
-              <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>Pending Approval</Text>
-                <div>
-                  <Text strong style={{ fontSize: 20 }}>{pendingCount}</Text>
-                </div>
-              </div>
-            </Space>
-          </Card>
-          <Card size="small" style={{ minWidth: 200 }}>
-            <Space>
-              <CheckCircleOutlined style={{ fontSize: 24, color: token.colorSuccess }} />
-              <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>Approved Users</Text>
-                <div>
-                  <Text strong style={{ fontSize: 20 }}>{approvedCount}</Text>
-                </div>
-              </div>
-            </Space>
-          </Card>
-          <Card size="small" style={{ minWidth: 200 }}>
-            <Space>
-              <StopOutlined style={{ fontSize: 24, color: token.colorError }} />
-              <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>Suspended</Text>
-                <div>
-                  <Text strong style={{ fontSize: 20 }}>{suspendedCount}</Text>
-                </div>
-              </div>
-            </Space>
-          </Card>
-          <Card size="small" style={{ minWidth: 200 }}>
-            <Space>
-              <TeamOutlined style={{ fontSize: 24, color: token.colorPrimary }} />
-              <div>
-                <Text type="secondary" style={{ fontSize: 12 }}>Total Users</Text>
-                <div>
-                  <Text strong style={{ fontSize: 20 }}>{users.length}</Text>
-                </div>
-              </div>
-            </Space>
-          </Card>
-        </Space>
-
-        {/* Main Content */}
-        <Card>
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            {/* Toolbar */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-              <Input
-                placeholder="Search by name, email, or department..."
-                prefix={<SearchOutlined />}
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                style={{ maxWidth: 400 }}
-                allowClear
-              />
-              <Space>
-                <Tooltip title="If you're seeing permission errors, click here to refresh your authentication token">
-                  <Button
-                    icon={<ReloadOutlined />}
-                    onClick={handleTokenRefresh}
-                    loading={refreshing}
-                  >
-                    Refresh Token
-                  </Button>
-                </Tooltip>
-              </Space>
-            </div>
-
-            {/* Tabs */}
-            <Tabs
-              activeKey={activeTab}
-              onChange={setActiveTab}
+      <Layout style={{ minHeight: "100vh", background: token.colorBgLayout }}>
+        <Content style={{ padding: "24px 24px" }}>
+          <Space direction="vertical" size="large" style={{ width: "100%" }}>
+            {/* Breadcrumb */}
+            <Breadcrumb
               items={[
                 {
-                  key: 'all',
-                  label: (
-                    <span>
-                      <TeamOutlined />
-                      All Users ({users.length})
-                    </span>
+                  href: "/",
+                  title: (
+                    <>
+                      <HomeOutlined />
+                      <span>Home</span>
+                    </>
                   ),
                 },
                 {
-                  key: 'pending',
-                  label: (
-                    <Badge count={pendingCount} offset={[10, 0]}>
-                      <span style={{ paddingRight: pendingCount > 0 ? 16 : 0 }}>
-                        <ClockCircleOutlined />
-                        Pending Approval
-                      </span>
-                    </Badge>
-                  ),
-                },
-                {
-                  key: 'approved',
-                  label: (
-                    <span>
-                      <CheckCircleOutlined />
-                      Approved ({approvedCount})
-                    </span>
-                  ),
-                },
-                {
-                  key: 'suspended',
-                  label: (
-                    <span>
-                      <StopOutlined />
-                      Suspended ({suspendedCount})
-                    </span>
+                  title: (
+                    <>
+                      <UserOutlined />
+                      <span>User Management</span>
+                    </>
                   ),
                 },
               ]}
             />
 
-            {/* Table */}
-            <Table
-              columns={columns}
-              dataSource={filteredUsers}
-              loading={loading}
-              rowKey="id"
-              pagination={{
-                pageSize: 10,
-                showSizeChanger: true,
-                showTotal: (total) => `Total ${total} users`,
-              }}
-              scroll={{ x: 1000 }}
-            />
-          </Space>
-        </Card>
-      </Space>
+            {/* Page Header */}
+            <Card bordered={false}>
+              <Space
+                direction="vertical"
+                size="small"
+                style={{ width: "100%" }}
+              >
+                <Space
+                  style={{
+                    width: "100%",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <Title level={2} style={{ margin: 0 }}>
+                      <UserOutlined style={{ marginRight: 12 }} />
+                      User Management
+                    </Title>
+                    <Text type="secondary">
+                      Manage user accounts, roles, and permissions
+                    </Text>
+                  </div>
+                  <Space size="middle">
+                    <Button
+                      icon={<ReloadOutlined spin={refreshing} />}
+                      onClick={() => window.location.reload()}
+                      disabled={loading || refreshing}
+                    >
+                      Refresh
+                    </Button>
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      disabled
+                      title="Users are created through registration"
+                    >
+                      Add User
+                    </Button>
+                  </Space>
+                </Space>
+              </Space>
+            </Card>
 
-      {/* View User Modal */}
-      <Modal
-        title={
-          <Space>
-            <EyeOutlined />
-            User Details
-          </Space>
-        }
-        open={viewModalVisible}
-        onCancel={() => setViewModalVisible(false)}
-        footer={[
-          <Button key="close" onClick={() => setViewModalVisible(false)}>
-            Close
-          </Button>,
-        ]}
-        width={600}
-      >
-        {selectedUser && (
-          <Descriptions bordered column={1} size="small">
-            <Descriptions.Item label="Name">
-              <Text strong>
-                {`${selectedUser.firstname} ${selectedUser.middlename} ${selectedUser.lastname}`}
-              </Text>
-            </Descriptions.Item>
-            <Descriptions.Item label={<><MailOutlined /> Email</>}>
-              {selectedUser.email}
-            </Descriptions.Item>
-            <Descriptions.Item label={<><PhoneOutlined /> Phone</>}>
-              {selectedUser.phoneNumber || 'Not provided'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Department">
-              {selectedUser.department}
-            </Descriptions.Item>
-            <Descriptions.Item label="Role">
-              <Tag color={selectedUser.role === 'Admin' ? 'blue' : 'default'}>
-                {selectedUser.role}
-              </Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label="Status">
-              <Tag color={getStatusColor(selectedUser.status)} icon={getStatusIcon(selectedUser.status)}>
-                {selectedUser.status}
-              </Tag>
-            </Descriptions.Item>
-            <Descriptions.Item label={<><CalendarOutlined /> Created</>}>
-              {new Date(selectedUser.createdAt).toLocaleString()}
-            </Descriptions.Item>
-            <Descriptions.Item label="Last Updated">
-              {selectedUser.updatedAt ? new Date(selectedUser.updatedAt).toLocaleString() : 'Never'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Last Login">
-              {selectedUser.lastLogin ? new Date(selectedUser.lastLogin).toLocaleString() : 'Never'}
-            </Descriptions.Item>
-            <Descriptions.Item label="User ID">
-              <Text code copyable>{selectedUser.uuid}</Text>
-            </Descriptions.Item>
-          </Descriptions>
-        )}
-      </Modal>
-
-      {/* Edit User Modal */}
-      <Modal
-        title={
-          <Space>
-            <EditOutlined />
-            Edit User
-          </Space>
-        }
-        open={editModalVisible}
-        onCancel={() => setEditModalVisible(false)}
-        onOk={handleEditUser}
-        okText="Save Changes"
-        cancelText="Cancel"
-      >
-        {selectedUser && (
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <div>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>User</Text>
-              <Text>{`${selectedUser.firstname} ${selectedUser.lastname}`}</Text>
-              <br />
-              <Text type="secondary" style={{ fontSize: 12 }}>{selectedUser.email}</Text>
-            </div>
-
-            <div>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>Role</Text>
-              <Select
-                value={editRole}
-                onChange={setEditRole}
-                style={{ width: '100%' }}
-                options={[
-                  { value: 'Staff', label: 'Staff' },
-                  { value: 'Admin', label: 'Admin' },
-                ]}
+            {/* Error Alert */}
+            {error && (
+              <Alert
+                message="Error Loading Users"
+                description={error}
+                type="error"
+                showIcon
+                closable
               />
-            </div>
+            )}
 
-            <div>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>Status</Text>
-              <Select
-                value={editStatus}
-                onChange={setEditStatus}
-                style={{ width: '100%' }}
-                options={[
-                  { 
-                    value: 'Pending', 
-                    label: (
-                      <Space>
-                        <ClockCircleOutlined />
-                        Pending
-                      </Space>
-                    )
-                  },
-                  { 
-                    value: 'Approved', 
-                    label: (
-                      <Space>
-                        <CheckCircleOutlined />
-                        Approved
-                      </Space>
-                    )
-                  },
-                  { 
-                    value: 'Suspended', 
-                    label: (
-                      <Space>
-                        <StopOutlined />
-                        Suspended
-                      </Space>
-                    )
-                  },
-                ]}
-              />
-            </div>
+            {/* Statistics Cards */}
+            <UsersStatistics users={users} loading={loading} />
+
+            {/* Users Table */}
+            <Card
+              bordered={false}
+              bodyStyle={{ padding: 24 }}
+              title={
+                <Space>
+                  <UserOutlined />
+                  <span>All Users ({users.length})</span>
+                </Space>
+              }
+            >
+              {loading && users.length === 0 ? (
+                <div style={{ textAlign: "center", padding: "60px 0" }}>
+                  <Spin size="large" tip="Loading users..." />
+                </div>
+              ) : users.length === 0 ? (
+                <Empty
+                  description="No users found"
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                />
+              ) : (
+                <UsersTable
+                  users={users}
+                  loading={refreshing}
+                  onEdit={handleEdit}
+                  onQuickStatusChange={handleQuickStatusChange}
+                  onQuickRoleChange={handleQuickRoleChange}
+                />
+              )}
+            </Card>
           </Space>
-        )}
-      </Modal>
+
+          {/* Edit User Modal */}
+          <UserEditModal
+            visible={editModalVisible}
+            user={selectedUser}
+            onCancel={handleCancelEdit}
+            onSave={handleSaveUser}
+            loading={refreshing}
+          />
+        </Content>
+      </Layout>
     </AdminLayout>
   );
 };
