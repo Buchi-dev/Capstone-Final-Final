@@ -9,32 +9,57 @@ import type {
 } from '../schemas';
 import { dataFlowLogger, DataSource, FlowLayer } from '../utils/dataFlowLogger';
 
+/**
+ * Error response structure from Cloud Functions
+ */
 export interface ErrorResponse {
   code: string;
   message: string;
   details?: any;
 }
 
+/**
+ * User-friendly error messages for common Cloud Functions errors
+ * Maps Firebase error codes to human-readable messages
+ */
 const ERROR_MESSAGES: Record<string, string> = {
   'functions/unauthenticated': 'Please log in to perform this action',
   'functions/permission-denied': 'You do not have permission to manage alerts',
   'functions/not-found': 'Alert not found',
-  'functions/already-exists': 'Alert already exists',
+  'functions/failed-precondition': '', // Use backend message (already acknowledged/resolved)
   'functions/invalid-argument': 'Invalid request parameters',
   'functions/internal': 'An internal error occurred. Please try again',
   'functions/unavailable': 'Alert service temporarily unavailable. Please try again',
   'functions/deadline-exceeded': 'Request timeout. Please try again',
 };
 
+/**
+ * Alerts Service
+ * Handles alert management operations via Cloud Functions and real-time Firestore subscriptions
+ * 
+ * Architecture:
+ * - WRITE operations: Client → Cloud Functions (AlertsCalls) → Firestore
+ * - READ operations: Client → Firestore Real-time Listener (onSnapshot)
+ * 
+ * Supported Operations:
+ * - acknowledgeAlert: Mark alert as acknowledged
+ * - resolveAlert: Mark alert as resolved with optional notes
+ * - subscribeToAlerts: Real-time listener for alert updates
+ */
 export class AlertsService {
   private readonly functions = getFunctions();
-  private readonly functionName = 'AlertsCall';
+  private readonly functionName = 'AlertsCalls'; // Must match callable function export name
   private readonly db = getFirestore();
 
   // ============================================================================
   // WRITE OPERATIONS (Client → Cloud Functions → Firestore)
   // ============================================================================
 
+  /**
+   * Generic function caller for alert operations
+   * Handles error transformation and success validation
+   * @private
+   */
   private async callFunction<T>(action: string, data: Omit<T, 'action'>): Promise<void> {
     try {
       const callable = httpsCallable<T, AlertResponse>(this.functions, this.functionName);
@@ -48,10 +73,25 @@ export class AlertsService {
     }
   }
 
+  /**
+   * Acknowledge an alert
+   * Changes alert status from Active → Acknowledged
+   * 
+   * @param alertId - The alert ID to acknowledge
+   * @throws {ErrorResponse} If user is not authenticated or alert not found
+   */
   async acknowledgeAlert(alertId: string): Promise<void> {
     return this.callFunction<AcknowledgeAlertRequest>('acknowledgeAlert', { alertId });
   }
 
+  /**
+   * Resolve an alert
+   * Changes alert status to Resolved with optional resolution notes
+   * 
+   * @param alertId - The alert ID to resolve
+   * @param notes - Optional resolution notes
+   * @throws {ErrorResponse} If user is not authenticated or alert not found
+   */
   async resolveAlert(alertId: string, notes?: string): Promise<void> {
     return this.callFunction<ResolveAlertRequest>('resolveAlert', { alertId, notes });
   }
@@ -60,6 +100,20 @@ export class AlertsService {
   // READ OPERATIONS (Client → Firestore Real-time Listener)
   // ============================================================================
 
+  /**
+   * Subscribe to real-time alert updates from Firestore
+   * 
+   * Features:
+   * - Real-time updates via Firestore onSnapshot
+   * - Defensive validation to prevent empty state regression
+   * - Caching to maintain UI stability during network issues
+   * - Data flow logging for debugging
+   * 
+   * @param onUpdate - Callback when alerts are updated
+   * @param onError - Callback when an error occurs
+   * @param maxAlerts - Maximum number of alerts to fetch (default: 20)
+   * @returns Unsubscribe function to stop listening
+   */
   subscribeToAlerts(
     onUpdate: (alerts: WaterQualityAlert[]) => void,
     onError: (error: Error) => void,
@@ -79,7 +133,6 @@ export class AlertsService {
       alertsQuery,
       (snapshot) => {
         // DEFENSIVE: Validate snapshot before propagating to UI
-        // Reject null/undefined, but accept empty arrays as valid
         if (!snapshot) {
           dataFlowLogger.logValidationIssue(
             DataSource.FIRESTORE,
@@ -104,8 +157,7 @@ export class AlertsService {
           { alertCount: alerts.length, isFirstSnapshot }
         );
 
-        // DEFENSIVE: On subsequent updates, validate we're not regressing to empty state
-        // Only propagate empty array if it's genuinely the first load or a confirmed delete
+        // DEFENSIVE: Prevent empty state regression during active session
         if (!isFirstSnapshot && alerts.length === 0 && lastValidSnapshot && lastValidSnapshot.length > 0) {
           dataFlowLogger.logStateRejection(
             DataSource.FIRESTORE,
@@ -141,14 +193,20 @@ export class AlertsService {
         );
         console.error('[AlertsService] Snapshot error:', err);
         onError(err instanceof Error ? err : new Error('Failed to fetch alerts'));
-        
-        // On error, don't clear cache - let UI decide whether to use cached data
       }
     );
   }
 
+  // ============================================================================
+  // ERROR HANDLING
+  // ============================================================================
+
+  /**
+   * Transform Firebase errors into user-friendly error responses
+   * @private
+   */
   private handleError(error: any, defaultMessage: string): ErrorResponse {
-    console.error('AlertsService error:', error);
+    console.error('[AlertsService] Error:', error);
 
     const code = error.code || 'unknown';
     const message = code in ERROR_MESSAGES
