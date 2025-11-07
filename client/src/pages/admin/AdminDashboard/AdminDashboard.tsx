@@ -1,8 +1,6 @@
-import { Space, Row, Col, Typography, Alert, Divider, Tabs, Badge } from 'antd';
+import { Space, Row, Col, Typography, Alert, Divider, Tabs } from 'antd';
 import { 
   DashboardOutlined, 
-  DatabaseOutlined, 
-  BellOutlined, 
   CloudServerOutlined 
 } from '@ant-design/icons';
 import { memo, useMemo, useState } from 'react';
@@ -15,8 +13,6 @@ import {
   BufferMonitor,
   SystemInfo,
   RefreshControl,
-  DeviceMonitor,
-  AlertsMonitor,
   DashboardSummary,
 } from './components';
 
@@ -79,7 +75,7 @@ export const AdminDashboard = memo(() => {
   // Calculate loading state
   const isLoading = mqttBridge.loading || realtimeDevices.loading || realtimeAlerts.loading;
 
-  // Tab items with badges
+  // Tab items
   const tabItems = [
     {
       key: 'overview',
@@ -164,46 +160,6 @@ export const AdminDashboard = memo(() => {
             />
           )}
         </Space>
-      ),
-    },
-    {
-      key: 'devices',
-      label: (
-        <span>
-          <DatabaseOutlined /> 
-          Devices 
-          <Badge 
-            count={realtimeDevices.stats.online} 
-            style={{ marginLeft: 8 }}
-            showZero
-          />
-        </span>
-      ),
-      children: (
-        <DeviceMonitor 
-          devices={realtimeDevices.devices} 
-          loading={realtimeDevices.loading} 
-        />
-      ),
-    },
-    {
-      key: 'alerts',
-      label: (
-        <span>
-          <BellOutlined /> 
-          Alerts 
-          <Badge 
-            count={realtimeAlerts.stats.active} 
-            style={{ marginLeft: 8 }}
-            showZero
-          />
-        </span>
-      ),
-      children: (
-        <AlertsMonitor 
-          alerts={realtimeAlerts.alerts} 
-          loading={realtimeAlerts.loading} 
-        />
       ),
     },
     {
