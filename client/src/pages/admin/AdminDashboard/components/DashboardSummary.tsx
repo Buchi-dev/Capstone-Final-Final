@@ -42,7 +42,7 @@ interface DashboardSummaryProps {
     advisory: number;
   };
   mqttHealth: {
-    status: 'healthy' | 'unhealthy';
+    status: 'healthy' | 'unhealthy' | 'degraded';
     connected: boolean;
     metrics?: {
       received: number;
@@ -149,18 +149,17 @@ export const DashboardSummary = memo<DashboardSummaryProps>(({
     [safeAlertStats]
   );
 
-  // Calculate MQTT Bridge memory-based health score using centralized function
+  // Calculate MQTT Bridge health score using RSS and CPU (not heap)
   const mqttMemoryScore = useMemo(() => {
-    if (!mqttMemory || !mqttHealth) return 0;
+    if (!mqttMemory || !mqttHealth || !mqttFullHealth?.checks?.cpu) return 0;
     
     return calculateMqttBridgeHealthScore(
-      mqttMemory.heapUsed,
-      mqttMemory.heapTotal,
-      mqttMemory.rss,
+      mqttMemory.rss, // Use RSS instead of heap
+      mqttFullHealth.checks.cpu.current, // Include CPU usage
       mqttHealth.connected,
       mqttHealth.status
     );
-  }, [mqttHealth, mqttMemory]);
+  }, [mqttHealth, mqttMemory, mqttFullHealth]);
 
   const ramHealthScore = useMemo(() => {
     if (!ramUsage) return 100;
@@ -240,13 +239,13 @@ export const DashboardSummary = memo<DashboardSummaryProps>(({
                 percent={mqttMemoryScore}
                 icon={<CloudServerOutlined />}
                 subtitle={
-                  mqttMemory 
-                    ? `${formatBytes(mqttMemory.heapUsed)}/${formatBytes(mqttMemory.heapTotal)}MB heap`
+                  mqttMemory && mqttFullHealth?.checks?.cpu
+                    ? `${formatBytes(mqttMemory.rss)}/256MB RAM • ${mqttFullHealth.checks.cpu.current.toFixed(1)}% CPU`
                     : mqttHealth?.connected ? 'Connected' : 'Disconnected'
                 }
                 tooltip={
-                  mqttMemory && mqttHealth
-                    ? `Status: ${mqttHealth.status} (${mqttHealth.connected ? 'connected' : 'disconnected'})\nHeap: ${formatBytes(mqttMemory.heapUsed)}MB / ${formatBytes(mqttMemory.heapTotal)}MB\nRSS: ${formatBytes(mqttMemory.rss)}MB / 256MB\nHealth Score: ${mqttMemoryScore}% (based on memory efficiency)`
+                  mqttMemory && mqttHealth && mqttFullHealth?.checks?.cpu
+                    ? `Status: ${mqttHealth.status} (${mqttHealth.connected ? 'connected' : 'disconnected'})\nRSS: ${formatBytes(mqttMemory.rss)}MB / 256MB (${Math.round((mqttMemory.rss / (256 * 1024 * 1024)) * 100)}%)\nCPU: ${mqttFullHealth.checks.cpu.current.toFixed(1)}% (avg: ${mqttFullHealth.checks.cpu.average.toFixed(1)}%)\nHealth Score: ${mqttMemoryScore}% (based on RSS + CPU usage)`
                     : `MQTT Bridge: ${mqttHealth?.status || 'unknown'} - ${mqttHealth?.connected ? 'connected' : 'disconnected'}`
                 }
                 loading={loading}

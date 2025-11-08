@@ -43,9 +43,7 @@ export const SystemInfo = memo(({ status, loading }: SystemInfoProps) => {
     return {
       rss: formatBytes(status.memory.rss),
       heapTotal: formatBytes(status.memory.heapTotal),
-      heapUsed: formatBytes(status.memory.heapUsed),
-      external: formatBytes(status.memory.external),
-      arrayBuffers: formatBytes(status.memory.arrayBuffers)
+      heapUsed: formatBytes(status.memory.heapUsed)
     };
   }, [status, formatBytes]);
 
@@ -96,12 +94,6 @@ export const SystemInfo = memo(({ status, loading }: SystemInfoProps) => {
               </Text>
               <Text type="secondary" style={{ fontSize: '12px' }}>
                 Heap Used: <Text strong>{memoryDisplay.heapUsed}</Text>
-              </Text>
-              <Text type="secondary" style={{ fontSize: '12px' }}>
-                External: <Text strong>{memoryDisplay.external}</Text>
-              </Text>
-              <Text type="secondary" style={{ fontSize: '12px' }}>
-                Array Buffers: <Text strong>{memoryDisplay.arrayBuffers}</Text>
               </Text>
             </Space>
           ) : (

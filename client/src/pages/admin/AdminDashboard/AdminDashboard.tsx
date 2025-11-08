@@ -10,6 +10,7 @@ import {
   HealthOverview,
   MetricsGrid,
   MemoryMonitor,
+  CpuMonitor,
   BufferMonitor,
   SystemInfo,
   RefreshControl,
@@ -168,8 +169,15 @@ export const AdminDashboard = memo(() => {
               System Monitoring
             </Title>
             <Row gutter={[16, 16]}>
-              <Col span={24}>
+              <Col xs={24} lg={12}>
                 <MemoryMonitor 
+                  health={mqttBridge.health} 
+                  status={mqttBridge.status} 
+                  loading={mqttBridge.loading} 
+                />
+              </Col>
+              <Col xs={24} lg={12}>
+                <CpuMonitor 
                   health={mqttBridge.health} 
                   status={mqttBridge.status} 
                   loading={mqttBridge.loading} 

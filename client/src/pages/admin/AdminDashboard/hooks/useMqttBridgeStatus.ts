@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { message } from 'antd';
 
 export interface MqttBridgeHealth {
-  status: 'healthy' | 'unhealthy';
+  status: 'healthy' | 'unhealthy' | 'degraded';
   timestamp: string;
   uptime: number;
   checks: {
@@ -14,6 +14,13 @@ export interface MqttBridgeHealth {
       heapUsed: string;
       heapTotal: string;
       rss: string;
+      rssPercent: number;
+      percent: number; // RSS-based percentage for health calculations
+    };
+    cpu: {
+      current: number;
+      average: number;
+      peak: number;
       percent: number;
     };
     buffers: {
@@ -27,9 +34,7 @@ export interface MqttBridgeHealth {
     received: number;
     published: number;
     failed: number;
-    commands: number;
     flushes: number;
-    messagesInDLQ: number;
     circuitBreakerOpen: boolean;
   };
 }
@@ -40,16 +45,17 @@ export interface MqttBridgeStatus {
     rss: number;
     heapTotal: number;
     heapUsed: number;
-    external: number;
-    arrayBuffers: number;
+  };
+  cpu: {
+    current: number;
+    average: number;
+    peak: number;
   };
   metrics: {
     received: number;
     published: number;
     failed: number;
-    commands: number;
     flushes: number;
-    messagesInDLQ: number;
     circuitBreakerOpen: boolean;
   };
   buffers: {

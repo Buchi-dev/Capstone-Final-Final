@@ -2,10 +2,8 @@ import { Card, Statistic, Row, Col, Tag } from 'antd';
 import {
   ArrowUpOutlined,
   ArrowDownOutlined,
-  ThunderboltOutlined,
   WarningOutlined,
   SyncOutlined,
-  InboxOutlined,
 } from '@ant-design/icons';
 import { memo, useMemo } from 'react';
 import type { MqttBridgeStatus } from '../hooks';
@@ -27,11 +25,6 @@ export const MetricsGrid = memo(({ status, loading }: MetricsGridProps) => {
   const failedColor = useMemo(() => 
     metrics?.failed ? HEALTH_COLORS.ERROR : HEALTH_COLORS.UNKNOWN,
     [metrics?.failed]
-  );
-
-  const dlqColor = useMemo(() => 
-    metrics?.messagesInDLQ ? HEALTH_COLORS.ERROR : HEALTH_COLORS.EXCELLENT,
-    [metrics?.messagesInDLQ]
   );
 
   const circuitBreakerTag = useMemo(() => ({
@@ -110,39 +103,6 @@ export const MetricsGrid = memo(({ status, loading }: MetricsGridProps) => {
             value={metrics?.flushes || 0}
             prefix={<SyncOutlined style={{ color: HEALTH_COLORS.WARNING }} />}
             valueStyle={{ color: HEALTH_COLORS.WARNING, fontWeight: 600 }}
-          />
-        </Card>
-      </Col>
-
-      <Col xs={24} sm={12} lg={6}>
-        <Card 
-          loading={loading}
-          bordered={false}
-          style={cardStyle}
-        >
-          <Statistic
-            title="Commands Processed"
-            value={metrics?.commands || 0}
-            prefix={<ThunderboltOutlined style={{ color: HEALTH_COLORS.CRITICAL }} />}
-            valueStyle={{ color: HEALTH_COLORS.CRITICAL, fontWeight: 600 }}
-          />
-        </Card>
-      </Col>
-
-      <Col xs={24} sm={12} lg={6}>
-        <Card 
-          loading={loading}
-          bordered={false}
-          style={cardStyle}
-        >
-          <Statistic
-            title="Dead Letter Queue"
-            value={metrics?.messagesInDLQ || 0}
-            prefix={<InboxOutlined style={{ color: dlqColor }} />}
-            valueStyle={{ 
-              color: dlqColor,
-              fontWeight: 600 
-            }}
           />
         </Card>
       </Col>

@@ -14,12 +14,14 @@ interface MemoryMonitorProps {
 
 export const MemoryMonitor = memo(({ health, status, loading }: MemoryMonitorProps) => {
   const memory = health?.checks?.memory;
-  const memoryPercent = memory?.percent || 0;
+  
+  // Use RSS percent from health endpoint (already calculated against 256MB limit)
+  const rssPercent = memory?.rssPercent || memory?.percent || 0;
 
   // Calculate RSS memory percentage (RSS / RAM limit of 256MB)
   const rssBytes = status?.memory?.rss || 0;
   const RAM_LIMIT_BYTES = 256 * 1024 * 1024; // 256MB in bytes
-  const rssPercent = useMemo(() => {
+  const rssPercentCalculated = useMemo(() => {
     if (rssBytes === 0) return 0;
     return Math.min(Math.round((rssBytes / RAM_LIMIT_BYTES) * 100), 100);
   }, [rssBytes]);
@@ -42,25 +44,29 @@ export const MemoryMonitor = memo(({ health, status, loading }: MemoryMonitorPro
 
   const ramLimitMB = 256;
 
-  // Use centralized health calculators
-  const memoryHealthData = useMemo(() => 
-    getMemoryHealth(memoryPercent),
-    [memoryPercent]
-  );
-
-  const rssHealthData = useMemo(() => 
+  // Use RSS percent as the primary health indicator (not heap)
+  const primaryMemoryHealthData = useMemo(() => 
     getMemoryHealth(rssPercent),
     [rssPercent]
   );
 
-  const memoryStatus = useMemo(() => 
-    getProgressStatus(memoryHealthData.status),
-    [memoryHealthData.status]
+  const heapHealthData = useMemo(() => {
+    const heapUsedBytes = status?.memory?.heapUsed || 0;
+    const heapTotalBytes = status?.memory?.heapTotal || 0;
+    const heapPercent = heapTotalBytes > 0 
+      ? Math.round((heapUsedBytes / heapTotalBytes) * 100) 
+      : 0;
+    return getMemoryHealth(heapPercent);
+  }, [status?.memory?.heapUsed, status?.memory?.heapTotal]);
+
+  const primaryMemoryStatus = useMemo(() => 
+    getProgressStatus(primaryMemoryHealthData.status),
+    [primaryMemoryHealthData.status]
   );
 
-  const rssStatus = useMemo(() => 
-    getProgressStatus(rssHealthData.status),
-    [rssHealthData.status]
+  const heapStatus = useMemo(() => 
+    getProgressStatus(heapHealthData.status),
+    [heapHealthData.status]
   );
 
   return (
@@ -80,44 +86,18 @@ export const MemoryMonitor = memo(({ health, status, loading }: MemoryMonitorPro
       }}
     >
       <Row gutter={24}>
-        {/* Overall Memory (Heap) */}
+        {/* Primary: RAM Usage (RSS) - Used for health calculations */}
         <Col xs={24} lg={12}>
           <div>
             <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text strong style={{ fontSize: '14px' }}>Overall Memory (Heap)</Text>
-              <Text strong style={{ color: memoryHealthData.color, fontSize: '16px' }}>
-                {memoryPercent}%
-              </Text>
-            </div>
-            <Progress 
-              percent={memoryPercent} 
-              status={memoryStatus}
-              strokeWidth={16}
-              showInfo={false}
-            />
-            <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
-              <Text type="secondary" style={{ fontSize: '13px' }}>
-                {heapUsedMB} MB / {heapTotalMB} MB
-              </Text>
-              <Text type="secondary" style={{ fontSize: '13px' }}>
-                {(parseFloat(heapTotalMB) - parseFloat(heapUsedMB)).toFixed(2)} MB available
-              </Text>
-            </div>
-          </div>
-        </Col>
-
-        {/* Memory Usage (RSS) */}
-        <Col xs={24} lg={12}>
-          <div>
-            <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text strong style={{ fontSize: '14px' }}>Memory Usage (RSS)</Text>
-              <Text strong style={{ color: rssHealthData.color, fontSize: '16px' }}>
+              <Text strong style={{ fontSize: '14px' }}>RAM Usage (RSS) 🎯</Text>
+              <Text strong style={{ color: primaryMemoryHealthData.color, fontSize: '16px' }}>
                 {rssPercent}%
               </Text>
             </div>
             <Progress 
               percent={rssPercent} 
-              status={rssStatus}
+              status={primaryMemoryStatus}
               strokeWidth={16}
               showInfo={false}
             />
@@ -127,6 +107,32 @@ export const MemoryMonitor = memo(({ health, status, loading }: MemoryMonitorPro
               </Text>
               <Text type="secondary" style={{ fontSize: '13px' }}>
                 {(ramLimitMB - parseFloat(rssMB)).toFixed(2)} MB available
+              </Text>
+            </div>
+          </div>
+        </Col>
+
+        {/* Secondary: Heap Memory - For reference only */}
+        <Col xs={24} lg={12}>
+          <div>
+            <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text strong style={{ fontSize: '14px' }}>Heap Memory (V8)</Text>
+              <Text strong style={{ color: heapHealthData.color, fontSize: '16px' }}>
+                {heapHealthData.displayPercent || 0}%
+              </Text>
+            </div>
+            <Progress 
+              percent={heapHealthData.displayPercent || 0} 
+              status={heapStatus}
+              strokeWidth={16}
+              showInfo={false}
+            />
+            <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
+              <Text type="secondary" style={{ fontSize: '13px' }}>
+                {heapUsedMB} MB / {heapTotalMB} MB
+              </Text>
+              <Text type="secondary" style={{ fontSize: '13px' }}>
+                {(parseFloat(heapTotalMB) - parseFloat(heapUsedMB)).toFixed(2)} MB available
               </Text>
             </div>
           </div>
