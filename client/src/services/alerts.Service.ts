@@ -1,3 +1,20 @@
+/**
+ * Alerts Service
+ * 
+ * Manages water quality alerts through Firebase Cloud Functions and Firestore.
+ * 
+ * Write Operations: Cloud Functions (AlertsCalls)
+ * Read Operations: Firestore real-time listeners with defensive caching
+ * 
+ * Features:
+ * - Acknowledge and resolve alerts
+ * - Real-time alert subscriptions
+ * - Defensive snapshot validation to prevent stale data
+ * - Centralized error handling with user-friendly messages
+ * 
+ * @module services/alerts
+ */
+
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getFirestore, collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import type { Unsubscribe } from 'firebase/firestore';
@@ -9,56 +26,55 @@ import type {
 } from '../schemas';
 import { dataFlowLogger, DataSource, FlowLayer } from '../utils/dataFlowLogger';
 
-/**
- * Error response structure from Cloud Functions
- */
+// ============================================================================
+// TYPE DEFINITIONS
+// ============================================================================
+
 export interface ErrorResponse {
   code: string;
   message: string;
   details?: any;
 }
 
-/**
- * User-friendly error messages for common Cloud Functions errors
- * Maps Firebase error codes to human-readable messages
- */
-const ERROR_MESSAGES: Record<string, string> = {
-  'functions/unauthenticated': 'Please log in to perform this action',
-  'functions/permission-denied': 'You do not have permission to manage alerts',
-  'functions/not-found': 'Alert not found',
-  'functions/failed-precondition': '', // Use backend message (already acknowledged/resolved)
-  'functions/invalid-argument': 'Invalid request parameters',
-  'functions/internal': 'An internal error occurred. Please try again',
-  'functions/unavailable': 'Alert service temporarily unavailable. Please try again',
-  'functions/deadline-exceeded': 'Request timeout. Please try again',
-};
+// ============================================================================
+// SERVICE CLASS
+// ============================================================================
 
-/**
- * Alerts Service
- * Handles alert management operations via Cloud Functions and real-time Firestore subscriptions
- * 
- * Architecture:
- * - WRITE operations: Client → Cloud Functions (AlertsCalls) → Firestore
- * - READ operations: Client → Firestore Real-time Listener (onSnapshot)
- * 
- * Supported Operations:
- * - acknowledgeAlert: Mark alert as acknowledged
- * - resolveAlert: Mark alert as resolved with optional notes
- * - subscribeToAlerts: Real-time listener for alert updates
- */
 export class AlertsService {
+  // ==========================================================================
+  // PROPERTIES
+  // ==========================================================================
+  
   private readonly functions = getFunctions();
-  private readonly functionName = 'AlertsCalls'; // Must match callable function export name
+  private readonly functionName = 'AlertsCalls';
   private readonly db = getFirestore();
 
-  // ============================================================================
-  // WRITE OPERATIONS (Client → Cloud Functions → Firestore)
-  // ============================================================================
+  // ==========================================================================
+  // ERROR MESSAGES
+  // ==========================================================================
+  
+  private static readonly ERROR_MESSAGES: Record<string, string> = {
+    'functions/unauthenticated': 'Please log in to perform this action',
+    'functions/permission-denied': 'You do not have permission to manage alerts',
+    'functions/not-found': 'Alert not found',
+    'functions/failed-precondition': '', // Use backend message (already acknowledged/resolved)
+    'functions/invalid-argument': 'Invalid request parameters',
+    'functions/internal': 'An internal error occurred. Please try again',
+    'functions/unavailable': 'Alert service temporarily unavailable. Please try again',
+    'functions/deadline-exceeded': 'Request timeout. Please try again',
+  };
+
+  // ==========================================================================
+  // WRITE OPERATIONS (Cloud Functions)
+  // ==========================================================================
 
   /**
-   * Generic function caller for alert operations
-   * Handles error transformation and success validation
-   * @private
+   * Generic Cloud Function caller with type safety
+   * 
+   * @template T - Request payload type
+   * @param action - Cloud Function action name
+   * @param data - Request data (without action field)
+   * @throws {ErrorResponse} Transformed error with user-friendly message
    */
   private async callFunction<T>(action: string, data: Omit<T, 'action'>): Promise<void> {
     try {
@@ -75,44 +91,41 @@ export class AlertsService {
 
   /**
    * Acknowledge an alert
-   * Changes alert status from Active → Acknowledged
    * 
-   * @param alertId - The alert ID to acknowledge
-   * @throws {ErrorResponse} If user is not authenticated or alert not found
+   * @param alertId - ID of the alert to acknowledge
+   * @throws {ErrorResponse} If acknowledgment fails
    */
   async acknowledgeAlert(alertId: string): Promise<void> {
     return this.callFunction<AcknowledgeAlertRequest>('acknowledgeAlert', { alertId });
   }
 
   /**
-   * Resolve an alert
-   * Changes alert status to Resolved with optional resolution notes
+   * Resolve an alert with optional notes
    * 
-   * @param alertId - The alert ID to resolve
+   * @param alertId - ID of the alert to resolve
    * @param notes - Optional resolution notes
-   * @throws {ErrorResponse} If user is not authenticated or alert not found
+   * @throws {ErrorResponse} If resolution fails
    */
   async resolveAlert(alertId: string, notes?: string): Promise<void> {
     return this.callFunction<ResolveAlertRequest>('resolveAlert', { alertId, notes });
   }
 
-  // ============================================================================
-  // READ OPERATIONS (Client → Firestore Real-time Listener)
-  // ============================================================================
+  // ==========================================================================
+  // READ OPERATIONS (Realtime Subscriptions)
+  // ==========================================================================
 
   /**
-   * Subscribe to real-time alert updates from Firestore
+   * Subscribe to real-time alert updates
    * 
-   * Features:
-   * - Real-time updates via Firestore onSnapshot
-   * - Defensive validation to prevent empty state regression
-   * - Caching to maintain UI stability during network issues
-   * - Data flow logging for debugging
+   * Implements defensive caching to prevent:
+   * - Null snapshot propagation
+   * - Empty state regression during active sessions
+   * - UI flicker from Firestore listener stalls
    * 
-   * @param onUpdate - Callback when alerts are updated
-   * @param onError - Callback when an error occurs
+   * @param onUpdate - Callback invoked with updated alerts
+   * @param onError - Callback invoked on subscription errors
    * @param maxAlerts - Maximum number of alerts to fetch (default: 20)
-   * @returns Unsubscribe function to stop listening
+   * @returns Unsubscribe function
    */
   subscribeToAlerts(
     onUpdate: (alerts: WaterQualityAlert[]) => void,
@@ -197,21 +210,24 @@ export class AlertsService {
     );
   }
 
-  // ============================================================================
+  // ==========================================================================
   // ERROR HANDLING
-  // ============================================================================
+  // ==========================================================================
 
   /**
-   * Transform Firebase errors into user-friendly error responses
-   * @private
+   * Transform errors into user-friendly messages
+   * 
+   * @param error - Raw error from Firebase or application
+   * @param defaultMessage - Fallback message if error unmapped
+   * @returns Standardized error response
    */
   private handleError(error: any, defaultMessage: string): ErrorResponse {
     console.error('[AlertsService] Error:', error);
 
     const code = error.code || 'unknown';
-    const message = code in ERROR_MESSAGES
-      ? (code === 'functions/failed-precondition' ? error.message : ERROR_MESSAGES[code])
-      : (error.message || defaultMessage);
+    const message = code === 'functions/failed-precondition' 
+      ? error.message 
+      : AlertsService.ERROR_MESSAGES[code] || error.message || defaultMessage;
 
     return {
       code,
@@ -220,6 +236,10 @@ export class AlertsService {
     };
   }
 }
+
+// ============================================================================
+// EXPORT SINGLETON INSTANCE
+// ============================================================================
 
 export const alertsService = new AlertsService();
 export default alertsService;

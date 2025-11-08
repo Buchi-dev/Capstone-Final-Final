@@ -1,3 +1,31 @@
+﻿/**
+ * Devices Service
+ * 
+ * Manages IoT devices and their sensor readings through Firebase services.
+ * 
+ * Write Operations: Cloud Functions (DevicesCalls)
+ * Read Operations: Realtime Database (RTDB) listeners for sensor data
+ * Metadata: Firestore for device configuration
+ * 
+ * Features:
+ * - Device CRUD operations
+ * - Real-time sensor reading subscriptions
+ * - Sensor history with configurable limits
+ * - Multi-device monitoring
+ * - Defensive caching to prevent null propagation
+ * 
+ * Architecture Pattern:
+ * - READ operations: Direct Firebase access (Firestore/RTDB) for real-time data
+ * - WRITE operations: Cloud Functions only for security and validation
+ * 
+ * Cloud Functions (functions/src_new/callable/Devices.ts):
+ *   - addDevice: Create new device (admin only)
+ *   - updateDevice: Modify device properties (admin only)
+ *   - deleteDevice: Remove device and sensor data (admin only)
+ * 
+ * @module services/devices
+ */
+
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getDatabase, ref, onValue } from 'firebase/database';
 import { getFirestore, collection, getDocs, query, orderBy } from 'firebase/firestore';
@@ -10,23 +38,22 @@ import type {
 } from '../schemas';
 import { dataFlowLogger, DataSource, FlowLayer } from '../utils/dataFlowLogger';
 
+// ============================================================================
+// TYPE DEFINITIONS
+// ============================================================================
+
 export interface ErrorResponse {
   code: string;
   message: string;
   details?: any;
 }
 
+// ============================================================================
+// SERVICE CLASS
+// ============================================================================
+
 /**
- * Device Management Service
- * 
- * Architecture Pattern:
- * - READ operations: Direct Firebase access (Firestore/RTDB) for real-time data
- * - WRITE operations: Cloud Functions only for security and validation
- * 
- * Cloud Functions (functions/src_new/callable/Devices.ts):
- *   - addDevice: Create new device (admin only)
- *   - updateDevice: Modify device properties (admin only)
- *   - deleteDevice: Remove device and sensor data (admin only)
+ * DevicesService
  * 
  * Client Direct Access (this service):
  *   - listDevices: Query Firestore devices collection
@@ -38,20 +65,44 @@ export interface ErrorResponse {
  * Helper Methods:
  *   - registerDevice: Convenience wrapper for updateDevice with location metadata
  */
-export class DeviceManagementService {
+export class DevicesService {
+  // ==========================================================================
+  // PROPERTIES
+  // ==========================================================================
+  
   private readonly functions = getFunctions();
   private readonly db = getDatabase();
   private readonly firestore = getFirestore();
   private readonly functionName = 'DevicesCalls'; // Must match exported function name in functions/src_new/index.ts
 
-  // ============================================================================
-  // READ OPERATIONS (Client → Firebase Direct)
-  // ============================================================================
+  // ==========================================================================
+  // ERROR MESSAGES
+  // ==========================================================================
+  
+  private static readonly ERROR_MESSAGES: Record<string, string> = {
+    'functions/unauthenticated': 'Please log in to perform this action',
+    'functions/permission-denied': 'You do not have permission to perform this action',
+    'functions/not-found': 'Device not found',
+    'functions/already-exists': 'Device already exists',
+    'functions/invalid-argument': 'Invalid request parameters',
+    'functions/internal': 'An internal error occurred. Please try again',
+    'functions/unavailable': 'Service temporarily unavailable. Please try again',
+    'functions/deadline-exceeded': 'Request timeout. Please try again',
+  };
 
-  /** READ - Direct Firestore query */
+  // ==========================================================================
+  // READ OPERATIONS (Firestore Queries)
+  // ==========================================================================
+
+  /**
+   * List all devices from Firestore
+   * 
+   * @returns Promise with array of devices
+   * @throws {Error} If fetch fails
+   */
   async listDevices(): Promise<Device[]> {
     try {
-      console.log('📡 Fetching devices from Firestore...');
+      console.log('≡ƒôí Fetching devices from Firestore...');
       const devicesRef = collection(this.firestore, 'devices');
       
       // Try without orderBy first to see if that's causing issues
@@ -59,17 +110,17 @@ export class DeviceManagementService {
       try {
         const q = query(devicesRef, orderBy('registeredAt', 'desc'));
         snapshot = await getDocs(q);
-        console.log('📊 Firestore query with orderBy completed:', snapshot.size, 'documents found');
+        console.log('≡ƒôè Firestore query with orderBy completed:', snapshot.size, 'documents found');
       } catch (orderError: any) {
-        console.warn('⚠️ OrderBy failed, trying without ordering:', orderError.message);
+        console.warn('ΓÜá∩╕Å OrderBy failed, trying without ordering:', orderError.message);
         // Fallback to query without orderBy
         snapshot = await getDocs(devicesRef);
-        console.log('📊 Firestore query without orderBy completed:', snapshot.size, 'documents found');
+        console.log('≡ƒôè Firestore query without orderBy completed:', snapshot.size, 'documents found');
       }
       
       const devices = snapshot.docs.map(doc => {
         const data = doc.data();
-        console.log('📄 Device document:', doc.id, data);
+        console.log('≡ƒôä Device document:', doc.id, data);
         return {
           id: doc.id,
           deviceId: doc.id,
@@ -77,10 +128,10 @@ export class DeviceManagementService {
         } as Device;
       });
       
-      console.log('✅ Mapped devices:', devices);
+      console.log('Γ£à Mapped devices:', devices);
       return devices;
     } catch (error: any) {
-      console.error('❌ Error fetching devices from Firestore:', error);
+      console.error('Γ¥î Error fetching devices from Firestore:', error);
       console.error('Error code:', error.code);
       console.error('Error message:', error.message);
       throw new Error('Failed to list devices');
@@ -234,24 +285,37 @@ export class DeviceManagementService {
   }
 
   // ============================================================================
-  // WRITE OPERATIONS (Client → Cloud Functions → Firebase)
+  // WRITE OPERATIONS (Cloud Functions)
   // ============================================================================
 
-  private async callFunction<T = any>(payload: any, errorMsg: string): Promise<T> {
+  /**
+   * Generic Cloud Function caller with type safety
+   * 
+   * @template T - Request payload type
+   * @param action - Cloud Function action name
+   * @param data - Request data (without action field)
+   * @throws {ErrorResponse} Transformed error with user-friendly message
+   */
+  private async callFunction<T>(action: string, data: Omit<T, 'action'>): Promise<DeviceResponse> {
     try {
-      const callable = httpsCallable<any, DeviceResponse>(this.functions, this.functionName);
-      const result = await callable(payload);
-      return result.data as T;
+      const callable = httpsCallable<T, DeviceResponse>(this.functions, this.functionName);
+      const result = await callable({ action, ...data } as T);
+      
+      if (!result.data.success) {
+        throw new Error(result.data.message || `Failed to ${action}`);
+      }
+      
+      return result.data;
     } catch (error: any) {
-      throw this.handleError(error, errorMsg);
+      throw this.handleError(error, `Failed to ${action}`);
     }
   }
 
   /** WRITE - Cloud Function */
   async addDevice(deviceId: string, deviceData: DeviceData): Promise<Device> {
-    const result = await this.callFunction<DeviceResponse>(
-      { action: 'addDevice', deviceId, deviceData },
-      'Failed to add device'
+    const result = await this.callFunction<{ action: string; deviceId: string; deviceData: DeviceData }>(
+      'addDevice',
+      { deviceId, deviceData }
     );
     if (!result.device) throw new Error('Device creation failed');
     return result.device;
@@ -259,17 +323,17 @@ export class DeviceManagementService {
 
   /** WRITE - Cloud Function */
   async updateDevice(deviceId: string, deviceData: DeviceData): Promise<void> {
-    await this.callFunction(
-      { action: 'updateDevice', deviceId, deviceData },
-      `Failed to update device ${deviceId}`
+    await this.callFunction<{ action: string; deviceId: string; deviceData: DeviceData }>(
+      'updateDevice',
+      { deviceId, deviceData }
     );
   }
 
   /** WRITE - Cloud Function */
   async deleteDevice(deviceId: string): Promise<void> {
-    await this.callFunction(
-      { action: 'deleteDevice', deviceId },
-      `Failed to delete device ${deviceId}`
+    await this.callFunction<{ action: string; deviceId: string }>(
+      'deleteDevice',
+      { deviceId }
     );
   }
 
@@ -283,33 +347,33 @@ export class DeviceManagementService {
     });
   }
 
-  // ============================================================================
+  // ==========================================================================
   // ERROR HANDLING
-  // ============================================================================
+  // ==========================================================================
 
-  private static readonly ERROR_MESSAGES: Record<string, string> = {
-    'functions/unauthenticated': 'Please log in to perform this action',
-    'functions/permission-denied': 'You do not have permission to perform this action',
-    'functions/not-found': 'Device not found',
-    'functions/already-exists': 'Device already exists',
-    'functions/invalid-argument': 'Invalid request parameters',
-    'functions/internal': 'An internal error occurred. Please try again',
-    'functions/unavailable': 'Service temporarily unavailable. Please try again',
-    'functions/deadline-exceeded': 'Request timeout. Please try again',
-  };
-
+  /**
+   * Transform errors into user-friendly messages
+   * 
+   * @param error - Raw error from Firebase or application
+   * @param defaultMessage - Fallback message if error unmapped
+   * @returns Standardized error response
+   */
   private handleError(error: any, defaultMessage: string): ErrorResponse {
-    console.error('DeviceManagementService error:', error);
+    console.error('[DevicesService] Error:', error);
 
     const code = error.code || 'unknown';
     const message = error.message || defaultMessage;
     const friendlyMessage = code === 'functions/failed-precondition' 
       ? message 
-      : DeviceManagementService.ERROR_MESSAGES[code] || message;
+      : DevicesService.ERROR_MESSAGES[code] || message;
 
     return { code, message: friendlyMessage, details: error.details };
   }
 }
 
-export const deviceManagementService = new DeviceManagementService();
-export default deviceManagementService;
+// ============================================================================
+// EXPORT SINGLETON INSTANCE
+// ============================================================================
+
+export const devicesService = new DevicesService();
+export default devicesService;

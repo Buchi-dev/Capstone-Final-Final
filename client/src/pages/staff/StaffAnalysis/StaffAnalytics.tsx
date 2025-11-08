@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
-import { deviceManagementService } from '../../../services/deviceManagement.Service';
+import { deviceManagementService } from '../../../services/devices.Service';
 import { PageHeader, StatsCard, PageContainer, DataCard } from '../../../components/staff';
 import { Typography } from 'antd';
 import {

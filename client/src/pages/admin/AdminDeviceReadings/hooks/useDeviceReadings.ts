@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { deviceManagementService } from '../../../../services/deviceManagement.Service';
+import { deviceManagementService } from '../../../../services/devices.Service';
 import { alertsService } from '../../../../services/alerts.Service';
 import type { Device, SensorReading } from '../../../../schemas/deviceManagement.schema';
 import type { WaterQualityAlert } from '../../../../schemas/alerts.schema';

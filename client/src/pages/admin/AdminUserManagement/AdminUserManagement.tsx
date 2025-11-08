@@ -34,7 +34,7 @@ import { useUserManagement } from "./hooks";
 import { UsersTable } from "./components/UsersTable";
 import { UserEditModal } from "./components/UserEditModal";
 import { UsersStatistics } from "./components/UsersStatistics";
-import type { UserListData } from "../../../services/userManagement.Service";
+import type { UserListData } from "../../../services/user.Service";
 import type { UserRole, UserStatus } from "../../../contexts";
 import { AdminLayout } from "../../../components/layouts/AdminLayout";
 

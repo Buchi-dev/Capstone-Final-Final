@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { deviceManagementService } from '../../../../services/deviceManagement.Service';
+import { deviceManagementService } from '../../../../services/devices.Service';
 import type { Device, SensorReading } from '../../../../schemas';
 import { dataFlowLogger, DataSource, FlowLayer } from '../../../../utils/dataFlowLogger';
 

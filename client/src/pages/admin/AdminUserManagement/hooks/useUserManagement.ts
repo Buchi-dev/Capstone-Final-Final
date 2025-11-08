@@ -5,8 +5,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { message } from 'antd';
-import { userManagementService } from '../../../../services/userManagement.Service';
-import type { UserListData } from '../../../../services/userManagement.Service';
+import { userManagementService } from '../../../../services/user.Service';
+import type { UserListData } from '../../../../services/user.Service';
 import type { UserRole, UserStatus } from '../../../../contexts';
 
 export interface UseUserManagementReturn {

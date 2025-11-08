@@ -26,7 +26,7 @@ import {
   StopOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons';
-import type { UserListData } from '../../../../services/userManagement.Service';
+import type { UserListData } from '../../../../services/user.Service';
 import type { UserRole, UserStatus } from '../../../../contexts';
 import dayjs from 'dayjs';
 

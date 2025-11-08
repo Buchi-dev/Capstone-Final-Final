@@ -43,7 +43,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useThemeToken } from '../../../theme';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../../../config/firebase';
-import { deviceManagementService } from '../../../services/deviceManagement.Service';
+import { deviceManagementService } from '../../../services/devices.Service';
 import { RealtimeAlertMonitor } from '../../../components/RealtimeAlertMonitor';
 import type { ColumnsType } from 'antd/es/table';
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { message } from 'antd';
-import { deviceManagementService } from '../../../../services/deviceManagement.Service';
+import { deviceManagementService } from '../../../../services/devices.Service';
 import type { Device } from '../../../../schemas';
 
 export const useDevices = () => {

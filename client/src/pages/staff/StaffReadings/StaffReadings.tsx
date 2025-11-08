@@ -24,7 +24,7 @@ import {
 } from '@ant-design/icons';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
-import { deviceManagementService } from '../../../services/deviceManagement.Service';
+import { deviceManagementService } from '../../../services/devices.Service';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 

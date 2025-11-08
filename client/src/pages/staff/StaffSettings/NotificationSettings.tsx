@@ -27,8 +27,8 @@ import {
   CheckCircleOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../../../contexts/AuthContext';
-import { notificationPreferencesService } from '../../../services/notificationPreferences.Service';
-import { deviceManagementService } from '../../../services/deviceManagement.Service';
+import { userManagementService } from '../../../services/user.Service';
+import { deviceManagementService } from '../../../services/devices.Service';
 import dayjs from 'dayjs';
 
 const { Text, Paragraph } = Typography;
@@ -70,7 +70,7 @@ const NotificationSettings: React.FC = () => {
       console.log('📥 Loading preferences for user:', user.uid);
       
       // Get user preferences using service layer
-      const userPrefs = await notificationPreferencesService.getUserPreferences(user.uid);
+      const userPrefs = await userManagementService.getUserPreferences(user.uid);
 
       console.log('📋 Loaded preferences from database:', userPrefs);
 
@@ -156,7 +156,7 @@ const NotificationSettings: React.FC = () => {
       console.log('💾 Saving notification preferences:', preferencesPayload);
 
       // Save preferences using service layer
-      const savedPreferences = await notificationPreferencesService.setupPreferences(preferencesPayload);
+      const savedPreferences = await userManagementService.setupPreferences(preferencesPayload);
 
       console.log('✅ Preferences saved successfully:', savedPreferences);
       
