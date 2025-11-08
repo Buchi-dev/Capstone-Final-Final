@@ -1,1 +1,1 @@
-Understand the Global Hooks, Local Hooks Components and Page, You must Have Proper Implimentation Plan to Remove Local Hooks and use the Global Hooks, Remember YOur Instructions
+Understand the Global Hooks, Local Hooks Components and Page, You must Have Proper Implimentation Plan to Remove Local Hooks and use the Global Hooks, Remember YOur Instructions, Just Start Refactoring no need to ask me, I dont need your Feedback Just Refractor the Code as per my Instructions.

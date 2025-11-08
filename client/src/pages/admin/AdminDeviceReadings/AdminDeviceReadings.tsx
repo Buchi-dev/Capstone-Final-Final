@@ -20,23 +20,59 @@ import {
   AppstoreOutlined,
 } from '@ant-design/icons';
 import { AdminLayout } from '../../../components/layouts';
-import { useDeviceReadings } from './hooks';
+import { useRealtime_Devices, useRealtime_Alerts } from '../../../hooks';
+import { useDeviceSeverityCalculator } from './hooks/useDeviceSeverityCalculator';
 import { StatsOverview, DeviceCard, DeviceListItem, RefreshControl, FilterControls } from './components';
 
 const { Title, Text, Paragraph } = Typography;
 
 export const AdminDeviceReadings = () => {
-  const { devices, loading, error, lastUpdate, refresh, stats } = useDeviceReadings();
+  // ✅ GLOBAL HOOKS: Real-time data from Firestore/RTDB
+  const { devices: devicesData, isLoading: devicesLoading, error: devicesError, refetch: refetchDevices } = useRealtime_Devices({ includeMetadata: true });
+  const { alerts, isLoading: alertsLoading, error: alertsError, refetch: refetchAlerts } = useRealtime_Alerts({ maxAlerts: 100 });
   
-  // Filter states
+  // ✅ LOCAL UI HOOK: Severity calculation logic only
+  const { enrichDeviceWithSeverity, sortBySeverity } = useDeviceSeverityCalculator();
+  
+  // Filter states (UI-specific state management)
   const [severityFilter, setSeverityFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [viewMode, setViewMode] = useState<'grid' | 'compact'>('grid');
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  // Apply filters
+  // Combine loading and error states
+  const loading = devicesLoading || alertsLoading;
+  const error = devicesError || alertsError;
+
+  // Enrich devices with severity information and sort by severity
+  const enrichedDevices = useMemo(() => {
+    const enriched = devicesData.map((device) => enrichDeviceWithSeverity(device, alerts));
+    return sortBySeverity(enriched);
+  }, [devicesData, alerts, enrichDeviceWithSeverity, sortBySeverity]);
+
+  // Calculate statistics
+  const stats = useMemo(() => {
+    return {
+      total: enrichedDevices.length,
+      online: enrichedDevices.filter((d) => d.status === 'online').length,
+      offline: enrichedDevices.filter((d) => d.status === 'offline').length,
+      critical: enrichedDevices.filter((d) => d.severityLevel === 'critical').length,
+      warning: enrichedDevices.filter((d) => d.severityLevel === 'warning').length,
+      normal: enrichedDevices.filter((d) => d.severityLevel === 'normal').length,
+    };
+  }, [enrichedDevices]);
+
+  // Manual refresh handler
+  const handleRefresh = () => {
+    refetchDevices();
+    refetchAlerts();
+    setLastUpdate(new Date());
+  };
+
+  // Apply filters to enriched devices
   const filteredDevices = useMemo(() => {
-    return devices.filter((device) => {
+    return enrichedDevices.filter((device) => {
       // Severity filter
       if (severityFilter !== 'all' && device.severityLevel !== severityFilter) {
         return false;
@@ -63,7 +99,7 @@ export const AdminDeviceReadings = () => {
 
       return true;
     });
-  }, [devices, severityFilter, statusFilter, searchTerm]);
+  }, [enrichedDevices, severityFilter, statusFilter, searchTerm]);
 
   // Group devices by severity
   const criticalDevices = filteredDevices.filter((d) => d.severityLevel === 'critical');
@@ -86,7 +122,7 @@ export const AdminDeviceReadings = () => {
                 Real-time water quality monitoring • Auto-sorted by severity
               </Paragraph>
             </div>
-            <RefreshControl onRefresh={refresh} loading={loading} lastUpdate={lastUpdate} />
+            <RefreshControl onRefresh={handleRefresh} loading={loading} lastUpdate={lastUpdate} />
           </div>
 
           {/* Info Alert */}
@@ -129,7 +165,7 @@ export const AdminDeviceReadings = () => {
               
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Text type="secondary">
-                  Showing {filteredDevices.length} of {devices.length} device{devices.length !== 1 ? 's' : ''}
+                  Showing {filteredDevices.length} of {enrichedDevices.length} device{enrichedDevices.length !== 1 ? 's' : ''}
                 </Text>
                 <Segmented
                   options={[
@@ -158,7 +194,7 @@ export const AdminDeviceReadings = () => {
           </Card>
 
           {/* Loading State */}
-          {loading && devices.length === 0 && (
+          {loading && enrichedDevices.length === 0 && (
             <div style={{ textAlign: 'center', padding: '60px 0' }}>
               <Spin size="large" tip="Loading devices..." />
             </div>

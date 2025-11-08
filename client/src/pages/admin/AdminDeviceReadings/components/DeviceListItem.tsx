@@ -6,7 +6,7 @@ import {
   ExperimentOutlined,
 } from '@ant-design/icons';
 import { memo } from 'react';
-import type { DeviceWithReadings } from '../hooks';
+import type { DeviceWithReadings } from '../../../../schemas';
 
 const { Text } = Typography;
 

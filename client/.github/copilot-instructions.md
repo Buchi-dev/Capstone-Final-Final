@@ -31,16 +31,60 @@ UI Layer (components/*, pages/*)
 ComponentName.tsx  → export default ComponentName
 ```
 
+**Component Extraction Rule (CRITICAL):**
+- **ALL sub-components MUST be extracted to the page's `components/` folder**
+- Main page component should only contain layout logic and hook orchestration
+- Any JSX element that could be its own component MUST be extracted
+- Extract when: component has its own logic, renders UI blocks, or exceeds 20 lines
+- Page component should be thin - mostly imports, hooks, and composition
+
 **Example Structure:**
 ```
 pages/admin/AdminDashboard/
-  ├── AdminDashboard.tsx           (Main page component)
+  ├── AdminDashboard.tsx           (Main page - THIN, mostly composition)
   ├── components/
-  │   ├── DashboardHeader.tsx      (One component)
-  │   ├── MetricsCard.tsx          (One component)
-  │   ├── AlertsList.tsx           (One component)
-  │   └── DeviceStatusChart.tsx    (One component)
+  │   ├── DashboardHeader.tsx      (Extracted header section)
+  │   ├── MetricsCard.tsx          (Extracted metrics display)
+  │   ├── AlertsList.tsx           (Extracted alerts list)
+  │   ├── DeviceStatusChart.tsx    (Extracted chart component)
+  │   └── QuickActions.tsx         (Extracted action buttons)
+  ├── hooks/
+  │   └── useDashboardFilters.ts   (UI-specific logic only)
+```
 
+**Before (BAD) - Multiple components in one file:**
+```typescript
+// ❌ AdminDashboard.tsx with embedded components
+export default function AdminDashboard() {
+  const DashboardHeader = () => <div>Header</div>;
+  const MetricsCard = () => <div>Metrics</div>;
+  
+  return (
+    <div>
+      <DashboardHeader />
+      <MetricsCard />
+    </div>
+  );
+}
+```
+
+**After (GOOD) - Extracted components:**
+```typescript
+// ✅ AdminDashboard.tsx - Thin main component
+import DashboardHeader from './components/DashboardHeader';
+import MetricsCard from './components/MetricsCard';
+
+export default function AdminDashboard() {
+  const { data: alerts } = useRealtime_Alerts();
+  const { data: devices } = useRealtime_Devices();
+  
+  return (
+    <div>
+      <DashboardHeader alertCount={alerts.length} />
+      <MetricsCard devices={devices} />
+    </div>
+  );
+}
 ```
 
 **Why This Matters:**
@@ -49,6 +93,8 @@ pages/admin/AdminDashboard/
 - Clearer component dependencies
 - Improved reusability across the app
 - Simplified testing and debugging
+- Keeps page components focused on orchestration, not implementation
+- Reduces cognitive load when reading page files
 
 ### 3. Separation of Concerns
 

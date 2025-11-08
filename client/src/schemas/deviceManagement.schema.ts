@@ -127,6 +127,28 @@ export type CommandParams = z.infer<typeof CommandParamsSchema>;
 export type DeviceResponse = z.infer<typeof DeviceResponseSchema>;
 
 // ============================================================================
+// EXTENDED TYPES (UI-specific enriched types)
+// ============================================================================
+
+/**
+ * Device enriched with severity information and active alerts
+ * Used in AdminDeviceReadings and other monitoring pages
+ * 
+ * @see AdminDeviceReadings
+ * @see useDeviceSeverityCalculator
+ */
+export interface DeviceWithReadings extends Device {
+  /** Latest sensor reading from RTDB */
+  latestReading: SensorReading | null;
+  /** Active alerts associated with this device (WaterQualityAlert type) */
+  activeAlerts: any[]; // Using any[] to avoid circular dependency with alerts.schema
+  /** Calculated severity score (higher = more critical) */
+  severityScore: number;
+  /** Severity level based on score and alerts */
+  severityLevel: 'critical' | 'warning' | 'normal' | 'offline';
+}
+
+// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
