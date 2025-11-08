@@ -12,7 +12,7 @@ export * from "./User.Constants";
 export * from "./database.constants";
 
 // Re-export all Auth constants
-export * from "./Auth.Constants";
+export * from "./auth.constants";
 
 // Re-export all Alert Management constants
 export * from "./Alert.Constants";

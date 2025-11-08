@@ -23,7 +23,7 @@ import {
   DEFAULT_USER_STATUS,
   AUTH_ERROR_MESSAGES,
   LOG_PREFIXES,
-} from "../constants/Auth.Constants";
+} from "../constants/auth.constants";
 import {
   validateUserData,
   validateEmailDomain,

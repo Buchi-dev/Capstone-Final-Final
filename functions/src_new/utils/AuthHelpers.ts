@@ -13,7 +13,7 @@ import {
   ALLOWED_EMAIL_DOMAIN,
   DEFAULT_USER_ROLE,
   DEFAULT_USER_STATUS,
-} from "../constants/Auth.Constants";
+} from "../constants/auth.constants";
 import {COLLECTIONS, FIELD_NAMES} from "../constants/database.constants";
 import {DEFAULT_NOTIFICATION_PREFERENCES} from "../constants/User.Constants";
 import type {

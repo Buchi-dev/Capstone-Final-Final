@@ -25,7 +25,7 @@ import {beforeUserSignedIn} from "firebase-functions/v2/identity";
 import {
   AUTH_ERROR_MESSAGES,
   LOG_PREFIXES,
-} from "../constants/Auth.Constants";
+} from "../constants/auth.constants";
 import {
   validateUserData,
   validateEmailDomain,
