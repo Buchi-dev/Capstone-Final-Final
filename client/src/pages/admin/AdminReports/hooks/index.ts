@@ -1,7 +1,8 @@
 /**
- * Custom hooks for AdminReports
+ * Local UI Hooks for AdminReports
+ * 
+ * These hooks handle UI-specific logic only (local state management).
+ * For data operations, use global hooks from @/hooks.
  */
 
-export * from './useDevices';
 export * from './useReportHistory';
-export * from './useReportGeneration';

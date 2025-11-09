@@ -1,3 +1,9 @@
+/**
+ * ReportConfigForm Component
+ * 
+ * Configuration form for report generation parameters in AdminReports.
+ * Handles device selection, date ranges, and report options.
+ */
 import { 
   Form, 
   Input, 
@@ -42,6 +48,19 @@ interface ReportConfigFormProps {
   onBack?: () => void;
 }
 
+/**
+ * Report configuration form with validation
+ * 
+ * @example
+ * <ReportConfigForm
+ *   form={form}
+ *   devices={devices}
+ *   loading={false}
+ *   generating={false}
+ *   onFinish={handleFinish}
+ *   selectedType="water_quality"
+ * />
+ */
 export const ReportConfigForm = ({
   form,
   devices,

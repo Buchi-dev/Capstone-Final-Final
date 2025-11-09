@@ -1,4 +1,21 @@
-import { useState } from 'react';
+/**
+ * AdminReports Page
+ * 
+ * Comprehensive report generation system with multi-step wizard.
+ * Uses global hooks for data operations following architecture guidelines.
+ * 
+ * Architecture:
+ * - Global hooks: useRealtime_Devices (device data), useCall_Reports (report generation)
+ * - Local hook: useReportHistory (localStorage UI state)
+ * 
+ * Features:
+ * - Wizard mode: Step-by-step report creation
+ * - Dashboard mode: Quick report generation overview
+ * - History mode: View past generated reports
+ * 
+ * @module pages/admin/AdminReports
+ */
+import { useState, useMemo } from 'react';
 import { 
   Row, 
   Col, 
@@ -21,7 +38,7 @@ import {
   RocketOutlined
 } from '@ant-design/icons';
 import { AdminLayout } from '../../../components/layouts';
-import type { ReportType } from '../../../schemas';
+import type { ReportType, Device } from '../../../schemas';
 import { useThemeToken } from '../../../theme';
 import { Form } from 'antd';
 
@@ -35,17 +52,25 @@ import {
   QuickStatsPanel
 } from './components';
 
-// Hooks
-import {
-  useDevices,
-  useReportHistory,
-  useReportGeneration,
-} from './hooks';
+// Global Hooks
+import { useRealtime_Devices, useCall_Reports } from '../../../hooks';
+
+// Local UI Hooks
+import { useReportHistory } from './hooks';
 
 const { Title, Paragraph } = Typography;
 
 type ViewMode = 'wizard' | 'dashboard' | 'history';
 
+/**
+ * Admin report management center
+ * 
+ * Multi-mode interface for generating and managing reports:
+ * - Water quality reports
+ * - Device status reports
+ * - Data summary reports
+ * - Compliance reports
+ */
 export const AdminReports = () => {
   const token = useThemeToken();
   const [selectedType, setSelectedType] = useState<ReportType>('water_quality');
@@ -53,15 +78,86 @@ export const AdminReports = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('wizard');
   const [form] = Form.useForm();
 
-  // Custom hooks
-  const { devices, loading } = useDevices();
+  // Global hooks
+  const { devices: devicesWithReadings, isLoading: devicesLoading } = useRealtime_Devices();
+  const { 
+    generateWaterQualityReport,
+    generateDeviceStatusReport,
+    generateDataSummaryReport,
+    generateComplianceReport,
+    isLoading: generating,
+    reset: resetReportState
+  } = useCall_Reports();
+
+  // Local UI hooks
   const { reportHistory, addReportToHistory } = useReportHistory();
-  const { generating, handleGenerateReport } = useReportGeneration(devices, addReportToHistory);
+
+  // Transform DeviceWithSensorData to Device for component compatibility
+  const devices: Device[] = useMemo(() => {
+    return devicesWithReadings.map((d) => ({
+      id: d.deviceId,
+      deviceId: d.deviceId,
+      name: d.deviceName,
+      type: d.metadata?.type || 'ESP32',
+      firmwareVersion: d.metadata?.firmwareVersion || '1.0.0',
+      macAddress: d.metadata?.macAddress || 'N/A',
+      ipAddress: d.metadata?.ipAddress || 'N/A',
+      sensors: d.metadata?.sensors || ['tds', 'ph', 'turbidity'],
+      status: d.status,
+      registeredAt: d.metadata?.registeredAt,
+      lastSeen: d.metadata?.lastSeen,
+      metadata: d.metadata?.metadata
+    }));
+  }, [devicesWithReadings]);
 
   const reportTypes = getReportTypes(token);
 
-  const onFinish = (values: any) => {
-    handleGenerateReport(selectedType, values);
+  const onFinish = async (values: any) => {
+    try {
+      resetReportState();
+      
+      const { dateRange, devices: deviceIds } = values;
+      const startDate = dateRange?.[0]?.valueOf();
+      const endDate = dateRange?.[1]?.valueOf();
+
+      let report: any;
+
+      switch (selectedType) {
+        case 'water_quality':
+          report = await generateWaterQualityReport(deviceIds, startDate, endDate);
+          break;
+        case 'device_status':
+          report = await generateDeviceStatusReport(deviceIds);
+          break;
+        case 'data_summary':
+          report = await generateDataSummaryReport(deviceIds, startDate, endDate);
+          break;
+        case 'compliance':
+          report = await generateComplianceReport(deviceIds, startDate, endDate);
+          break;
+      }
+
+      if (report) {
+        const reportTypeLabels = {
+          water_quality: 'Water Quality Report',
+          device_status: 'Device Status Report',
+          data_summary: 'Data Summary Report',
+          compliance: 'Compliance Report',
+        };
+
+        const historyItem = {
+          id: `report-${Date.now()}`,
+          type: selectedType,
+          title: reportTypeLabels[selectedType],
+          generatedAt: new Date(),
+          devices: deviceIds?.length || 0,
+          pages: 1,
+        };
+        addReportToHistory(historyItem);
+      }
+    } catch (error) {
+      console.error('[AdminReports] Report generation failed:', error);
+    }
   };
 
   const steps = [
@@ -115,7 +211,7 @@ export const AdminReports = () => {
             <ReportConfigForm
               form={form}
               devices={devices}
-              loading={loading}
+              loading={devicesLoading}
               generating={generating}
               onFinish={(values) => {
                 onFinish(values);

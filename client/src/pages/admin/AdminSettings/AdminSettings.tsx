@@ -1,3 +1,13 @@
+/**
+ * AdminSettings Page
+ * 
+ * Settings management for administrators.
+ * Currently focuses on notification preferences.
+ * 
+ * Uses global hooks for all data operations following architecture guidelines.
+ * 
+ * @module pages/admin/AdminSettings
+ */
 import { AdminLayout } from '../../../components/layouts';
 import { Typography } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
@@ -5,6 +15,9 @@ import NotificationSettings from './NotificationSettings';
 
 const { Title, Paragraph } = Typography;
 
+/**
+ * Admin settings page with notification preferences
+ */
 export const AdminSettings = () => {
   return (
     <AdminLayout>

@@ -1,3 +1,9 @@
+/**
+ * ReportTypeSelection Component
+ * 
+ * Displays report type cards for user selection in AdminReports wizard.
+ * Supports both full and compact layouts.
+ */
 import { Card, Row, Col, Space, Typography, Tag, Badge, Tooltip } from 'antd';
 import {
   ExperimentOutlined,
@@ -28,6 +34,17 @@ interface ReportTypeSelectionProps {
   compact?: boolean;
 }
 
+/**
+ * Report type selection cards with visual feedback
+ * 
+ * @example
+ * <ReportTypeSelection
+ *   selectedType="water_quality"
+ *   onSelectType={handleSelect}
+ *   reportTypes={reportTypes}
+ *   compact={false}
+ * />
+ */
 export const ReportTypeSelection = ({
   selectedType,
   onSelectType,

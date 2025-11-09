@@ -1,10 +1,13 @@
 /**
  * AdminReports Module
- * Modular report generation system with extracted components, hooks, and templates
+ * Report generation system using global hooks architecture
+ * 
+ * Uses:
+ * - Global hooks: useRealtime_Devices, useCall_Reports
+ * - Local UI hooks: useReportHistory (localStorage management)
  */
 
 export { AdminReports } from './AdminReports';
 export * from './components';
-export * from './hooks';
 export * from './templates';
 export * from './utils';

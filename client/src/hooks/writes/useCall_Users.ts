@@ -16,7 +16,7 @@ import type { UserRole, UserStatus } from '../../schemas';
 /**
  * User operation types
  */
-type UserOperation = 'updateStatus' | 'updateUser';
+type UserOperation = 'updateStatus' | 'updateUser' | 'getUserPreferences' | 'setupPreferences';
 
 /**
  * Update user response
@@ -39,6 +39,10 @@ interface UseCallUsersReturn {
   updateUserStatus: (userId: string, status: UserStatus) => Promise<void>;
   /** Update user status and/or role */
   updateUser: (userId: string, status?: UserStatus, role?: UserRole) => Promise<UpdateUserResult>;
+  /** Get user notification preferences */
+  getUserPreferences: (userId: string) => Promise<any>;
+  /** Setup/update user notification preferences */
+  setupPreferences: (preferences: any) => Promise<any>;
   /** Loading state for any operation */
   isLoading: boolean;
   /** Error from last operation */
@@ -56,14 +60,16 @@ interface UseCallUsersReturn {
 /**
  * Hook for user write operations
  * 
- * Provides functions to update user status and roles with proper
- * loading/error/success state management.
+ * Provides functions to update user status, roles, and notification preferences
+ * with proper loading/error/success state management.
  * 
  * @example
  * ```tsx
  * const { 
  *   updateUserStatus, 
- *   updateUser, 
+ *   updateUser,
+ *   getUserPreferences,
+ *   setupPreferences,
  *   isLoading, 
  *   error, 
  *   isSuccess,
@@ -71,10 +77,21 @@ interface UseCallUsersReturn {
  * } = useCall_Users();
  * 
  * // Update user status only
- * await updateUserStatus('user-123', 'active');
+ * await updateUserStatus('user-123', 'Approved');
  * 
  * // Update user status and role
- * const result = await updateUser('user-123', 'active', 'staff');
+ * const result = await updateUser('user-123', 'Approved', 'Staff');
+ * 
+ * // Get user notification preferences
+ * const prefs = await getUserPreferences('user-123');
+ * 
+ * // Setup notification preferences
+ * await setupPreferences({
+ *   userId: 'user-123',
+ *   email: 'user@example.com',
+ *   emailNotifications: true,
+ *   alertSeverities: ['Critical', 'Warning']
+ * });
  * 
  * if (isSuccess) {
  *   message.success('User updated successfully');
@@ -163,9 +180,55 @@ export const useCall_Users = (): UseCallUsersReturn => {
     }
   }, []);
 
+  const getUserPreferences = useCallback(async (userId: string): Promise<any> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      setIsSuccess(false);
+      setOperationType('getUserPreferences');
+
+      const preferences = await usersService.getUserPreferences(userId);
+
+      setIsSuccess(true);
+      return preferences;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to get user preferences');
+      console.error('[useCall_Users] Get preferences error:', error);
+      setError(error);
+      setIsSuccess(false);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const setupPreferences = useCallback(async (preferences: any): Promise<any> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      setIsSuccess(false);
+      setOperationType('setupPreferences');
+
+      const savedPreferences = await usersService.setupPreferences(preferences);
+
+      setIsSuccess(true);
+      return savedPreferences;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to setup preferences');
+      console.error('[useCall_Users] Setup preferences error:', error);
+      setError(error);
+      setIsSuccess(false);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   return {
     updateUserStatus,
     updateUser,
+    getUserPreferences,
+    setupPreferences,
     isLoading,
     error,
     isSuccess,

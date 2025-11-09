@@ -1,3 +1,9 @@
+/**
+ * ReportPreviewPanel Component
+ * 
+ * Preview panel for report configuration before generation.
+ * Displays selected options and provides final confirmation.
+ */
 import { 
   Card, 
   Space, 
@@ -34,6 +40,19 @@ interface ReportPreviewPanelProps {
   generating: boolean;
 }
 
+/**
+ * Report preview with configuration summary
+ * 
+ * @example
+ * <ReportPreviewPanel
+ *   selectedType="water_quality"
+ *   formValues={form.getFieldsValue()}
+ *   devices={devices}
+ *   onGenerate={handleGenerate}
+ *   onBack={goBack}
+ *   generating={false}
+ * />
+ */
 export const ReportPreviewPanel = ({
   selectedType,
   formValues,

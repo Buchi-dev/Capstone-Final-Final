@@ -1,3 +1,9 @@
+/**
+ * ReportHistorySidebar Component
+ * 
+ * Displays report generation history with metadata.
+ * Supports sidebar and full-view layouts.
+ */
 import { 
   Card, 
   Space, 
@@ -39,6 +45,16 @@ interface ReportHistorySidebarProps {
   fullView?: boolean;
 }
 
+/**
+ * Report history list with actions
+ * 
+ * @example
+ * <ReportHistorySidebar
+ *   reportHistory={reportHistory}
+ *   token={token}
+ *   fullView={false}
+ * />
+ */
 export const ReportHistorySidebar = ({
   reportHistory,
   token,

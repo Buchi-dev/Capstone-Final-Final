@@ -1,3 +1,9 @@
+/**
+ * QuickStatsPanel Component
+ * 
+ * Displays quick statistics about devices and report history.
+ * Supports compact and detailed views.
+ */
 import { 
   Card, 
   Space, 
@@ -29,6 +35,16 @@ interface QuickStatsPanelProps {
   detailed?: boolean;
 }
 
+/**
+ * Statistics panel for devices and reports
+ * 
+ * @example
+ * <QuickStatsPanel
+ *   devices={devices}
+ *   reportHistory={reportHistory}
+ *   detailed={true}
+ * />
+ */
 export const QuickStatsPanel = ({ 
   devices, 
   reportHistory,
