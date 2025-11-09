@@ -1,5 +1,12 @@
-import { useState, useEffect } from 'react';
-import { Row, Col, Space, Divider, message } from 'antd';
+/**
+ * StaffAnalytics - Data Analytics View for Staff Role
+ * Displays water quality trends and analytics
+ * 
+ * Architecture: Uses global hook useRealtime_Devices()
+ */
+
+import { useMemo } from 'react';
+import { Row, Col, Space, Divider } from 'antd';
 import {
   BarChartOutlined,
   RiseOutlined,
@@ -9,12 +16,10 @@ import {
 } from '@ant-design/icons';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
-import { deviceManagementService } from '../../../services/devices.Service';
+import { useRealtime_Devices, type DeviceWithSensorData } from '@/hooks';
 import { PageHeader, StatsCard, PageContainer, DataCard } from '../../../components/staff';
 import { Typography } from 'antd';
 import {
-  LineChart,
-  Line,
   BarChart,
   Bar,
   XAxis,
@@ -27,103 +32,73 @@ import {
 
 const { Text } = Typography;
 
+/**
+ * StaffAnalytics component - displays water quality analytics
+ */
 export const StaffAnalytics = () => {
   const token = useThemeToken();
-  const [loading, setLoading] = useState(true);
-  const [phData, setPhData] = useState<any[]>([]);
-  const [turbidityData, setTurbidityData] = useState<any[]>([]);
-  const [deviceComparison, setDeviceComparison] = useState<any[]>([]);
-  const [stats, setStats] = useState({
-    avgPh: 0,
-    avgTurbidity: 0,
-    avgTds: 0,
-  });
-
-  const handleRefresh = async () => {
-    setLoading(true);
-    await fetchAnalyticsData();
-  };
-
-  const fetchAnalyticsData = async () => {
-    setLoading(true);
-    try {
-      const devicesList = await deviceManagementService.listDevices();
-      
-      const phDataPoints: any[] = [];
-      const turbidityDataPoints: any[] = [];
-      const deviceStats: any[] = [];
-      
-      let totalPh = 0, totalTurbidity = 0, totalTds = 0;
-      let count = 0;
-      
-      for (const device of devicesList) {
-        try {
-          const history = await deviceManagementService.getSensorHistory(device.deviceId, 24);
-          
-          // Aggregate data for device comparison
-          if (history.length > 0) {
-            const devicePh = history.reduce((sum: number, r: any) => sum + (r.ph || 0), 0) / history.length;
-            const deviceTurb = history.reduce((sum: number, r: any) => sum + (r.turbidity || 0), 0) / history.length;
-            const deviceTds = history.reduce((sum: number, r: any) => sum + (r.tds || 0), 0) / history.length;
-            
-            deviceStats.push({
-              device: device.name || device.deviceId,
-              ph: Number(devicePh.toFixed(2)),
-              turbidity: Number(deviceTurb.toFixed(2)),
-              tds: Number(deviceTds.toFixed(2)),
-            });
-            
-            totalPh += devicePh;
-            totalTurbidity += deviceTurb;
-            totalTds += deviceTds;
-            
-            count++;
-          }
-          
-          // Create time-series data (last 24 hours)
-          history.forEach((reading: any, index: number) => {
-            const timeLabel = `${index}h`;
-            if (reading.ph) {
-              phDataPoints.push({ time: timeLabel, ph: reading.ph });
-            }
-            if (reading.turbidity) {
-              turbidityDataPoints.push({ time: timeLabel, turbidity: reading.turbidity });
-            }
-          });
-          
-        } catch (error) {
-          console.error(`Error fetching analytics for device ${device.deviceId}:`, error);
-        }
-      }
-      
-      setPhData(phDataPoints.slice(-24)); // Last 24 data points
-      setTurbidityData(turbidityDataPoints.slice(-24));
-      setDeviceComparison(deviceStats);
-      
-      if (count > 0) {
-        setStats({
-          avgPh: Number((totalPh / count).toFixed(1)),
-          avgTurbidity: Number((totalTurbidity / count).toFixed(1)),
-          avgTds: Number((totalTds / count).toFixed(1)),
-        });
-      }
-      
-    } catch (error) {
-      console.error('Error fetching analytics data:', error);
-      message.error('Failed to load analytics data');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAnalyticsData();
-  }, []);
   
-  if (loading) {
+  // Use global hook for real-time device data
+  const { devices: realtimeDevices, isLoading, refetch } = useRealtime_Devices();
+
+  const handleRefresh = () => {
+    refetch();
+  };
+
+  // Calculate analytics data from real-time devices
+  const analyticsData = useMemo(() => {
+    const devicesWithReadings = realtimeDevices.filter(
+      (d: DeviceWithSensorData) => d.latestReading !== null
+    );
+
+    if (devicesWithReadings.length === 0) {
+      return {
+        phData: [],
+        turbidityData: [],
+        deviceComparison: [],
+        stats: { avgPh: 0, avgTurbidity: 0, avgTds: 0 },
+      };
+    }
+
+    const deviceStats: any[] = [];
+    let totalPh = 0, totalTurbidity = 0, totalTds = 0;
+    let count = 0;
+
+    devicesWithReadings.forEach((device: DeviceWithSensorData) => {
+      const reading = device.latestReading;
+      if (!reading) return;
+
+      deviceStats.push({
+        device: device.deviceName || device.deviceId,
+        ph: reading.ph ? Number(reading.ph.toFixed(2)) : 0,
+        turbidity: reading.turbidity ? Number(reading.turbidity.toFixed(2)) : 0,
+        tds: reading.tds ? Number(reading.tds.toFixed(2)) : 0,
+      });
+
+      if (reading.ph) totalPh += reading.ph;
+      if (reading.turbidity) totalTurbidity += reading.turbidity;
+      if (reading.tds) totalTds += reading.tds;
+      count++;
+    });
+
+    return {
+      phData: deviceStats.map(d => ({ device: d.device, ph: d.ph })),
+      turbidityData: deviceStats.map(d => ({ device: d.device, turbidity: d.turbidity })),
+      deviceComparison: deviceStats,
+      stats: {
+        avgPh: count > 0 ? Number((totalPh / count).toFixed(1)) : 0,
+        avgTurbidity: count > 0 ? Number((totalTurbidity / count).toFixed(1)) : 0,
+        avgTds: count > 0 ? Number((totalTds / count).toFixed(1)) : 0,
+      },
+    };
+  }, [realtimeDevices]);
+
+  const { phData, turbidityData, deviceComparison, stats } = analyticsData;
+  
+  if (isLoading) {
     return (
       <StaffLayout>
-        <PageContainer loading={loading} spacing="large" />
+        <PageContainer loading={isLoading} spacing="large" />
       </StaffLayout>
     );
   }
@@ -136,7 +111,7 @@ export const StaffAnalytics = () => {
           title="Analytics"
           subtitle="Water quality trends and device performance analytics"
           icon={<BarChartOutlined />}
-          loading={loading}
+          loading={isLoading}
           onRefresh={handleRefresh}
         />
 
@@ -180,47 +155,43 @@ export const StaffAnalytics = () => {
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={12}>
             <DataCard
-              title="pH Level Trend (24 Hours)"
+              title="pH Level by Device (Current Readings)"
               icon={<LineChartOutlined />}
             >
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={phData}>
+                <BarChart data={phData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
+                  <XAxis dataKey="device" angle={-45} textAnchor="end" height={100} />
                   <YAxis domain={[6, 9]} />
                   <Tooltip />
                   <Legend />
-                  <Line
-                    type="monotone"
+                  <Bar
                     dataKey="ph"
-                    stroke={token.colorSuccess}
-                    strokeWidth={2}
+                    fill={token.colorSuccess}
                     name="pH Level"
                   />
-                </LineChart>
+                </BarChart>
               </ResponsiveContainer>
             </DataCard>
           </Col>
           <Col xs={24} lg={12}>
             <DataCard
-              title="Turbidity Trend (24 Hours)"
+              title="Turbidity by Device (Current Readings)"
               icon={<LineChartOutlined />}
             >
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={turbidityData}>
+                <BarChart data={turbidityData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
+                  <XAxis dataKey="device" angle={-45} textAnchor="end" height={100} />
                   <YAxis domain={[0, 10]} />
                   <Tooltip />
                   <Legend />
-                  <Line
-                    type="monotone"
+                  <Bar
                     dataKey="turbidity"
-                    stroke={token.colorWarning}
-                    strokeWidth={2}
+                    fill={token.colorWarning}
                     name="Turbidity (NTU)"
                   />
-                </LineChart>
+                </BarChart>
               </ResponsiveContainer>
             </DataCard>
           </Col>

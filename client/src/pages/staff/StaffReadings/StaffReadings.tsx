@@ -1,4 +1,11 @@
-import { useState, useEffect } from 'react';
+/**
+ * StaffReadings - Sensor Readings View for Staff Role
+ * Displays real-time sensor readings from all devices
+ * 
+ * Architecture: Uses global hook useRealtime_Devices()
+ */
+
+import { useState, useMemo } from 'react';
 import {
   Card,
   Table,
@@ -12,7 +19,6 @@ import {
   Col,
   Statistic,
   Alert,
-  message,
   Skeleton,
 } from 'antd';
 import {
@@ -24,7 +30,8 @@ import {
 } from '@ant-design/icons';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
-import { deviceManagementService } from '../../../services/devices.Service';
+import { useRealtime_Devices, type DeviceWithSensorData } from '@/hooks';
+import { calculateReadingStatus } from '../../../utils/waterQualityUtils';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 
@@ -42,100 +49,70 @@ interface Reading {
   status: 'normal' | 'warning' | 'critical';
 }
 
+/**
+ * StaffReadings component - displays sensor readings from all devices
+ */
 export const StaffReadings = () => {
   const token = useThemeToken();
   const [deviceFilter, setDeviceFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<any>(null);
-  const [readings, setReadings] = useState<Reading[]>([]);
-  const [devices, setDevices] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  // Use global hook for real-time device data
+  const { devices: realtimeDevices, isLoading } = useRealtime_Devices();
 
-  // Fetch devices and readings from Firebase
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        // Fetch devices
-        const devicesList = await deviceManagementService.listDevices();
-        const deviceNames = devicesList.map(d => d.name || d.deviceId);
-        setDevices(deviceNames);
-        
-        // Fetch readings for all devices
-        const allReadings: Reading[] = [];
-        
-        for (const device of devicesList) {
-          try {
-            const history = await deviceManagementService.getSensorHistory(device.deviceId, 50);
-            
-            history.forEach((reading, index) => {
-              // Determine status based on parameter values
-              let status: 'normal' | 'warning' | 'critical' = 'normal';
-              
-              if (reading.ph) {
-                if (reading.ph < 6.0 || reading.ph > 9.0) status = 'critical';
-                else if (reading.ph < 6.5 || reading.ph > 8.5) status = 'warning';
-              }
-              
-              if (reading.turbidity && reading.turbidity > 5) {
-                if (reading.turbidity > 10) status = 'critical';
-                else if (status === 'normal') status = 'warning';
-              }
+  // Transform devices to readings format using utility function
+  const readings: Reading[] = useMemo(() => {
+    const allReadings: Reading[] = [];
+    
+    realtimeDevices.forEach((device: DeviceWithSensorData) => {
+      const reading = device.latestReading;
+      if (!reading) return;
+      
+      // Use utility function to determine status
+      const status = calculateReadingStatus(reading);
+      
+      allReadings.push({
+        key: device.deviceId,
+        timestamp: reading.timestamp 
+          ? dayjs(reading.timestamp).format('YYYY-MM-DD HH:mm:ss')
+          : dayjs().format('YYYY-MM-DD HH:mm:ss'),
+        device: device.deviceName || device.deviceId,
+        location: device.location || 'Unknown',
+        ph: reading.ph || 0,
+        tds: reading.tds || 0,
+        turbidity: reading.turbidity || 0,
+        status,
+      });
+    });
+    
+    // Sort by timestamp (most recent first)
+    allReadings.sort((a, b) => dayjs(b.timestamp).unix() - dayjs(a.timestamp).unix());
+    
+    return allReadings;
+  }, [realtimeDevices]);
 
-              if (reading.tds && reading.tds > 500) {
-                if (reading.tds > 1000) status = 'critical';
-                else if (status === 'normal') status = 'warning';
-              }
-              
-              allReadings.push({
-                key: `${device.deviceId}-${index}`,
-                timestamp: reading.timestamp 
-                  ? dayjs(reading.timestamp).format('YYYY-MM-DD HH:mm:ss')
-                  : dayjs().format('YYYY-MM-DD HH:mm:ss'),
-                device: device.name || device.deviceId,
-                location: typeof device.metadata?.location === 'string' 
-                  ? device.metadata.location 
-                  : device.metadata?.location?.building || 'Unknown',
-                ph: reading.ph || 0,
-                tds: reading.tds || 0,
-                turbidity: reading.turbidity || 0,
-                status,
-              });
-            });
-          } catch (error) {
-            console.error(`Error fetching readings for device ${device.deviceId}:`, error);
-          }
-        }
-        
-        // Sort by timestamp (most recent first)
-        allReadings.sort((a, b) => dayjs(b.timestamp).unix() - dayjs(a.timestamp).unix());
-        
-        setReadings(allReadings);
-      } catch (error) {
-        console.error('Error fetching readings:', error);
-        message.error('Failed to load readings');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
+  // Get unique device names
+  const devices = useMemo(() => {
+    return Array.from(new Set(readings.map(r => r.device)));
+  }, [readings]);
 
   // Filter readings
-  const filteredReadings = readings.filter(reading => {
-    const matchesDevice = deviceFilter === 'all' || reading.device === deviceFilter;
-    const matchesStatus = statusFilter === 'all' || reading.status === statusFilter;
-    return matchesDevice && matchesStatus;
-  });
+  const filteredReadings = useMemo(() => {
+    return readings.filter(reading => {
+      const matchesDevice = deviceFilter === 'all' || reading.device === deviceFilter;
+      const matchesStatus = statusFilter === 'all' || reading.status === statusFilter;
+      return matchesDevice && matchesStatus;
+    });
+  }, [readings, deviceFilter, statusFilter]);
 
   // Calculate stats
-  const stats = {
+  const stats = useMemo(() => ({
     total: readings.length,
     normal: readings.filter(r => r.status === 'normal').length,
     warning: readings.filter(r => r.status === 'warning').length,
     critical: readings.filter(r => r.status === 'critical').length,
-  };
+  }), [readings]);
 
   // Get parameter status color
   const getParamColor = (value: number, type: 'ph' | 'tds' | 'turbidity') => {
@@ -238,7 +215,7 @@ export const StaffReadings = () => {
           </Text>
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <>
             {/* Alert Skeleton */}
             <Card>

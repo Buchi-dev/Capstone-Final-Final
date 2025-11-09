@@ -30,7 +30,7 @@ export type { DeviceWithSensorData } from './reads/useRealtime_Devices';
 // WRITE HOOKS - CRUD operations and mutations
 // ============================================================================
 
-export { useCall_Alerts } from './writes/usecall_Alerts';
+export { useCall_Alerts } from './writes/useCall_Alerts';
 export { useCall_Devices } from './writes/useCall_Devices';
 export { useCall_Users } from './writes/useCall_Users';
 export { useCall_Reports } from './writes/useCall_Reports';
