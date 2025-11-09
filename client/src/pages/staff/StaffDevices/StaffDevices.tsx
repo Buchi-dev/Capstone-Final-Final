@@ -1,4 +1,11 @@
-import { useState, useEffect } from 'react';
+/**
+ * StaffDevices - Device Management View for Staff Role
+ * Displays all monitoring devices with status and details
+ * 
+ * Architecture: Uses global hook useRealtime_Devices()
+ */
+
+import { useState, useMemo } from 'react';
 import {
   Card,
   Table,
@@ -11,7 +18,6 @@ import {
   Row,
   Col,
   Statistic,
-  message,
   Skeleton,
 } from 'antd';
 import {
@@ -25,7 +31,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
-import { deviceManagementService } from '../../../services/devices.Service';
+import { useRealtime_Devices, type DeviceWithSensorData } from '@/hooks';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Title, Text } = Typography;
@@ -42,101 +48,69 @@ interface Device {
   sensors: string[];
 }
 
+/**
+ * StaffDevices component - displays all monitoring devices
+ */
 export const StaffDevices = () => {
   const navigate = useNavigate();
   const token = useThemeToken();
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  // Use global hook for real-time device data
+  const { devices: realtimeDevices, isLoading } = useRealtime_Devices();
 
-  // Fetch devices from Firebase
-  useEffect(() => {
-    const fetchDevices = async () => {
-      setLoading(true);
-      try {
-        const devicesList = await deviceManagementService.listDevices();
+  // Transform devices for display
+  const devices: Device[] = useMemo(() => {
+    return realtimeDevices.map((device: DeviceWithSensorData) => {
+      const reading = device.latestReading;
+      let status: 'online' | 'offline' | 'warning' = device.status === 'online' ? 'online' : 'offline';
+      
+      // Check for warning conditions if online
+      if (status === 'online' && reading) {
+        const hasPhWarning = reading.ph && (reading.ph < 6.5 || reading.ph > 8.5);
+        const hasTurbidityWarning = reading.turbidity && reading.turbidity > 5;
+        const hasTdsWarning = reading.tds && reading.tds > 500;
         
-        // Transform API data to match component interface
-        const transformedDevices = await Promise.all(
-          devicesList.map(async (device) => {
-            try {
-              const readings = await deviceManagementService.getSensorReadings(device.deviceId);
-              
-              // Determine status
-              let status: 'online' | 'offline' | 'warning' = 'offline';
-              if (device.status === 'online' && readings?.timestamp) {
-                const timeDiff = Date.now() - readings.timestamp;
-                if (timeDiff < 600000) { // 10 minutes
-                  status = 'online';
-                  // Check for warning conditions
-                  if (readings.ph && (readings.ph < 6.5 || readings.ph > 8.5)) status = 'warning';
-                  if (readings.turbidity && readings.turbidity > 5) status = 'warning';
-                }
-              }
-              
-              // Calculate uptime (mock calculation based on status)
-              const uptime = status === 'online' ? '99.5%' : status === 'warning' ? '95.0%' : '0%';
-              
-              return {
-                key: device.deviceId,
-                id: device.deviceId,
-                name: device.name || device.deviceId,
-                location: typeof device.metadata?.location === 'string' 
-                  ? device.metadata.location 
-                  : device.metadata?.location?.building || 'Unknown',
-                status,
-                lastUpdate: readings?.timestamp 
-                  ? new Date(readings.timestamp).toLocaleString() 
-                  : 'No data',
-                uptime,
-                sensors: device.sensors || ['turbidity', 'tds', 'ph'],
-              };
-            } catch (error) {
-              console.error(`Error processing device ${device.deviceId}:`, error);
-              return {
-                key: device.deviceId,
-                id: device.deviceId,
-                name: device.name || device.deviceId,
-                location: typeof device.metadata?.location === 'string' 
-                  ? device.metadata.location 
-                  : device.metadata?.location?.building || 'Unknown',
-                status: 'offline' as const,
-                lastUpdate: 'No data',
-                uptime: '0%',
-                sensors: ['turbidity', 'tds', 'ph'],
-              };
-            }
-          })
-        );
-        
-        setDevices(transformedDevices);
-      } catch (error) {
-        console.error('Error fetching devices:', error);
-        message.error('Failed to load devices');
-      } finally {
-        setLoading(false);
+        if (hasPhWarning || hasTurbidityWarning || hasTdsWarning) {
+          status = 'warning';
+        }
       }
-    };
-
-    fetchDevices();
-  }, []);
+      
+      const uptime = status === 'online' ? '99.5%' : status === 'warning' ? '95.0%' : '0%';
+      
+      return {
+        key: device.deviceId,
+        id: device.deviceId,
+        name: device.deviceName || device.deviceId,
+        location: device.location || 'Unknown',
+        status,
+        lastUpdate: reading?.timestamp 
+          ? new Date(reading.timestamp).toLocaleString() 
+          : 'No data',
+        uptime,
+        sensors: ['turbidity', 'tds', 'ph'],
+      };
+    });
+  }, [realtimeDevices]);
 
   // Filter devices
-  const filteredDevices = devices.filter(device => {
-    const matchesSearch = device.name.toLowerCase().includes(searchText.toLowerCase()) ||
-                          device.location.toLowerCase().includes(searchText.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || device.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredDevices = useMemo(() => {
+    return devices.filter(device => {
+      const matchesSearch = device.name.toLowerCase().includes(searchText.toLowerCase()) ||
+                            device.location.toLowerCase().includes(searchText.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || device.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [devices, searchText, statusFilter]);
 
   // Calculate stats
-  const stats = {
+  const stats = useMemo(() => ({
     total: devices.length,
     online: devices.filter(d => d.status === 'online').length,
     offline: devices.filter(d => d.status === 'offline').length,
     warning: devices.filter(d => d.status === 'warning').length,
-  };
+  }), [devices]);
 
   const columns: ColumnsType<Device> = [
     {
@@ -232,7 +206,7 @@ export const StaffDevices = () => {
           </Text>
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <>
             {/* Statistics Skeleton */}
             <Row gutter={[16, 16]}>
