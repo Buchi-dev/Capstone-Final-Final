@@ -27,8 +27,8 @@ import {
   CheckCircleOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../../../contexts/AuthContext';
-import { userManagementService } from '../../../services/user.Service';
-import { deviceManagementService } from '../../../services/devices.Service';
+import { usersService } from '../../../services/user.Service';
+import { devicesService } from '../../../services/devices.Service';
 import dayjs from 'dayjs';
 
 const { Text, Paragraph } = Typography;
@@ -70,7 +70,7 @@ const NotificationSettings: React.FC = () => {
       console.log('📥 Loading preferences for user:', user.uid);
       
       // Get user preferences using service layer
-      const userPrefs = await userManagementService.getUserPreferences(user.uid);
+      const userPrefs = await usersService.getUserPreferences(user.uid);
 
       console.log('📋 Loaded preferences from database:', userPrefs);
 
@@ -117,7 +117,7 @@ const NotificationSettings: React.FC = () => {
   const loadDevices = async () => {
     try {
       // Get devices using service layer
-      const devicesList = await deviceManagementService.listDevices();
+      const devicesList = await devicesService.listDevices();
       setDevices(devicesList);
     } catch (error: any) {
       console.error('Error loading devices:', error);
@@ -156,7 +156,7 @@ const NotificationSettings: React.FC = () => {
       console.log('💾 Saving notification preferences:', preferencesPayload);
 
       // Save preferences using service layer
-      const savedPreferences = await userManagementService.setupPreferences(preferencesPayload);
+      const savedPreferences = await usersService.setupPreferences(preferencesPayload);
 
       console.log('✅ Preferences saved successfully:', savedPreferences);
       

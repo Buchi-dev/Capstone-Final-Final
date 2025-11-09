@@ -32,6 +32,7 @@ import { useNavigate } from 'react-router-dom';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
 import { useRealtime_Devices, type DeviceWithSensorData } from '@/hooks';
+import { calculateDeviceStatus } from '../../../utils/waterQualityUtils';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Title, Text } = Typography;
@@ -60,22 +61,11 @@ export const StaffDevices = () => {
   // Use global hook for real-time device data
   const { devices: realtimeDevices, isLoading } = useRealtime_Devices();
 
-  // Transform devices for display
+  // Transform devices for display using utility function
   const devices: Device[] = useMemo(() => {
     return realtimeDevices.map((device: DeviceWithSensorData) => {
       const reading = device.latestReading;
-      let status: 'online' | 'offline' | 'warning' = device.status === 'online' ? 'online' : 'offline';
-      
-      // Check for warning conditions if online
-      if (status === 'online' && reading) {
-        const hasPhWarning = reading.ph && (reading.ph < 6.5 || reading.ph > 8.5);
-        const hasTurbidityWarning = reading.turbidity && reading.turbidity > 5;
-        const hasTdsWarning = reading.tds && reading.tds > 500;
-        
-        if (hasPhWarning || hasTurbidityWarning || hasTdsWarning) {
-          status = 'warning';
-        }
-      }
+      const status = calculateDeviceStatus(device.status, reading);
       
       const uptime = status === 'online' ? '99.5%' : status === 'warning' ? '95.0%' : '0%';
       

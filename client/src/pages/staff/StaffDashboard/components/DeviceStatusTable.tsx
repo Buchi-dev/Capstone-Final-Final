@@ -197,8 +197,22 @@ export default function DeviceStatusTable({ devices }: DeviceStatusTableProps) {
           </Text>
         ),
       },
+      {
+        title: 'Action',
+        key: 'action',
+        width: 120,
+        render: (_: unknown, record: DeviceStatus) => (
+          <Button
+            type="link"
+            icon={<EnvironmentOutlined />}
+            onClick={() => navigate(`/staff/devices/${record.id}/readings`)}
+          >
+            View
+          </Button>
+        ),
+      },
     ];
-  }, [token]);
+  }, [token, navigate]);
 
   return (
     <Card

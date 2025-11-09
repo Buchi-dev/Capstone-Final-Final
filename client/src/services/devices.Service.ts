@@ -377,13 +377,3 @@ export class DevicesService {
 
 export const devicesService = new DevicesService();
 export default devicesService;
-
-// ============================================================================
-// DEPRECATED EXPORTS - For backwards compatibility
-// TODO: Remove these after migrating all staff pages to use global hooks
-// ============================================================================
-
-/**
- * @deprecated Use devicesService instead
- */
-export const deviceManagementService = devicesService;

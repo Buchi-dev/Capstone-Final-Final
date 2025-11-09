@@ -88,7 +88,7 @@ export default function QuickActionsSidebar({ deviceStats }: QuickActionsSidebar
             block
             size="large"
             icon={<ThunderboltOutlined />}
-            onClick={() => navigate('/staff/analysis')}
+            onClick={() => navigate('/staff/analytics')}
             style={{ textAlign: 'left', height: 'auto', padding: '12px 16px' }}
           >
             <Space direction="vertical" size={0} style={{ width: '100%' }}>

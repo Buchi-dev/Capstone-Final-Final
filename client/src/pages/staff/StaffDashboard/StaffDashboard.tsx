@@ -20,6 +20,7 @@ import { useThemeToken } from '../../../theme';
 import { useRealtime_Devices, useRealtime_Alerts, type DeviceWithSensorData } from '@/hooks';
 import type { WaterQualityAlert } from '@/schemas';
 import { RealtimeAlertMonitor } from '../../../components/RealtimeAlertMonitor';
+import { calculateDeviceStatus } from '../../../utils/waterQualityUtils';
 import {
   DashboardHeader,
   DeviceStatsCards,
@@ -40,8 +41,8 @@ export const StaffDashboard = () => {
   const token = useThemeToken();
   
   // Global hooks for real-time data
-  const { devices, isLoading: devicesLoading } = useRealtime_Devices();
-  const { alerts, isLoading: alertsLoading } = useRealtime_Alerts({ maxAlerts: 20 });
+  const { devices, isLoading: devicesLoading, refetch: refetchDevices } = useRealtime_Devices();
+  const { alerts, isLoading: alertsLoading, refetch: refetchAlerts } = useRealtime_Alerts({ maxAlerts: 20 });
   
   // Local UI state
   const [refreshing, setRefreshing] = useState(false);
@@ -54,29 +55,18 @@ export const StaffDashboard = () => {
     }
   }, [devices, alerts, devicesLoading, alertsLoading]);
 
-  // Refresh handler
+  // Refresh handler using hooks' refetch functions
   const handleRefresh = () => {
     setRefreshing(true);
-    window.location.reload();
+    refetchDevices();
+    refetchAlerts();
+    setTimeout(() => setRefreshing(false), 1000);
   };
 
-  // Calculate device statistics
+  // Calculate device statistics using utility function
   const deviceStats = useMemo(() => {
     const devicesWithReadings = devices.map((device: DeviceWithSensorData) => {
-      const reading = device.latestReading;
-      let status: 'online' | 'offline' | 'warning' = device.status === 'online' ? 'online' : 'offline';
-      
-      // Check for warnings based on sensor readings
-      if (status === 'online' && reading) {
-        const hasPhWarning = reading.ph && (reading.ph < 6.5 || reading.ph > 8.5);
-        const hasTurbidityWarning = reading.turbidity && reading.turbidity > 5;
-        const hasTdsWarning = reading.tds && reading.tds > 500;
-        
-        if (hasPhWarning || hasTurbidityWarning || hasTdsWarning) {
-          status = 'warning';
-        }
-      }
-      
+      const status = calculateDeviceStatus(device.status, device.latestReading);
       return { ...device, computedStatus: status };
     });
 
@@ -88,22 +78,11 @@ export const StaffDashboard = () => {
     };
   }, [devices]);
 
-  // Transform devices for table display
+  // Transform devices for table display using utility function
   const deviceStatusData: DeviceStatus[] = useMemo(() => {
     return devices.map((device: DeviceWithSensorData) => {
       const reading = device.latestReading;
-      let status: 'online' | 'offline' | 'warning' = device.status === 'online' ? 'online' : 'offline';
-      
-      // Determine status based on readings
-      if (status === 'online' && reading) {
-        const hasPhWarning = reading.ph && (reading.ph < 6.5 || reading.ph > 8.5);
-        const hasTurbidityWarning = reading.turbidity && reading.turbidity > 5;
-        const hasTdsWarning = reading.tds && reading.tds > 500;
-        
-        if (hasPhWarning || hasTurbidityWarning || hasTdsWarning) {
-          status = 'warning';
-        }
-      }
+      const status = calculateDeviceStatus(device.status, reading);
 
       const lastUpdate = reading?.timestamp 
         ? new Date(reading.timestamp).toLocaleString()

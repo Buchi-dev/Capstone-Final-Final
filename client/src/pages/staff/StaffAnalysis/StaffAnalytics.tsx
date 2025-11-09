@@ -20,8 +20,6 @@ import { useRealtime_Devices, type DeviceWithSensorData } from '@/hooks';
 import { PageHeader, StatsCard, PageContainer, DataCard } from '../../../components/staff';
 import { Typography } from 'antd';
 import {
-  LineChart,
-  Line,
   BarChart,
   Bar,
   XAxis,
@@ -41,10 +39,10 @@ export const StaffAnalytics = () => {
   const token = useThemeToken();
   
   // Use global hook for real-time device data
-  const { devices: realtimeDevices, isLoading } = useRealtime_Devices();
+  const { devices: realtimeDevices, isLoading, refetch } = useRealtime_Devices();
 
   const handleRefresh = () => {
-    window.location.reload();
+    refetch();
   };
 
   // Calculate analytics data from real-time devices
@@ -157,47 +155,43 @@ export const StaffAnalytics = () => {
         <Row gutter={[16, 16]}>
           <Col xs={24} lg={12}>
             <DataCard
-              title="pH Level Trend (24 Hours)"
+              title="pH Level by Device (Current Readings)"
               icon={<LineChartOutlined />}
             >
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={phData}>
+                <BarChart data={phData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
+                  <XAxis dataKey="device" angle={-45} textAnchor="end" height={100} />
                   <YAxis domain={[6, 9]} />
                   <Tooltip />
                   <Legend />
-                  <Line
-                    type="monotone"
+                  <Bar
                     dataKey="ph"
-                    stroke={token.colorSuccess}
-                    strokeWidth={2}
+                    fill={token.colorSuccess}
                     name="pH Level"
                   />
-                </LineChart>
+                </BarChart>
               </ResponsiveContainer>
             </DataCard>
           </Col>
           <Col xs={24} lg={12}>
             <DataCard
-              title="Turbidity Trend (24 Hours)"
+              title="Turbidity by Device (Current Readings)"
               icon={<LineChartOutlined />}
             >
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={turbidityData}>
+                <BarChart data={turbidityData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
+                  <XAxis dataKey="device" angle={-45} textAnchor="end" height={100} />
                   <YAxis domain={[0, 10]} />
                   <Tooltip />
                   <Legend />
-                  <Line
-                    type="monotone"
+                  <Bar
                     dataKey="turbidity"
-                    stroke={token.colorWarning}
-                    strokeWidth={2}
+                    fill={token.colorWarning}
                     name="Turbidity (NTU)"
                   />
-                </LineChart>
+                </BarChart>
               </ResponsiveContainer>
             </DataCard>
           </Col>

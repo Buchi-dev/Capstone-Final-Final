@@ -31,6 +31,7 @@ import {
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
 import { useRealtime_Devices, type DeviceWithSensorData } from '@/hooks';
+import { calculateReadingStatus } from '../../../utils/waterQualityUtils';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 
@@ -60,7 +61,7 @@ export const StaffReadings = () => {
   // Use global hook for real-time device data
   const { devices: realtimeDevices, isLoading } = useRealtime_Devices();
 
-  // Transform devices to readings format
+  // Transform devices to readings format using utility function
   const readings: Reading[] = useMemo(() => {
     const allReadings: Reading[] = [];
     
@@ -68,23 +69,8 @@ export const StaffReadings = () => {
       const reading = device.latestReading;
       if (!reading) return;
       
-      // Determine status based on parameter values
-      let status: 'normal' | 'warning' | 'critical' = 'normal';
-      
-      if (reading.ph) {
-        if (reading.ph < 6.0 || reading.ph > 9.0) status = 'critical';
-        else if (reading.ph < 6.5 || reading.ph > 8.5) status = 'warning';
-      }
-      
-      if (reading.turbidity && reading.turbidity > 5) {
-        if (reading.turbidity > 10) status = 'critical';
-        else if (status === 'normal') status = 'warning';
-      }
-
-      if (reading.tds && reading.tds > 500) {
-        if (reading.tds > 1000) status = 'critical';
-        else if (status === 'normal') status = 'warning';
-      }
+      // Use utility function to determine status
+      const status = calculateReadingStatus(reading);
       
       allReadings.push({
         key: device.deviceId,
