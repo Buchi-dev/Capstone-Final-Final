@@ -518,3 +518,13 @@ export class UsersService {
 
 export const usersService = new UsersService();
 export default usersService;
+
+// ============================================================================
+// DEPRECATED EXPORTS - For backwards compatibility
+// TODO: Remove these after migrating all staff pages to use global hooks
+// ============================================================================
+
+/**
+ * @deprecated Use usersService instead
+ */
+export const userManagementService = usersService;
