@@ -1,10 +1,18 @@
+/**
+ * WaterQualityMetrics Component
+ * 
+ * Displays water quality metrics from real-time device readings
+ */
 import { Row, Col, Card, Statistic, Typography } from 'antd';
 import {
   RiseOutlined,
   LineChartOutlined,
   FallOutlined,
 } from '@ant-design/icons';
+import { memo } from 'react';
 import { useThemeToken } from '../../../../theme';
+import type { WaterQualityMetrics as Metrics } from '../hooks';
+import type { DeviceWithSensorData } from '../../../../hooks';
 
 const { Text } = Typography;
 
@@ -25,24 +33,19 @@ const WATER_QUALITY_THRESHOLDS = {
 };
 
 interface WaterQualityMetricsProps {
-  metrics: {
-    avgPH: number;
-    maxPH: number;
-    minPH: number;
-    avgTDS: number;
-    maxTDS: number;
-    minTDS: number;
-    avgTurbidity: number;
-    maxTurbidity: number;
-    minTurbidity: number;
-  } | undefined;
+  metrics: Metrics;
+  devices: DeviceWithSensorData[];
 }
 
-export const WaterQualityMetrics = ({ metrics }: WaterQualityMetricsProps) => {
+export const WaterQualityMetrics = memo<WaterQualityMetricsProps>(({ metrics, devices }) => {
   const token = useThemeToken();
 
-  if (!metrics) {
-    return null;
+  if (!metrics || devices.length === 0) {
+    return (
+      <Card>
+        <Text type="secondary">No water quality data available</Text>
+      </Card>
+    );
   }
 
   return (
@@ -51,19 +54,19 @@ export const WaterQualityMetrics = ({ metrics }: WaterQualityMetricsProps) => {
         <Card>
           <Statistic
             title="Average pH Level"
-            value={metrics.avgPH || 0}
+            value={metrics.averagePh || 0}
             precision={2}
             prefix={<RiseOutlined />}
             valueStyle={{ 
-              color: (metrics.avgPH >= WATER_QUALITY_THRESHOLDS.pH.min && 
-                      metrics.avgPH <= WATER_QUALITY_THRESHOLDS.pH.max) 
+              color: (metrics.averagePh >= WATER_QUALITY_THRESHOLDS.pH.min && 
+                      metrics.averagePh <= WATER_QUALITY_THRESHOLDS.pH.max) 
                 ? token.colorSuccess 
                 : token.colorError 
             }}
           />
           <div style={{ marginTop: 8 }}>
-            <Text type="secondary">Min: {metrics.minPH.toFixed(2)}</Text>
-            <Text type="secondary" style={{ float: 'right' }}>Max: {metrics.maxPH.toFixed(2)}</Text>
+            <Text type="secondary">Min: {metrics.minPh.toFixed(2)}</Text>
+            <Text type="secondary" style={{ float: 'right' }}>Max: {metrics.maxPh.toFixed(2)}</Text>
           </div>
           <div style={{ marginTop: 4 }}>
             <Text type="secondary" style={{ fontSize: '11px' }}>
@@ -76,23 +79,23 @@ export const WaterQualityMetrics = ({ metrics }: WaterQualityMetricsProps) => {
         <Card>
           <Statistic
             title="Average TDS"
-            value={metrics.avgTDS || 0}
+            value={metrics.averageTds || 0}
             precision={1}
             suffix="ppm"
             prefix={<LineChartOutlined />}
             valueStyle={{ 
-              color: (metrics.avgTDS <= WATER_QUALITY_THRESHOLDS.TDS.excellent) 
+              color: (metrics.averageTds <= WATER_QUALITY_THRESHOLDS.TDS.excellent) 
                 ? token.colorSuccess 
-                : (metrics.avgTDS <= WATER_QUALITY_THRESHOLDS.TDS.good)
+                : (metrics.averageTds <= WATER_QUALITY_THRESHOLDS.TDS.good)
                 ? token.colorInfo
-                : (metrics.avgTDS <= WATER_QUALITY_THRESHOLDS.TDS.acceptable)
+                : (metrics.averageTds <= WATER_QUALITY_THRESHOLDS.TDS.acceptable)
                 ? token.colorWarning
                 : token.colorError
             }}
           />
           <div style={{ marginTop: 8 }}>
-            <Text type="secondary">Min: {metrics.minTDS.toFixed(1)}</Text>
-            <Text type="secondary" style={{ float: 'right' }}>Max: {metrics.maxTDS.toFixed(1)}</Text>
+            <Text type="secondary">Min: {metrics.minTds.toFixed(1)}</Text>
+            <Text type="secondary" style={{ float: 'right' }}>Max: {metrics.maxTds.toFixed(1)}</Text>
           </div>
           <div style={{ marginTop: 4 }}>
             <Text type="secondary" style={{ fontSize: '11px' }}>
@@ -105,12 +108,12 @@ export const WaterQualityMetrics = ({ metrics }: WaterQualityMetricsProps) => {
         <Card>
           <Statistic
             title="Average Turbidity"
-            value={metrics.avgTurbidity || 0}
+            value={metrics.averageTurbidity || 0}
             precision={2}
             suffix="NTU"
             prefix={<FallOutlined />}
             valueStyle={{ 
-              color: (metrics.avgTurbidity <= WATER_QUALITY_THRESHOLDS.Turbidity.max) 
+              color: (metrics.averageTurbidity <= WATER_QUALITY_THRESHOLDS.Turbidity.max) 
                 ? token.colorSuccess 
                 : token.colorError 
             }}
@@ -128,4 +131,6 @@ export const WaterQualityMetrics = ({ metrics }: WaterQualityMetricsProps) => {
       </Col>
     </Row>
   );
-};
+});
+
+WaterQualityMetrics.displayName = 'WaterQualityMetrics';

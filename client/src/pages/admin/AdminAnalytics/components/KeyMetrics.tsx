@@ -1,3 +1,12 @@
+/**
+ * KeyMetrics Component
+ * 
+ * Displays key system metrics in card format:
+ * - Total Devices
+ * - System Health (synchronized with AdminDashboard)
+ * - Total Readings
+ * - Active Alerts
+ */
 import { Row, Col, Card, Statistic, Typography, Progress } from 'antd';
 import {
   ApiOutlined,
@@ -5,78 +14,94 @@ import {
   LineChartOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
+import { memo } from 'react';
 import { useThemeToken } from '../../../../theme';
-import type { DeviceStatusSummary as DeviceStatusData, AlertData } from '../../../../schemas';
+import type { DeviceStats, AlertStats, WaterQualityMetrics, SystemHealth } from '../hooks';
 
 const { Text } = Typography;
 
 interface KeyMetricsProps {
-  deviceStatusData: DeviceStatusData | null;
-  totalReadings: number;
-  alerts: AlertData[];
+  systemHealth: SystemHealth;
+  deviceStats: DeviceStats;
+  alertStats: AlertStats;
+  waterQualityMetrics: WaterQualityMetrics;
+  loading?: boolean;
 }
 
-export const KeyMetrics = ({ deviceStatusData, totalReadings, alerts }: KeyMetricsProps) => {
+export const KeyMetrics = memo<KeyMetricsProps>(({ 
+  systemHealth, 
+  deviceStats, 
+  alertStats,
+  waterQualityMetrics,
+  loading = false 
+}) => {
   const token = useThemeToken();
 
   return (
     <Row gutter={[16, 16]}>
       <Col xs={24} sm={12} lg={6}>
-        <Card>
+        <Card loading={loading}>
           <Statistic
             title="Total Devices"
-            value={deviceStatusData?.totalDevices || 0}
+            value={deviceStats.total}
             prefix={<ApiOutlined />}
             valueStyle={{ color: token.colorInfo }}
           />
-          <Text type="secondary">Registered in system</Text>
+          <Text type="secondary">
+            {deviceStats.online} online, {deviceStats.offline} offline
+          </Text>
         </Card>
       </Col>
       <Col xs={24} sm={12} lg={6}>
-        <Card>
+        <Card loading={loading}>
           <Statistic
             title="System Health"
-            value={parseFloat(deviceStatusData?.healthScore || '0')}
+            value={systemHealth.overallScore}
             precision={1}
             suffix="%"
             prefix={<DashboardOutlined />}
             valueStyle={{ 
-              color: parseFloat(deviceStatusData?.healthScore || '0') > 80 
-                ? token.colorSuccess 
-                : token.colorWarning 
+              color: systemHealth.color
             }}
           />
           <Progress 
-            percent={parseFloat(deviceStatusData?.healthScore || '0')} 
+            percent={systemHealth.overallScore} 
             showInfo={false}
-            strokeColor={parseFloat(deviceStatusData?.healthScore || '0') > 80 
-              ? token.colorSuccess 
-              : token.colorWarning}
+            strokeColor={systemHealth.color}
           />
+          <Text type="secondary" style={{ fontSize: '12px' }}>
+            {systemHealth.status} - Synced with Dashboard
+          </Text>
         </Card>
       </Col>
       <Col xs={24} sm={12} lg={6}>
-        <Card>
+        <Card loading={loading}>
           <Statistic
             title="Total Readings"
-            value={totalReadings || 0}
+            value={waterQualityMetrics.totalReadings}
             prefix={<LineChartOutlined />}
             valueStyle={{ color: token.colorPrimary }}
           />
-          <Text type="secondary">Last 7 days</Text>
+          <Text type="secondary">From {deviceStats.withReadings} devices</Text>
         </Card>
       </Col>
       <Col xs={24} sm={12} lg={6}>
-        <Card>
+        <Card loading={loading}>
           <Statistic
             title="Active Alerts"
-            value={alerts.length}
+            value={alertStats.active}
             prefix={<WarningOutlined />}
-            valueStyle={{ color: alerts.length > 0 ? token.colorError : token.colorSuccess }}
+            valueStyle={{ 
+              color: alertStats.active > 0 ? token.colorError : token.colorSuccess 
+            }}
           />
-          <Text type="secondary">Requiring attention</Text>
+          <Text type="secondary">
+            {alertStats.critical} critical, {alertStats.warning} warning
+          </Text>
         </Card>
       </Col>
     </Row>
   );
-};
+});
+
+KeyMetrics.displayName = 'KeyMetrics';

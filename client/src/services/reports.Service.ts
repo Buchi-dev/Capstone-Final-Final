@@ -42,7 +42,7 @@ export class ReportsService {
   // ==========================================================================
   
   private readonly functions = getFunctions();
-  private readonly functionName = 'generateReport';
+  private readonly functionName = 'ReportCalls';
 
   // ==========================================================================
   // ERROR MESSAGES

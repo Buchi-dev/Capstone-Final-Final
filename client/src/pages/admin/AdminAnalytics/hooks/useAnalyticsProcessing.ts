@@ -1,11 +1,20 @@
+/**
+ * useAnalyticsProcessing - Local Hook (UI Logic Only)
+ * 
+ * Processes real-time device data into chart-ready formats.
+ * NO service layer calls - pure data transformation.
+ * 
+ * @module pages/admin/AdminAnalytics/hooks
+ */
 import { useMemo } from 'react';
-import type { WaterQualityReportData } from '../../../../schemas';
+import type { DeviceWithSensorData } from '../../../../hooks';
 
 interface TimeSeriesDataPoint {
   time: string;
   pH: number;
   TDS: number;
   Turbidity: number;
+  deviceId: string;
 }
 
 interface ParameterDistributionPoint {
@@ -22,74 +31,119 @@ interface ParameterComparisonPoint {
 }
 
 /**
- * useAnalyticsProcessing - Local Hook (UI Logic Only)
+ * Process real-time device data into chart formats
  * 
- * Processes water quality report data into chart-ready formats.
- * NO service layer calls - pure data transformation.
- * 
- * @param waterQualityData - Water quality report data from useCall_Reports
+ * @param devices - Array of devices with real-time sensor data
  * @returns Processed data for charts and visualizations
  * 
  * @example
  * ```tsx
  * const { timeSeriesData, parameterDistribution, parameterComparisonData } = 
- *   useAnalyticsProcessing(reportData);
+ *   useAnalyticsProcessing(devices);
  * ```
  */
 export const useAnalyticsProcessing = (
-  waterQualityData: WaterQualityReportData | null
+  devices: DeviceWithSensorData[]
 ) => {
-  // Transform readings into time series format (last 24 readings for visualization)
+  // Transform current readings into time series format for visualization
   const timeSeriesData = useMemo<TimeSeriesDataPoint[]>(() => {
-    if (!waterQualityData?.devices?.[0]?.readings) return [];
+    if (!devices || devices.length === 0) return [];
     
-    const readings = waterQualityData.devices[0].readings.slice(-24);
-    return readings.map((reading, index) => ({
-      time: `${index}h`,
-      pH: reading.ph,
-      TDS: reading.tds,
-      Turbidity: reading.turbidity,
-    }));
-  }, [waterQualityData]);
+    // Get latest readings from all devices
+    return devices
+      .filter(device => device.latestReading !== null)
+      .map(device => ({
+        time: device.deviceName || device.deviceId,
+        pH: device.latestReading?.ph || 0,
+        TDS: device.latestReading?.tds || 0,
+        Turbidity: device.latestReading?.turbidity || 0,
+        deviceId: device.deviceId,
+      }));
+  }, [devices]);
 
-  // Calculate parameter distributions for radar charts
+  // Calculate parameter distributions for radar charts (using current readings)
   const parameterDistribution = useMemo<ParameterDistributionPoint[]>(() => {
-    if (!waterQualityData?.devices?.[0]?.metrics) return [];
+    if (!devices || devices.length === 0) return [];
     
-    const metrics = waterQualityData.devices[0].metrics;
+    const phValues: number[] = [];
+    const tdsValues: number[] = [];
+    const turbidityValues: number[] = [];
+    
+    devices.forEach(device => {
+      if (device.latestReading) {
+        if (device.latestReading.ph) phValues.push(device.latestReading.ph);
+        if (device.latestReading.tds) tdsValues.push(device.latestReading.tds);
+        if (device.latestReading.turbidity !== undefined) turbidityValues.push(device.latestReading.turbidity);
+      }
+    });
+    
+    const avgPh = phValues.length > 0 
+      ? phValues.reduce((sum, val) => sum + val, 0) / phValues.length 
+      : 0;
+    const avgTds = tdsValues.length > 0 
+      ? tdsValues.reduce((sum, val) => sum + val, 0) / tdsValues.length 
+      : 0;
+    const avgTurbidity = turbidityValues.length > 0 
+      ? turbidityValues.reduce((sum, val) => sum + val, 0) / turbidityValues.length 
+      : 0;
+    
     return [
-      { name: 'pH', value: metrics.avgPH, max: 14 },
-      { name: 'TDS', value: metrics.avgTDS, max: 1000 },
-      { name: 'Turbidity', value: metrics.avgTurbidity, max: 100 },
+      { name: 'pH', value: parseFloat(avgPh.toFixed(2)), max: 14 },
+      { name: 'TDS', value: parseFloat(avgTds.toFixed(2)), max: 1000 },
+      { name: 'Turbidity', value: parseFloat(avgTurbidity.toFixed(2)), max: 100 },
     ];
-  }, [waterQualityData]);
+  }, [devices]);
 
   // Calculate parameter comparisons (avg, max, min) for bar charts
   const parameterComparisonData = useMemo<ParameterComparisonPoint[]>(() => {
-    if (!waterQualityData?.devices?.[0]?.metrics) return [];
+    if (!devices || devices.length === 0) return [];
     
-    const metrics = waterQualityData.devices[0].metrics;
+    const phValues: number[] = [];
+    const tdsValues: number[] = [];
+    const turbidityValues: number[] = [];
+    
+    devices.forEach(device => {
+      if (device.latestReading) {
+        if (device.latestReading.ph) phValues.push(device.latestReading.ph);
+        if (device.latestReading.tds) tdsValues.push(device.latestReading.tds);
+        if (device.latestReading.turbidity !== undefined) turbidityValues.push(device.latestReading.turbidity);
+      }
+    });
+    
+    const calcStats = (values: number[]) => {
+      if (values.length === 0) return { avg: 0, max: 0, min: 0 };
+      return {
+        avg: values.reduce((sum, val) => sum + val, 0) / values.length,
+        max: Math.max(...values),
+        min: Math.min(...values),
+      };
+    };
+    
+    const phStats = calcStats(phValues);
+    const tdsStats = calcStats(tdsValues);
+    const turbidityStats = calcStats(turbidityValues);
+    
     return [
       {
         parameter: 'pH',
-        Average: metrics.avgPH,
-        Maximum: metrics.maxPH,
-        Minimum: metrics.minPH,
+        Average: parseFloat(phStats.avg.toFixed(2)),
+        Maximum: parseFloat(phStats.max.toFixed(2)),
+        Minimum: parseFloat(phStats.min.toFixed(2)),
       },
       {
-        parameter: 'TDS',
-        Average: metrics.avgTDS / 10,
-        Maximum: metrics.maxTDS / 10,
-        Minimum: metrics.minTDS / 10,
+        parameter: 'TDS (÷10)',
+        Average: parseFloat((tdsStats.avg / 10).toFixed(2)),
+        Maximum: parseFloat((tdsStats.max / 10).toFixed(2)),
+        Minimum: parseFloat((tdsStats.min / 10).toFixed(2)),
       },
       {
         parameter: 'Turbidity',
-        Average: metrics.avgTurbidity,
-        Maximum: metrics.maxTurbidity,
-        Minimum: metrics.minTurbidity,
+        Average: parseFloat(turbidityStats.avg.toFixed(2)),
+        Maximum: parseFloat(turbidityStats.max.toFixed(2)),
+        Minimum: parseFloat(turbidityStats.min.toFixed(2)),
       },
     ];
-  }, [waterQualityData]);
+  }, [devices]);
 
   return {
     timeSeriesData,

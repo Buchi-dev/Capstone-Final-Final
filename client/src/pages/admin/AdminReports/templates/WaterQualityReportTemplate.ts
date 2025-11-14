@@ -3,6 +3,39 @@ import autoTable from 'jspdf-autotable';
 import dayjs from 'dayjs';
 import type { ReportConfig } from '../../../../schemas';
 
+// ============================================================================
+// CONSTANTS - Design System
+// ============================================================================
+const COLORS = {
+  primary: { r: 0, g: 31, b: 63 },        // Navy Blue
+  secondary: { r: 41, g: 128, b: 185 },   // Light Blue
+  success: { r: 82, g: 196, b: 26 },      // Green
+  warning: { r: 250, g: 173, b: 20 },     // Orange
+  danger: { r: 255, g: 77, b: 79 },       // Red
+  gray: { r: 128, g: 128, b: 128 },       // Gray
+  lightGray: { r: 245, g: 245, b: 245 },  // Light Gray
+  white: { r: 255, g: 255, b: 255 },      // White
+  black: { r: 0, g: 0, b: 0 },            // Black
+  text: { r: 51, g: 51, b: 51 },          // Dark Gray Text
+};
+
+const SPACING = {
+  page: { top: 20, bottom: 25, left: 15, right: 15 },
+  section: 12,
+  paragraph: 6,
+  line: 5,
+};
+
+const FONTS = {
+  title: { size: 24, style: 'bold' },
+  subtitle: { size: 14, style: 'normal' },
+  heading: { size: 12, style: 'bold' },
+  subheading: { size: 10, style: 'bold' },
+  body: { size: 9, style: 'normal' },
+  small: { size: 8, style: 'normal' },
+  tiny: { size: 7, style: 'normal' },
+};
+
 // Type extension for jsPDF with autoTable plugin
 interface jsPDFWithAutoTable extends jsPDF {
   lastAutoTable?: {
@@ -14,271 +47,400 @@ export const generateWaterQualityReport = async (
   config: ReportConfig,
   reportData: any
 ): Promise<jsPDF> => {
-  const doc = new jsPDF();
-  let yPos = 20;
-
-  // ============================================================================
-  // HEADER SECTION
-  // ============================================================================
-  doc.setFillColor(0, 31, 63); // Navy blue
-  doc.rect(0, 0, 210, 45, 'F');
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
   
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(26);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Water Quality Analysis Report', 105, 20, { align: 'center' });
-  
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text(config.title || 'Comprehensive Water Quality Assessment', 105, 30, { align: 'center' });
-  
-  // Report ID
   const reportId = `WQR-${dayjs().format('YYYYMMDD')}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-  doc.setFontSize(9);
-  doc.text(`Report ID: ${reportId}`, 105, 38, { align: 'center' });
-
-  // Reset text color
-  doc.setTextColor(0, 0, 0);
-  yPos = 55;
+  let yPos = 0;
 
   // ============================================================================
-  // REPORT INFORMATION SECTION
+  // HEADER SECTION - Professional Dark Blue Header
   // ============================================================================
-  doc.setFillColor(245, 245, 245);
-  doc.rect(15, yPos - 3, 180, 35, 'F');
   
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(0, 31, 63);
-  doc.text('Report Information', 20, yPos + 3);
-  doc.setTextColor(0, 0, 0);
+  // Main header bar
+  doc.setFillColor(COLORS.primary.r, COLORS.primary.g, COLORS.primary.b);
+  doc.rect(0, 0, 210, 50, 'F');
+  
+  // Header content
+  doc.setTextColor(COLORS.white.r, COLORS.white.g, COLORS.white.b);
+  doc.setFont('helvetica', FONTS.title.style);
+  doc.setFontSize(FONTS.title.size);
+  doc.text('Water Quality Analysis Report', 105, 22, { align: 'center' });
+  
+  doc.setFont('helvetica', FONTS.subtitle.style);
+  doc.setFontSize(FONTS.subtitle.size);
+  doc.text(config.title || 'Comprehensive Water Quality Assessment', 105, 32, { align: 'center' });
+  
+  // Report ID badge
+  doc.setFont('helvetica', FONTS.small.style);
+  doc.setFontSize(FONTS.small.size);
+  doc.text(`Report ID: ${reportId}`, 105, 42, { align: 'center' });
+
+  // Accent line under header
+  doc.setFillColor(COLORS.secondary.r, COLORS.secondary.g, COLORS.secondary.b);
+  doc.rect(0, 50, 210, 2, 'F');
+
+  yPos = 60;
+
+  // ============================================================================
+  // REPORT INFORMATION CARD - Professional Information Box
+  // ============================================================================
+  
+  doc.setTextColor(COLORS.text.r, COLORS.text.g, COLORS.text.b);
+  
+  // Information card background
+  doc.setFillColor(COLORS.lightGray.r, COLORS.lightGray.g, COLORS.lightGray.b);
+  doc.roundedRect(SPACING.page.left, yPos, 180, 38, 2, 2, 'F');
+  
+  // Border for card
+  doc.setDrawColor(COLORS.gray.r, COLORS.gray.g, COLORS.gray.b);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(SPACING.page.left, yPos, 180, 38, 2, 2, 'S');
+  
+  yPos += 7;
+  
+  // Section title
+  doc.setFont('helvetica', FONTS.subheading.style);
+  doc.setFontSize(FONTS.subheading.size);
+  doc.setTextColor(COLORS.primary.r, COLORS.primary.g, COLORS.primary.b);
+  doc.text('Report Information', SPACING.page.left + 5, yPos);
+  doc.setTextColor(COLORS.text.r, COLORS.text.g, COLORS.text.b);
+  yPos += 7;
+
+  // Two-column layout for information
+  doc.setFont('helvetica', FONTS.body.style);
+  doc.setFontSize(FONTS.body.size);
+  
+  const col1X = SPACING.page.left + 5;
+  const col2X = 110;
+  
+  // Column 1
+  doc.text(`Generated: ${dayjs().format('MMMM D, YYYY [at] h:mm A')}`, col1X, yPos);
+  doc.text(`Generated By: ${config.generatedBy || 'System Administrator'}`, col1X, yPos + 5);
+  doc.text(`Devices Monitored: ${reportData.devices?.length || config.deviceIds.length}`, col1X, yPos + 10);
+  
+  // Column 2
+  if (reportData.period) {
+    doc.text(`Report Period:`, col2X, yPos);
+    doc.text(`${dayjs(reportData.period.start).format('MMM D, YYYY')} - ${dayjs(reportData.period.end).format('MMM D, YYYY')}`, col2X, yPos + 5);
+  }
+  doc.text(`Total Readings: ${reportData.summary?.totalReadings || 0}`, col2X, yPos + 10);
+  
+  yPos += 17;
+  
+  // Notes section (if present)
+  if (config.notes) {
+    doc.setFont('helvetica', FONTS.small.style);
+    doc.setFontSize(FONTS.small.size);
+    doc.setTextColor(COLORS.gray.r, COLORS.gray.g, COLORS.gray.b);
+    const notesText = `Notes: ${config.notes}`;
+    const splitNotes = doc.splitTextToSize(notesText, 170);
+    doc.text(splitNotes, col1X, yPos);
+    yPos += (splitNotes.length * 4);
+  }
+  
   yPos += 10;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`Generated: ${dayjs().format('MMMM D, YYYY [at] h:mm A')}`, 20, yPos);
-  doc.text(`Generated By: ${config.generatedBy || 'System Administrator'}`, 110, yPos);
-  yPos += 5;
-  
-  if (reportData.period) {
-    doc.text(
-      `Report Period: ${dayjs(reportData.period.start).format('MMM D, YYYY')} - ${dayjs(reportData.period.end).format('MMM D, YYYY')}`,
-      20,
-      yPos
-    );
-    yPos += 5;
-  }
-  
-  doc.text(`Devices Monitored: ${reportData.devices?.length || config.deviceIds.length}`, 20, yPos);
-  doc.text(`Total Readings: ${reportData.summary?.totalReadings || 0}`, 110, yPos);
-  yPos += 5;
-  
-  if (config.notes) {
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(8);
-    doc.text(`Notes: ${config.notes}`, 20, yPos);
-    doc.setFont('helvetica', 'normal');
-    yPos += 5;
-  }
-  
-  yPos += 5;
-
   // ============================================================================
-  // EXECUTIVE SUMMARY
+  // EXECUTIVE SUMMARY - Status Badge with Metrics
   // ============================================================================
   if (reportData.summary) {
-    if (yPos > 240) {
+    if (yPos > 220) {
       doc.addPage();
-      yPos = 20;
+      yPos = SPACING.page.top;
     }
 
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 31, 63);
-    doc.text('Executive Summary', 20, yPos);
-    doc.setTextColor(0, 0, 0);
-    yPos += 8;
+    // Section header
+    doc.setFont('helvetica', FONTS.heading.style);
+    doc.setFontSize(FONTS.heading.size);
+    doc.setTextColor(COLORS.primary.r, COLORS.primary.g, COLORS.primary.b);
+    doc.text('Executive Summary', SPACING.page.left, yPos);
+    
+    // Decorative underline
+    doc.setDrawColor(COLORS.secondary.r, COLORS.secondary.g, COLORS.secondary.b);
+    doc.setLineWidth(0.8);
+    doc.line(SPACING.page.left, yPos + 2, SPACING.page.left + 50, yPos + 2);
+    
+    yPos += 10;
 
     const summary = reportData.summary;
     const overallStatus = getOverallStatus(summary);
 
-    // Summary box
+    // Status badge with rounded corners
     doc.setFillColor(overallStatus.color[0], overallStatus.color[1], overallStatus.color[2]);
-    doc.rect(20, yPos - 3, 170, 30, 'F');
+    doc.roundedRect(SPACING.page.left, yPos, 180, 35, 3, 3, 'F');
     
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.text(`Overall Water Quality: ${overallStatus.status}`, 25, yPos + 3);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    yPos += 10;
+    // Status title
+    doc.setTextColor(COLORS.white.r, COLORS.white.g, COLORS.white.b);
+    doc.setFont('helvetica', FONTS.subheading.style);
+    doc.setFontSize(FONTS.subheading.size);
+    doc.text(`Overall Water Quality: ${overallStatus.status}`, SPACING.page.left + 5, yPos + 8);
+    
+    yPos += 16;
 
     // Check if we have actual data (not just zeros)
     const hasData = summary.averageTurbidity !== undefined && 
                     summary.totalReadings > 0;
 
+    doc.setFont('helvetica', FONTS.body.style);
+    doc.setFontSize(FONTS.body.size);
+
     if (hasData) {
-      doc.text(`Average Turbidity: ${summary.averageTurbidity.toFixed(2)} NTU (Safe: <= 5 NTU)`, 25, yPos);
+      doc.text(`• Average Turbidity: ${summary.averageTurbidity.toFixed(2)} NTU (Safe: ≤ 5 NTU)`, SPACING.page.left + 5, yPos);
       yPos += 5;
-      doc.text(`Average TDS: ${summary.averageTDS.toFixed(2)} ppm (Safe: <= 500 ppm)`, 25, yPos);
+      doc.text(`• Average TDS: ${summary.averageTDS.toFixed(2)} ppm (Safe: ≤ 500 ppm)`, SPACING.page.left + 5, yPos);
       yPos += 5;
-      doc.text(`Average pH: ${summary.averagePH.toFixed(2)} (Safe: 6.5 - 8.5)`, 25, yPos);
-      yPos += 5;
+      doc.text(`• Average pH: ${summary.averagePH.toFixed(2)} (Safe: 6.5 - 8.5)`, SPACING.page.left + 5, yPos);
+      yPos += 7;
     } else {
-      doc.text('No sensor data available for the selected period', 25, yPos);
+      doc.text('⚠ No sensor data available for the selected period', SPACING.page.left + 5, yPos);
       yPos += 5;
-      doc.text('Please check device connectivity and try a different date range', 25, yPos);
-      yPos += 5;
+      doc.setFontSize(FONTS.small.size);
+      doc.text('Please check device connectivity and try a different date range', SPACING.page.left + 5, yPos);
+      yPos += 7;
     }
 
-    doc.setTextColor(0, 0, 0);
-    yPos += 8;
+    doc.setTextColor(COLORS.text.r, COLORS.text.g, COLORS.text.b);
+    yPos += 10;
   }
 
-  // Process devices from backend data
+  // ============================================================================
+  // DEVICE ANALYSIS - Detailed Metrics Per Device
+  // ============================================================================
   if (reportData.devices && reportData.devices.length > 0) {
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Device Analysis', 20, yPos);
-    yPos += 7;
+    if (yPos > 240) {
+      doc.addPage();
+      yPos = SPACING.page.top;
+    }
+
+    // Section header
+    doc.setFont('helvetica', FONTS.heading.style);
+    doc.setFontSize(FONTS.heading.size);
+    doc.setTextColor(COLORS.primary.r, COLORS.primary.g, COLORS.primary.b);
+    doc.text('Device Analysis', SPACING.page.left, yPos);
+    
+    // Decorative underline
+    doc.setDrawColor(COLORS.secondary.r, COLORS.secondary.g, COLORS.secondary.b);
+    doc.setLineWidth(0.8);
+    doc.line(SPACING.page.left, yPos + 2, SPACING.page.left + 40, yPos + 2);
+    
+    yPos += 10;
 
     for (const deviceReport of reportData.devices) {
-      if (yPos > 250) {
+      if (yPos > 240) {
         doc.addPage();
-        yPos = 20;
+        yPos = SPACING.page.top;
       }
 
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Device: ${deviceReport.deviceName || deviceReport.deviceId}`, 20, yPos);
-      yPos += 5;
-
+      // Device header card
+      doc.setFillColor(COLORS.lightGray.r, COLORS.lightGray.g, COLORS.lightGray.b);
+      doc.roundedRect(SPACING.page.left, yPos - 2, 180, 10, 1, 1, 'F');
+      
+      doc.setFont('helvetica', FONTS.subheading.style);
+      doc.setFontSize(FONTS.subheading.size);
+      doc.setTextColor(COLORS.primary.r, COLORS.primary.g, COLORS.primary.b);
+      doc.text(`📍 ${deviceReport.deviceName || deviceReport.deviceId}`, SPACING.page.left + 3, yPos + 5);
+      
       if (deviceReport.location) {
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Location: ${deviceReport.location}`, 20, yPos);
-        yPos += 5;
+        doc.setFont('helvetica', FONTS.small.style);
+        doc.setFontSize(FONTS.small.size);
+        doc.setTextColor(COLORS.gray.r, COLORS.gray.g, COLORS.gray.b);
+        doc.text(`Location: ${deviceReport.location}`, SPACING.page.left + 100, yPos + 5);
       }
+      
+      yPos += 12;
 
-      // Metrics from backend
+      // Metrics table with enhanced styling
       if (deviceReport.metrics) {
         const metrics = deviceReport.metrics;
         
         autoTable(doc, {
           startY: yPos,
-          head: [['Parameter', 'Average', 'Min/Max', 'Safe Range', 'Status']],
+          head: [['Parameter', 'Average', 'Min / Max', 'Safe Range', 'Status']],
           body: [
             [
               'Turbidity',
               `${metrics.avgTurbidity?.toFixed(2) || 'N/A'} NTU`,
               `${metrics.minTurbidity?.toFixed(2) || 'N/A'} / ${metrics.maxTurbidity?.toFixed(2) || 'N/A'}`,
-              '0 - 5 NTU',
-              (metrics.avgTurbidity || 0) <= 5 ? 'GOOD' : 'WARNING'
+              '≤ 5 NTU',
+              (metrics.avgTurbidity || 0) <= 5 ? '✓ GOOD' : '⚠ WARNING'
             ],
             [
               'TDS',
               `${metrics.avgTDS?.toFixed(2) || 'N/A'} ppm`,
               `${metrics.minTDS?.toFixed(2) || 'N/A'} / ${metrics.maxTDS?.toFixed(2) || 'N/A'}`,
-              '0 - 500 ppm',
-              (metrics.avgTDS || 0) <= 500 ? 'GOOD' : 'WARNING'
+              '≤ 500 ppm',
+              (metrics.avgTDS || 0) <= 500 ? '✓ GOOD' : '⚠ WARNING'
             ],
             [
               'pH Level',
               metrics.avgPH?.toFixed(2) || 'N/A',
               `${metrics.minPH?.toFixed(2) || 'N/A'} / ${metrics.maxPH?.toFixed(2) || 'N/A'}`,
               '6.5 - 8.5',
-              ((metrics.avgPH || 0) >= 6.5 && (metrics.avgPH || 0) <= 8.5) ? 'GOOD' : 'WARNING'
+              ((metrics.avgPH || 0) >= 6.5 && (metrics.avgPH || 0) <= 8.5) ? '✓ GOOD' : '⚠ WARNING'
             ],
           ],
-          styles: { fontSize: 7, cellPadding: 2 },
-          headStyles: { fillColor: [0, 31, 63], textColor: [255, 255, 255] },
-          alternateRowStyles: { fillColor: [245, 245, 245] },
+          styles: { 
+            fontSize: FONTS.small.size, 
+            cellPadding: 3,
+            lineColor: [COLORS.gray.r, COLORS.gray.g, COLORS.gray.b],
+            lineWidth: 0.1,
+          },
+          headStyles: { 
+            fillColor: [COLORS.primary.r, COLORS.primary.g, COLORS.primary.b],
+            textColor: [COLORS.white.r, COLORS.white.g, COLORS.white.b],
+            fontSize: FONTS.body.size,
+            fontStyle: 'bold',
+          },
+          alternateRowStyles: { 
+            fillColor: [COLORS.lightGray.r, COLORS.lightGray.g, COLORS.lightGray.b] 
+          },
           columnStyles: {
+            0: { fontStyle: 'bold', cellWidth: 30 },
             4: { 
-              cellWidth: 20,
+              cellWidth: 25,
               fontStyle: 'bold',
             }
           },
           didParseCell: function(data: any) {
             if (data.column.index === 4) {
               const status = data.cell.raw;
-              if (status === 'GOOD') {
-                data.cell.styles.textColor = [82, 196, 26];
+              if (status.includes('GOOD')) {
+                data.cell.styles.textColor = [COLORS.success.r, COLORS.success.g, COLORS.success.b];
+              } else if (status.includes('WARNING')) {
+                data.cell.styles.textColor = [COLORS.warning.r, COLORS.warning.g, COLORS.warning.b];
               } else {
-                data.cell.styles.textColor = [250, 173, 20];
+                data.cell.styles.textColor = [COLORS.danger.r, COLORS.danger.g, COLORS.danger.b];
               }
             }
           },
+          margin: { left: SPACING.page.left, right: SPACING.page.right },
         });
 
         yPos = (doc as jsPDFWithAutoTable).lastAutoTable?.finalY ?? yPos + 10;
+        yPos += 5;
       }
 
-      // Alerts from backend
+      // Alerts badge section
       if (deviceReport.alerts && deviceReport.alerts.length > 0) {
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Alerts:', 20, yPos);
-        yPos += 5;
+        if (yPos > 250) {
+          doc.addPage();
+          yPos = SPACING.page.top;
+        }
 
-        deviceReport.alerts.forEach((alert: any) => {
-          doc.setFont('helvetica', 'normal');
-          doc.setFontSize(8);
-          const alertColor: [number, number, number] = alert.severity === 'high' ? [255, 77, 79] : [250, 173, 20];
-          doc.setTextColor(...alertColor);
-          doc.text(`• ${alert.message}`, 25, yPos);
-          doc.setTextColor(0, 0, 0);
+        // Alert section background
+        doc.setFillColor(COLORS.warning.r, COLORS.warning.g, COLORS.warning.b);
+        doc.setFillColor(255, 250, 240); // Light orange background
+        doc.roundedRect(SPACING.page.left, yPos, 180, 8, 1, 1, 'F');
+        
+        doc.setFont('helvetica', FONTS.body.style);
+        doc.setFontSize(FONTS.body.size);
+        doc.setTextColor(COLORS.warning.r, COLORS.warning.g, COLORS.warning.b);
+        doc.text(`⚠ Active Alerts (${deviceReport.alerts.length})`, SPACING.page.left + 3, yPos + 5);
+        yPos += 10;
+
+        deviceReport.alerts.slice(0, 5).forEach((alert: any) => {
+          doc.setFont('helvetica', FONTS.small.style);
+          doc.setFontSize(FONTS.small.size);
+          const alertColor = alert.severity === 'high' ? COLORS.danger : COLORS.warning;
+          doc.setTextColor(alertColor.r, alertColor.g, alertColor.b);
+          doc.text(`• ${alert.message}`, SPACING.page.left + 5, yPos);
+          doc.setTextColor(COLORS.text.r, COLORS.text.g, COLORS.text.b);
           yPos += 4;
         });
+        
+        if (deviceReport.alerts.length > 5) {
+          doc.setTextColor(COLORS.gray.r, COLORS.gray.g, COLORS.gray.b);
+          doc.text(`... and ${deviceReport.alerts.length - 5} more alerts`, SPACING.page.left + 5, yPos);
+        }
+        
+        yPos += 8;
+      } else {
         yPos += 5;
       }
     }
   }
 
   // ============================================================================
-  // RECOMMENDATIONS SECTION (if issues found)
+  // RECOMMENDATIONS SECTION - Action Items
   // ============================================================================
   const hasIssues = reportData.devices?.some((d: any) => d.alerts && d.alerts.length > 0);
   if (hasIssues) {
-    if (yPos > 240) {
+    if (yPos > 220) {
       doc.addPage();
-      yPos = 20;
+      yPos = SPACING.page.top;
     }
 
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(0, 31, 63);
-    doc.text('Recommendations & Action Items', 20, yPos);
-    doc.setTextColor(0, 0, 0);
-    yPos += 8;
+    // Section header
+    doc.setFont('helvetica', FONTS.heading.style);
+    doc.setFontSize(FONTS.heading.size);
+    doc.setTextColor(COLORS.primary.r, COLORS.primary.g, COLORS.primary.b);
+    doc.text('Recommendations & Action Items', SPACING.page.left, yPos);
+    
+    // Decorative underline
+    doc.setDrawColor(COLORS.secondary.r, COLORS.secondary.g, COLORS.secondary.b);
+    doc.setLineWidth(0.8);
+    doc.line(SPACING.page.left, yPos + 2, SPACING.page.left + 80, yPos + 2);
+    
+    yPos += 10;
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
+    doc.setFont('helvetica', FONTS.body.style);
+    doc.setFontSize(FONTS.body.size);
+    doc.setTextColor(COLORS.text.r, COLORS.text.g, COLORS.text.b);
     
     const recommendations = generateRecommendations(reportData);
     recommendations.forEach((rec, index) => {
-      if (yPos > 270) {
+      if (yPos > 260) {
         doc.addPage();
-        yPos = 20;
+        yPos = SPACING.page.top;
       }
-      doc.text(`${index + 1}. ${rec}`, 20, yPos, { maxWidth: 170 });
-      yPos += 7;
+      
+      // Numbered recommendation with bullet icon
+      doc.setTextColor(COLORS.secondary.r, COLORS.secondary.g, COLORS.secondary.b);
+      doc.text(`${index + 1}.`, SPACING.page.left, yPos);
+      doc.setTextColor(COLORS.text.r, COLORS.text.g, COLORS.text.b);
+      
+      const recLines = doc.splitTextToSize(rec, 170);
+      doc.text(recLines, SPACING.page.left + 8, yPos);
+      yPos += (recLines.length * 5) + 3;
     });
   }
 
   // ============================================================================
-  // FOOTER
+  // PROFESSIONAL FOOTER - Added to all pages
   // ============================================================================
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(128, 128, 128);
+    
+    // Footer separator line
+    doc.setDrawColor(COLORS.gray.r, COLORS.gray.g, COLORS.gray.b);
+    doc.setLineWidth(0.5);
+    doc.line(SPACING.page.left, 280, 195, 280);
+    
+    // Page number
+    doc.setFont('helvetica', FONTS.small.style);
+    doc.setFontSize(FONTS.small.size);
+    doc.setTextColor(COLORS.gray.r, COLORS.gray.g, COLORS.gray.b);
     doc.text(`Page ${i} of ${pageCount}`, 105, 285, { align: 'center' });
+    
+    // Footer text with report metadata
+    doc.setFontSize(FONTS.tiny.size);
     doc.text(
-      `Generated by IoT Water Quality Monitoring System - ${dayjs().format('YYYY')} | Report ID: ${reportId}`,
+      `IoT Water Quality Monitoring System © ${dayjs().format('YYYY')} | Report ID: ${reportId}`,
       105,
-      290,
+      289,
+      { align: 'center' }
+    );
+    
+    // Generation timestamp
+    doc.text(
+      `Generated: ${dayjs().format('YYYY-MM-DD HH:mm:ss')}`,
+      105,
+      293,
       { align: 'center' }
     );
   }

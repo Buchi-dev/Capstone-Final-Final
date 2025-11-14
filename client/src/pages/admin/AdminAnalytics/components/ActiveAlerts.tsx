@@ -1,48 +1,62 @@
+/**
+ * ActiveAlerts Component
+ * 
+ * Displays active water quality alerts
+ */
 import { Alert, Space, Tag, Typography } from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
-import type { AlertData } from '../../../../schemas';
+import { memo } from 'react';
+import type { WaterQualityAlert } from '../../../../schemas';
 
 const { Text } = Typography;
 
 interface ActiveAlertsProps {
-  alerts: AlertData[];
+  alerts: WaterQualityAlert[];
 }
 
 const getSeverityColor = (severity: string): 'error' | 'warning' | 'default' | 'success' => {
-  switch (severity.toLowerCase()) {
-    case 'high':
-    case 'critical':
+  switch (severity) {
+    case 'Critical':
       return 'error';
-    case 'warning':
-    case 'medium':
+    case 'Warning':
       return 'warning';
-    case 'low':
-    case 'advisory':
+    case 'Advisory':
       return 'success';
     default:
       return 'default';
   }
 };
 
-export const ActiveAlerts = ({ alerts }: ActiveAlertsProps) => {
-  if (alerts.length === 0) {
+export const ActiveAlerts = memo<ActiveAlertsProps>(({ alerts }) => {
+  // Only show active alerts
+  const activeAlerts = alerts.filter(alert => alert.status === 'Active');
+
+  if (activeAlerts.length === 0) {
     return null;
   }
 
   return (
     <Alert
-      message={`${alerts.length} Active Alert(s) Detected`}
+      message={`${activeAlerts.length} Active Alert(s) Detected`}
       description={
         <Space direction="vertical" style={{ width: '100%' }}>
-          {alerts.map((alert, index) => (
-            <div key={index}>
+          {activeAlerts.slice(0, 5).map((alert) => (
+            <div key={alert.alertId}>
               <Tag color={getSeverityColor(alert.severity)}>
                 {alert.severity.toUpperCase()}
               </Tag>
-              <Text strong>{alert.parameter}: </Text>
-              <Text>{alert.message} (Value: {alert.value})</Text>
+              <Text strong>{alert.parameter.toUpperCase()}: </Text>
+              <Text>{alert.message}</Text>
+              {alert.currentValue && (
+                <Text type="secondary"> (Value: {alert.currentValue.toFixed(2)})</Text>
+              )}
             </div>
           ))}
+          {activeAlerts.length > 5 && (
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              And {activeAlerts.length - 5} more alerts...
+            </Text>
+          )}
         </Space>
       }
       type="warning"
@@ -51,4 +65,6 @@ export const ActiveAlerts = ({ alerts }: ActiveAlertsProps) => {
       style={{ marginBottom: 16 }}
     />
   );
-};
+});
+
+ActiveAlerts.displayName = 'ActiveAlerts';

@@ -1,3 +1,8 @@
+/**
+ * DeviceStatusOverview Component
+ * 
+ * Displays device status distribution and summary from real-time data
+ */
 import { Row, Col, Card, Space, Typography, Progress } from 'antd';
 import {
   ApiOutlined,
@@ -5,6 +10,7 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
 } from '@ant-design/icons';
+import { memo } from 'react';
 import {
   PieChart,
   Pie,
@@ -14,26 +20,38 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useThemeToken } from '../../../../theme';
-import type { DeviceStatusSummary as DeviceStatusData } from '../../../../schemas';
+import type { DeviceWithSensorData } from '../../../../hooks';
+import type { DeviceStats } from '../hooks';
 
 const { Text } = Typography;
 
 interface DeviceStatusOverviewProps {
-  deviceStatusData: DeviceStatusData | null;
+  devices: DeviceWithSensorData[];
+  deviceStats: DeviceStats;
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
 
-export const DeviceStatusOverview = ({ deviceStatusData }: DeviceStatusOverviewProps) => {
+export const DeviceStatusOverview = memo<DeviceStatusOverviewProps>(({ 
+  devices, 
+  deviceStats 
+}) => {
   const token = useThemeToken();
-  const statusBreakdown = deviceStatusData?.statusBreakdown;
 
-  const deviceStatusPieData = statusBreakdown ? [
+  // Calculate status breakdown
+  const statusBreakdown = {
+    online: deviceStats.online,
+    offline: deviceStats.offline,
+    error: devices.filter(d => d.status === 'error').length,
+    maintenance: devices.filter(d => d.status === 'maintenance').length,
+  };
+
+  const deviceStatusPieData = [
     { name: 'Online', value: statusBreakdown.online },
     { name: 'Offline', value: statusBreakdown.offline },
     { name: 'Error', value: statusBreakdown.error },
     { name: 'Maintenance', value: statusBreakdown.maintenance },
-  ].filter(item => item.value > 0) : [];
+  ].filter(item => item.value > 0);
 
   return (
     <Row gutter={[16, 16]}>
@@ -89,8 +107,8 @@ export const DeviceStatusOverview = ({ deviceStatusData }: DeviceStatusOverviewP
                 </Col>
               </Row>
               <Progress 
-                percent={deviceStatusData?.totalDevices 
-                  ? (statusBreakdown?.online || 0) / deviceStatusData.totalDevices * 100 
+                percent={deviceStats.total 
+                  ? (statusBreakdown.online / deviceStats.total) * 100 
                   : 0} 
                 showInfo={false}
                 strokeColor={token.colorSuccess}
@@ -107,20 +125,20 @@ export const DeviceStatusOverview = ({ deviceStatusData }: DeviceStatusOverviewP
                 </Col>
                 <Col>
                   <Text strong style={{ fontSize: 24 }}>
-                    {statusBreakdown?.offline || 0}
+                    {statusBreakdown.offline}
                   </Text>
                 </Col>
               </Row>
               <Progress 
-                percent={deviceStatusData?.totalDevices 
-                  ? (statusBreakdown?.offline || 0) / deviceStatusData.totalDevices * 100 
+                percent={deviceStats.total 
+                  ? (statusBreakdown.offline / deviceStats.total) * 100 
                   : 0} 
                 showInfo={false}
                 strokeColor={token.colorTextSecondary}
               />
             </div>
 
-            {(statusBreakdown?.error || 0) > 0 && (
+            {statusBreakdown.error > 0 && (
               <div>
                 <Row justify="space-between" align="middle">
                   <Col>
@@ -131,7 +149,7 @@ export const DeviceStatusOverview = ({ deviceStatusData }: DeviceStatusOverviewP
                   </Col>
                   <Col>
                     <Text strong style={{ fontSize: 24, color: token.colorError }}>
-                      {statusBreakdown?.error || 0}
+                      {statusBreakdown.error}
                     </Text>
                   </Col>
                 </Row>
@@ -142,4 +160,6 @@ export const DeviceStatusOverview = ({ deviceStatusData }: DeviceStatusOverviewP
       </Col>
     </Row>
   );
-};
+});
+
+DeviceStatusOverview.displayName = 'DeviceStatusOverview';

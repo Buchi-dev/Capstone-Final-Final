@@ -19,6 +19,9 @@ export interface AlertStats {
  * 
  * Purpose: Calculate statistics from filtered alerts for dashboard display
  * 
+ * ⚠️ IMPORTANT: Critical/Warning/Advisory counts only include Active alerts
+ * Resolved or Acknowledged alerts are NOT counted in severity stats
+ * 
  * @param alerts - Array of water quality alerts (from global hook or filtered)
  * @returns Statistics object with counts for different alert states
  */
@@ -28,8 +31,9 @@ export const useAlertStats = (alerts: WaterQualityAlert[]): AlertStats => {
     active: alerts.filter((a) => a.status === 'Active').length,
     acknowledged: alerts.filter((a) => a.status === 'Acknowledged').length,
     resolved: alerts.filter((a) => a.status === 'Resolved').length,
-    critical: alerts.filter((a) => a.severity === 'Critical').length,
-    warning: alerts.filter((a) => a.severity === 'Warning').length,
-    advisory: alerts.filter((a) => a.severity === 'Advisory').length,
+    // Only count Active alerts by severity (exclude Resolved/Acknowledged)
+    critical: alerts.filter((a) => a.status === 'Active' && a.severity === 'Critical').length,
+    warning: alerts.filter((a) => a.status === 'Active' && a.severity === 'Warning').length,
+    advisory: alerts.filter((a) => a.status === 'Active' && a.severity === 'Advisory').length,
   }), [alerts]);
 };

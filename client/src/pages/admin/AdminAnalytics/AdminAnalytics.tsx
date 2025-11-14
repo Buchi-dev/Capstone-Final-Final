@@ -1,12 +1,23 @@
-import { useState, useEffect } from 'react';
-import { Space, Spin, message } from 'antd';
+/**
+ * AdminAnalytics - Analytics Dashboard Page
+ * 
+ * Displays comprehensive water quality analytics including:
+ * - System health metrics
+ * - Real-time device readings
+ * - Water quality alerts
+ * - Historical trends and charts
+ * 
+ * Architecture: Uses GLOBAL read hooks for real-time data
+ */
+import { Space, Spin } from 'antd';
+import { memo } from 'react';
 import { AdminLayout } from '../../../components/layouts';
-import { useCall_Reports } from '../../../hooks';
-import { useAnalyticsProcessing } from './hooks';
-import type { 
-  WaterQualityReportData, 
-  DeviceStatusSummary 
-} from '../../../schemas';
+import { 
+  useRealtime_Devices, 
+  useRealtime_Alerts,
+  useRealtime_MQTTMetrics 
+} from '../../../hooks';
+import { useAnalyticsProcessing, useAnalyticsStats } from './hooks';
 import {
   AnalyticsHeader,
   KeyMetrics,
@@ -18,46 +29,44 @@ import {
   WaterQualityAssessment,
 } from './components';
 
-export const AdminAnalytics = () => {
-  // GLOBAL WRITE HOOK - Generate reports
+export const AdminAnalytics = memo(() => {
+  // ✅ GLOBAL READ HOOKS - Real-time data from service layer
+  const {
+    devices,
+    isLoading: devicesLoading,
+  } = useRealtime_Devices({ includeMetadata: true });
+
+  const {
+    alerts,
+    isLoading: alertsLoading,
+  } = useRealtime_Alerts({ maxAlerts: 100 });
+
+  const {
+    health: mqttHealth,
+    status: mqttStatus,
+    isLoading: mqttLoading,
+  } = useRealtime_MQTTMetrics({ pollInterval: 3000 });
+
+  // ✅ LOCAL HOOK - Calculate analytics statistics (UI logic only)
   const { 
-    generateWaterQualityReport,
-    generateDeviceStatusReport,
-    isLoading: reportsLoading,
-  } = useCall_Reports();
+    deviceStats, 
+    alertStats,
+    waterQualityMetrics,
+    systemHealth 
+  } = useAnalyticsStats(devices, alerts, mqttHealth, mqttStatus);
 
-  // LOCAL STATE - Store report data
-  const [waterQualityData, setWaterQualityData] = useState<WaterQualityReportData | null>(null);
-  const [deviceStatusData, setDeviceStatusData] = useState<DeviceStatusSummary | null>(null);
-
-  // LOCAL HOOK - Process data for charts (UI logic only)
+  // ✅ LOCAL HOOK - Process data for charts (UI logic only)
   const { 
     timeSeriesData, 
     parameterDistribution, 
     parameterComparisonData 
-  } = useAnalyticsProcessing(waterQualityData);
+  } = useAnalyticsProcessing(devices);
 
-  // Fetch reports on mount
-  useEffect(() => {
-    const fetchReports = async () => {
-      try {
-        const [wqReport, dsReport] = await Promise.all([
-          generateWaterQualityReport(),
-          generateDeviceStatusReport()
-        ]);
-        setWaterQualityData(wqReport);
-        setDeviceStatusData(dsReport.summary);
-      } catch (error) {
-        console.error('Error fetching analytics data:', error);
-        message.error('Failed to load analytics data');
-      }
-    };
-    fetchReports();
-  }, [generateWaterQualityReport, generateDeviceStatusReport]);
+  // Combined loading state
+  const loading = devicesLoading || alertsLoading || mqttLoading;
 
-  const loading = reportsLoading;
-
-  if (loading && !waterQualityData) {
+  // Initial loading state
+  if (loading && devices.length === 0) {
     return (
       <AdminLayout>
         <div style={{ textAlign: 'center', padding: '100px 0' }}>
@@ -67,27 +76,32 @@ export const AdminAnalytics = () => {
     );
   }
 
-  const metrics = waterQualityData?.devices?.[0]?.metrics;
-  const alerts = waterQualityData?.devices?.[0]?.alerts || [];
-
   return (
     <AdminLayout>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <AnalyticsHeader />
         
         <KeyMetrics 
-          deviceStatusData={deviceStatusData}
-          totalReadings={metrics?.totalReadings || 0}
-          alerts={alerts}
+          systemHealth={systemHealth}
+          deviceStats={deviceStats}
+          alertStats={alertStats}
+          waterQualityMetrics={waterQualityMetrics}
+          loading={loading}
         />
 
         <WaterQualityStandards />
 
         <ActiveAlerts alerts={alerts} />
 
-        <DeviceStatusOverview deviceStatusData={deviceStatusData} />
+        <DeviceStatusOverview 
+          devices={devices}
+          deviceStats={deviceStats}
+        />
 
-        <WaterQualityMetrics metrics={metrics} />
+        <WaterQualityMetrics 
+          metrics={waterQualityMetrics}
+          devices={devices}
+        />
 
         <TimeSeriesCharts 
           timeSeriesData={timeSeriesData}
@@ -96,10 +110,11 @@ export const AdminAnalytics = () => {
         />
 
         <WaterQualityAssessment 
-          metrics={metrics}
-          waterQualityData={waterQualityData}
+          metrics={waterQualityMetrics}
+          devices={devices}
+          alerts={alerts}
         />
       </Space>
     </AdminLayout>
   );
-};
+});

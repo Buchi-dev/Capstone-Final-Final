@@ -1,4 +1,13 @@
+/**
+ * WaterQualityAssessment Component
+ * 
+ * Displays water quality assessment and regulatory standards compliance
+ */
 import { Card, Row, Col, Space, Typography, Tag } from 'antd';
+import { memo } from 'react';
+import type { WaterQualityMetrics } from '../hooks';
+import type { DeviceWithSensorData } from '../../../../hooks';
+import type { WaterQualityAlert } from '../../../../schemas';
 
 const { Text } = Typography;
 
@@ -26,24 +35,25 @@ const WATER_QUALITY_THRESHOLDS = {
 };
 
 interface WaterQualityAssessmentProps {
-  metrics: {
-    avgPH: number;
-    avgTDS: number;
-    avgTurbidity: number;
-    totalReadings: number;
-  } | undefined;
-  waterQualityData: {
-    period?: {
-      start: string;
-      end: string;
-    };
-  } | null;
+  metrics: WaterQualityMetrics;
+  devices: DeviceWithSensorData[];
+  alerts: WaterQualityAlert[];
 }
 
-export const WaterQualityAssessment = ({ metrics, waterQualityData }: WaterQualityAssessmentProps) => {
-  if (!metrics) {
-    return null;
+export const WaterQualityAssessment = memo<WaterQualityAssessmentProps>(({ 
+  metrics, 
+  devices,
+  alerts 
+}) => {
+  if (!metrics || devices.length === 0) {
+    return (
+      <Card title="Water Quality Assessment & Standards">
+        <Text type="secondary">No water quality data available for assessment</Text>
+      </Card>
+    );
   }
+
+  const activeAlerts = alerts.filter(a => a.status === 'Active');
 
   return (
     <Card title="Water Quality Assessment & Standards">
@@ -53,10 +63,10 @@ export const WaterQualityAssessment = ({ metrics, waterQualityData }: WaterQuali
             <Text strong>Current Water Quality Status</Text>
             <div>
               <Text>pH Level: </Text>
-              <Tag color={(metrics.avgPH >= WATER_QUALITY_THRESHOLDS.pH.min && 
-                            metrics.avgPH <= WATER_QUALITY_THRESHOLDS.pH.max) ? 'success' : 'error'}>
-                {(metrics.avgPH >= WATER_QUALITY_THRESHOLDS.pH.min && 
-                  metrics.avgPH <= WATER_QUALITY_THRESHOLDS.pH.max) ? 'Within Standard' : 'Out of Range'}
+              <Tag color={(metrics.averagePh >= WATER_QUALITY_THRESHOLDS.pH.min && 
+                            metrics.averagePh <= WATER_QUALITY_THRESHOLDS.pH.max) ? 'success' : 'error'}>
+                {(metrics.averagePh >= WATER_QUALITY_THRESHOLDS.pH.min && 
+                  metrics.averagePh <= WATER_QUALITY_THRESHOLDS.pH.max) ? 'Within Standard' : 'Out of Range'}
               </Tag>
               <Text type="secondary" style={{ fontSize: '12px', marginLeft: 8 }}>
                 ({WATER_QUALITY_THRESHOLDS.pH.min}-{WATER_QUALITY_THRESHOLDS.pH.max})
@@ -65,13 +75,13 @@ export const WaterQualityAssessment = ({ metrics, waterQualityData }: WaterQuali
             <div>
               <Text>TDS Level: </Text>
               <Tag color={
-                metrics.avgTDS <= WATER_QUALITY_THRESHOLDS.TDS.excellent ? 'success' : 
-                metrics.avgTDS <= WATER_QUALITY_THRESHOLDS.TDS.good ? 'processing' :
-                metrics.avgTDS <= WATER_QUALITY_THRESHOLDS.TDS.acceptable ? 'warning' : 'error'
+                metrics.averageTds <= WATER_QUALITY_THRESHOLDS.TDS.excellent ? 'success' : 
+                metrics.averageTds <= WATER_QUALITY_THRESHOLDS.TDS.good ? 'processing' :
+                metrics.averageTds <= WATER_QUALITY_THRESHOLDS.TDS.acceptable ? 'warning' : 'error'
               }>
-                {metrics.avgTDS <= WATER_QUALITY_THRESHOLDS.TDS.excellent ? 'Excellent' : 
-                 metrics.avgTDS <= WATER_QUALITY_THRESHOLDS.TDS.good ? 'Good' :
-                 metrics.avgTDS <= WATER_QUALITY_THRESHOLDS.TDS.acceptable ? 'Acceptable' : 'Unsafe'}
+                {metrics.averageTds <= WATER_QUALITY_THRESHOLDS.TDS.excellent ? 'Excellent' : 
+                 metrics.averageTds <= WATER_QUALITY_THRESHOLDS.TDS.good ? 'Good' :
+                 metrics.averageTds <= WATER_QUALITY_THRESHOLDS.TDS.acceptable ? 'Acceptable' : 'Unsafe'}
               </Tag>
               <Text type="secondary" style={{ fontSize: '12px', marginLeft: 8 }}>
                 (EPPA/DOH: ≤{WATER_QUALITY_THRESHOLDS.TDS.maxEPPA} ppm)
@@ -79,12 +89,25 @@ export const WaterQualityAssessment = ({ metrics, waterQualityData }: WaterQuali
             </div>
             <div>
               <Text>Turbidity: </Text>
-              <Tag color={metrics.avgTurbidity <= WATER_QUALITY_THRESHOLDS.Turbidity.max ? 'success' : 'error'}>
-                {metrics.avgTurbidity <= WATER_QUALITY_THRESHOLDS.Turbidity.max ? 'Clear' : 'High Turbidity'}
+              <Tag color={metrics.averageTurbidity <= WATER_QUALITY_THRESHOLDS.Turbidity.max ? 'success' : 'error'}>
+                {metrics.averageTurbidity <= WATER_QUALITY_THRESHOLDS.Turbidity.max ? 'Clear' : 'High Turbidity'}
               </Tag>
               <Text type="secondary" style={{ fontSize: '12px', marginLeft: 8 }}>
                 (Max: {WATER_QUALITY_THRESHOLDS.Turbidity.max} NTU)
               </Text>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <Text strong>Active Monitoring</Text>
+              <div style={{ marginTop: 8 }}>
+                <Text type="secondary" style={{ fontSize: '12px' }}>
+                  Monitoring {devices.length} device{devices.length !== 1 ? 's' : ''} with {metrics.totalReadings} total readings
+                </Text>
+              </div>
+              <div>
+                <Text type="secondary" style={{ fontSize: '12px' }}>
+                  {activeAlerts.length} active alert{activeAlerts.length !== 1 ? 's' : ''} requiring attention
+                </Text>
+              </div>
             </div>
           </Space>
         </Col>
@@ -126,34 +149,8 @@ export const WaterQualityAssessment = ({ metrics, waterQualityData }: WaterQuali
           </Space>
         </Col>
       </Row>
-      
-      <Row gutter={[16, 16]} style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
-        <Col xs={24} md={12}>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Text strong>Data Collection Period</Text>
-            <div>
-              <Text>Start: </Text>
-              <Text type="secondary">
-                {waterQualityData?.period?.start 
-                  ? new Date(waterQualityData.period.start).toLocaleDateString() 
-                  : 'N/A'}
-              </Text>
-            </div>
-            <div>
-              <Text>End: </Text>
-              <Text type="secondary">
-                {waterQualityData?.period?.end 
-                  ? new Date(waterQualityData.period.end).toLocaleDateString() 
-                  : 'N/A'}
-              </Text>
-            </div>
-            <div>
-              <Text>Total Readings: </Text>
-              <Text strong>{metrics.totalReadings || 0}</Text>
-            </div>
-          </Space>
-        </Col>
-      </Row>
     </Card>
   );
-};
+});
+
+WaterQualityAssessment.displayName = 'WaterQualityAssessment';

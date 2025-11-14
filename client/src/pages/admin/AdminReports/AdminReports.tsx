@@ -27,8 +27,10 @@ import {
   Divider,
   Statistic,
   Badge,
-  FloatButton
+  FloatButton,
+  message
 } from 'antd';
+import dayjs from 'dayjs';
 import { 
   FileTextOutlined, 
   DashboardOutlined,
@@ -58,6 +60,14 @@ import { useRealtime_Devices, useCall_Reports } from '../../../hooks';
 // Local UI Hooks
 import { useReportHistory } from './hooks';
 
+// PDF Templates
+import {
+  generateWaterQualityReport,
+  generateDeviceStatusReport,
+  generateDataSummaryReport,
+  generateComplianceReport,
+} from './templates';
+
 const { Title, Paragraph } = Typography;
 
 type ViewMode = 'wizard' | 'dashboard' | 'history';
@@ -81,10 +91,10 @@ export const AdminReports = () => {
   // Global hooks
   const { devices: devicesWithReadings, isLoading: devicesLoading } = useRealtime_Devices();
   const { 
-    generateWaterQualityReport,
-    generateDeviceStatusReport,
-    generateDataSummaryReport,
-    generateComplianceReport,
+    generateWaterQualityReport: fetchWaterQualityData,
+    generateDeviceStatusReport: fetchDeviceStatusData,
+    generateDataSummaryReport: fetchDataSummaryData,
+    generateComplianceReport: fetchComplianceData,
     isLoading: generating,
     reset: resetReportState
   } = useCall_Reports();
@@ -116,47 +126,110 @@ export const AdminReports = () => {
     try {
       resetReportState();
       
-      const { dateRange, devices: deviceIds } = values;
+      const { dateRange, devices: deviceIds, title, notes, includeStatistics, includeRawData } = values;
       const startDate = dateRange?.[0]?.valueOf();
       const endDate = dateRange?.[1]?.valueOf();
 
-      let report: any;
+      console.log('[AdminReports] Starting report generation:', {
+        type: selectedType,
+        deviceIds,
+        startDate: startDate ? new Date(startDate).toISOString() : 'none',
+        endDate: endDate ? new Date(endDate).toISOString() : 'none'
+      });
+
+      // Step 1: Fetch report data from Cloud Function
+      let reportData: any;
 
       switch (selectedType) {
         case 'water_quality':
-          report = await generateWaterQualityReport(deviceIds, startDate, endDate);
+          reportData = await fetchWaterQualityData(deviceIds, startDate, endDate);
           break;
         case 'device_status':
-          report = await generateDeviceStatusReport(deviceIds);
+          reportData = await fetchDeviceStatusData(deviceIds);
           break;
         case 'data_summary':
-          report = await generateDataSummaryReport(deviceIds, startDate, endDate);
+          reportData = await fetchDataSummaryData(deviceIds, startDate, endDate);
           break;
         case 'compliance':
-          report = await generateComplianceReport(deviceIds, startDate, endDate);
+          reportData = await fetchComplianceData(deviceIds, startDate, endDate);
           break;
       }
 
-      if (report) {
-        const reportTypeLabels = {
-          water_quality: 'Water Quality Report',
-          device_status: 'Device Status Report',
-          data_summary: 'Data Summary Report',
-          compliance: 'Compliance Report',
+      console.log('[AdminReports] Report data fetched:', reportData);
+
+      if (reportData) {
+        // Step 2: Create report configuration
+        const reportConfig = {
+          type: selectedType,
+          title: title || `${selectedType.replace(/_/g, ' ').toUpperCase()} Report`,
+          deviceIds: deviceIds || [],
+          dateRange: dateRange || null,
+          generatedBy: 'Administrator', // TODO: Get from auth context
+          notes: notes || '',
+          includeStatistics: includeStatistics !== false,
+          includeRawData: includeRawData !== false,
+          includeCharts: true,
         };
 
-        const historyItem = {
-          id: `report-${Date.now()}`,
-          type: selectedType,
-          title: reportTypeLabels[selectedType],
-          generatedAt: new Date(),
-          devices: deviceIds?.length || 0,
-          pages: 1,
-        };
-        addReportToHistory(historyItem);
+        console.log('[AdminReports] Report config:', reportConfig);
+
+        // Step 3: Generate PDF using appropriate template
+        let pdfDoc: any;
+        
+        try {
+          switch (selectedType) {
+            case 'water_quality':
+              pdfDoc = await generateWaterQualityReport(reportConfig, reportData);
+              break;
+            case 'device_status':
+              pdfDoc = await generateDeviceStatusReport(reportConfig, reportData);
+              break;
+            case 'data_summary':
+              pdfDoc = await generateDataSummaryReport(reportConfig, reportData);
+              break;
+            case 'compliance':
+              pdfDoc = await generateComplianceReport(reportConfig, reportData);
+              break;
+          }
+
+          console.log('[AdminReports] PDF generated successfully');
+
+          // Step 4: Download the PDF
+          if (pdfDoc) {
+            const filename = `${selectedType}_report_${dayjs().format('YYYY-MM-DD_HHmmss')}.pdf`;
+            pdfDoc.save(filename);
+            console.log('[AdminReports] PDF downloaded:', filename);
+          }
+
+          // Step 5: Add to history
+          const reportTypeLabels = {
+            water_quality: 'Water Quality Report',
+            device_status: 'Device Status Report',
+            data_summary: 'Data Summary Report',
+            compliance: 'Compliance Report',
+          };
+
+          const historyItem = {
+            id: `report-${Date.now()}`,
+            type: selectedType,
+            title: reportConfig.title,
+            generatedAt: new Date(),
+            devices: deviceIds?.length || 0,
+            pages: pdfDoc?.getNumberOfPages() || 1,
+          };
+          addReportToHistory(historyItem);
+
+          // Show success message
+          message.success(`${reportTypeLabels[selectedType]} generated successfully!`);
+        } catch (pdfError) {
+          console.error('[AdminReports] PDF generation failed:', pdfError);
+          message.error('Failed to generate PDF. Please check the console for details.');
+          throw pdfError;
+        }
       }
     } catch (error) {
       console.error('[AdminReports] Report generation failed:', error);
+      message.error(error instanceof Error ? error.message : 'Failed to generate report');
     }
   };
 

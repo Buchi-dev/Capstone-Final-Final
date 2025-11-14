@@ -73,22 +73,26 @@ export const calculateDeviceStats = (devices: DeviceWithSensorData[]): DeviceSta
 /**
  * Calculate alert statistics from alert array
  * 
+ * ⚠️ IMPORTANT: Critical/Warning/Advisory counts only include Active alerts
+ * Resolved or Acknowledged alerts are NOT counted in severity stats
+ * 
  * @param alerts - Array of water quality alerts
  * @returns Alert statistics object
  * 
  * @example
  * ```tsx
  * const { alertStats } = useDashboardStats(devices, alerts);
- * console.log(`${alertStats.critical} critical alerts`);
+ * console.log(`${alertStats.critical} critical alerts`); // Only Active Critical
  * ```
  */
 export const calculateAlertStats = (alerts: WaterQualityAlert[]): AlertStats => {
   return {
     total: alerts.length,
     active: alerts.filter((a) => a.status === 'Active').length,
-    critical: alerts.filter((a) => a.severity === 'Critical').length,
-    warning: alerts.filter((a) => a.severity === 'Warning').length,
-    advisory: alerts.filter((a) => a.severity === 'Advisory').length,
+    // Only count Active alerts by severity (exclude Resolved/Acknowledged)
+    critical: alerts.filter((a) => a.status === 'Active' && a.severity === 'Critical').length,
+    warning: alerts.filter((a) => a.status === 'Active' && a.severity === 'Warning').length,
+    advisory: alerts.filter((a) => a.status === 'Active' && a.severity === 'Advisory').length,
     acknowledged: alerts.filter((a) => a.status === 'Acknowledged').length,
     resolved: alerts.filter((a) => a.status === 'Resolved').length,
   };
