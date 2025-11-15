@@ -66,6 +66,18 @@ export const UpdateUserRequestSchema = z.object({
   role: UserRoleSchema.optional(),
 });
 
+/**
+ * Update User Profile Request Schema
+ */
+export const UpdateUserProfileRequestSchema = z.object({
+  userId: z.string().min(1, 'User ID is required'),
+  firstname: z.string().min(1, 'First name is required').optional(),
+  middlename: z.string().optional(),
+  lastname: z.string().min(1, 'Last name is required').optional(),
+  department: z.string().min(1, 'Department is required').optional(),
+  phoneNumber: z.string().regex(/^\d{11}$/, 'Phone number must be exactly 11 digits'),
+});
+
 // ============================================================================
 // RESPONSE SCHEMAS
 // ============================================================================
@@ -94,6 +106,22 @@ export const UpdateUserResponseSchema = z.object({
 });
 
 /**
+ * Update User Profile Response Schema
+ */
+export const UpdateUserProfileResponseSchema = z.object({
+  success: z.boolean(),
+  message: z.string(),
+  userId: z.string(),
+  updates: z.object({
+    firstname: z.string().optional(),
+    middlename: z.string().optional(),
+    lastname: z.string().optional(),
+    department: z.string().optional(),
+    phoneNumber: z.string().optional(),
+  }),
+});
+
+/**
  * List Users Response Schema
  */
 export const ListUsersResponseSchema = z.object({
@@ -111,6 +139,8 @@ export type UserRole = z.infer<typeof UserRoleSchema>;
 export type UserListData = z.infer<typeof UserListDataSchema>;
 export type UpdateUserStatusRequest = z.infer<typeof UpdateUserStatusRequestSchema>;
 export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
+export type UpdateUserProfileRequest = z.infer<typeof UpdateUserProfileRequestSchema>;
 export type UpdateStatusResponse = z.infer<typeof UpdateStatusResponseSchema>;
 export type UpdateUserResponse = z.infer<typeof UpdateUserResponseSchema>;
+export type UpdateUserProfileResponse = z.infer<typeof UpdateUserProfileResponseSchema>;
 export type ListUsersResponse = z.infer<typeof ListUsersResponseSchema>;

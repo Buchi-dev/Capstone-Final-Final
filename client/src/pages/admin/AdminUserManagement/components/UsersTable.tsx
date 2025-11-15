@@ -14,17 +14,15 @@ import {
   Typography,
   Tooltip,
   Avatar,
-  Dropdown,
 } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import {
   SearchOutlined,
-  EditOutlined,
-  MoreOutlined,
   CheckCircleOutlined,
   StopOutlined,
   ClockCircleOutlined,
+  EyeOutlined,
 } from '@ant-design/icons';
 import type { UserListData, UserRole, UserStatus } from '../../../../schemas';
 import dayjs from 'dayjs';
@@ -34,17 +32,13 @@ const { Text } = Typography;
 interface UsersTableProps {
   users: UserListData[];
   loading: boolean;
-  onEdit: (user: UserListData) => void;
-  onQuickStatusChange: (userId: string, status: UserStatus) => void;
-  onQuickRoleChange: (userId: string, role: UserRole) => void;
+  onViewUser: (user: UserListData) => void;
 }
 
 export const UsersTable: React.FC<UsersTableProps> = ({
   users,
   loading,
-  onEdit,
-  onQuickStatusChange,
-  onQuickRoleChange,
+  onViewUser,
 }) => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<UserStatus | 'All'>('All');
@@ -148,6 +142,7 @@ export const UsersTable: React.FC<UsersTableProps> = ({
       dataIndex: 'department',
       key: 'department',
       width: 150,
+      align: 'center',
       sorter: (a, b) => a.department.localeCompare(b.department),
       render: (department) => <Text>{department}</Text>,
     },
@@ -155,45 +150,59 @@ export const UsersTable: React.FC<UsersTableProps> = ({
       title: 'Phone',
       dataIndex: 'phoneNumber',
       key: 'phoneNumber',
-      width: 140,
+      width: 150,
+      align: 'center',
       render: (phone) => <Text>{phone || 'N/A'}</Text>,
     },
     {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      width: 120,
+      title: 'Status & Role',
+      key: 'statusRole',
+      width: 180,
+      align: 'center',
       filters: [
         { text: 'Approved', value: 'Approved' },
         { text: 'Pending', value: 'Pending' },
         { text: 'Suspended', value: 'Suspended' },
-      ],
-      onFilter: (value, record) => record.status === value,
-      render: (status: UserStatus) => (
-        <Tag icon={getStatusIcon(status)} color={getStatusColor(status)}>
-          {status}
-        </Tag>
-      ),
-    },
-    {
-      title: 'Role',
-      dataIndex: 'role',
-      key: 'role',
-      width: 100,
-      filters: [
         { text: 'Admin', value: 'Admin' },
         { text: 'Staff', value: 'Staff' },
       ],
-      onFilter: (value, record) => record.role === value,
-      render: (role: UserRole) => (
-        <Tag color={getRoleColor(role)}>{role}</Tag>
+      onFilter: (value, record) => record.status === value || record.role === value,
+      render: (_, record) => (
+        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <Tag 
+            icon={getStatusIcon(record.status)} 
+            color={getStatusColor(record.status)}
+            style={{ 
+              width: '100%', 
+              textAlign: 'center',
+              fontSize: '13px',
+              padding: '4px 8px',
+              margin: 0,
+            }}
+          >
+            {record.status}
+          </Tag>
+          <Tag 
+            color={getRoleColor(record.role)}
+            style={{ 
+              width: '100%', 
+              textAlign: 'center',
+              fontSize: '12px',
+              padding: '2px 8px',
+              margin: 0,
+            }}
+          >
+            {record.role}
+          </Tag>
+        </Space>
       ),
     },
     {
       title: 'Created',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      width: 120,
+      width: 130,
+      align: 'center',
       sorter: (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
       render: (date: Date) => (
         <Tooltip title={dayjs(date).format('MMM DD, YYYY h:mm A')}>
@@ -205,7 +214,8 @@ export const UsersTable: React.FC<UsersTableProps> = ({
       title: 'Last Login',
       dataIndex: 'lastLogin',
       key: 'lastLogin',
-      width: 120,
+      width: 130,
+      align: 'center',
       sorter: (a, b) => {
         if (!a.lastLogin) return 1;
         if (!b.lastLogin) return -1;
@@ -223,73 +233,19 @@ export const UsersTable: React.FC<UsersTableProps> = ({
     {
       title: 'Actions',
       key: 'actions',
-      width: 120,
+      width: 100,
       fixed: 'right',
-      render: (_, record) => {
-        const menuItems = [
-          {
-            key: 'edit',
-            icon: <EditOutlined />,
-            label: 'Edit User',
-            onClick: () => onEdit(record),
-          },
-          { type: 'divider' as const },
-          {
-            key: 'status',
-            label: 'Change Status',
-            children: [
-              {
-                key: 'approve',
-                label: 'Approve',
-                icon: <CheckCircleOutlined />,
-                disabled: record.status === 'Approved',
-                onClick: () => onQuickStatusChange(record.id, 'Approved'),
-              },
-              {
-                key: 'suspend',
-                label: 'Suspend',
-                icon: <StopOutlined />,
-                disabled: record.status === 'Suspended',
-                onClick: () => onQuickStatusChange(record.id, 'Suspended'),
-              },
-            ],
-          },
-          {
-            key: 'role',
-            label: 'Change Role',
-            children: [
-              {
-                key: 'admin',
-                label: 'Make Admin',
-                disabled: record.role === 'Admin',
-                onClick: () => onQuickRoleChange(record.id, 'Admin'),
-              },
-              {
-                key: 'staff',
-                label: 'Make Staff',
-                disabled: record.role === 'Staff',
-                onClick: () => onQuickRoleChange(record.id, 'Staff'),
-              },
-            ],
-          },
-        ];
-
-        return (
-          <Space size="small">
-            <Button
-              type="primary"
-              icon={<EditOutlined />}
-              onClick={() => onEdit(record)}
-              size="small"
-            >
-              Edit
-            </Button>
-            <Dropdown menu={{ items: menuItems }} trigger={['click']}>
-              <Button icon={<MoreOutlined />} size="small" />
-            </Dropdown>
-          </Space>
-        );
-      },
+      align: 'center',
+      render: (_, record) => (
+        <Button
+          type="primary"
+          icon={<EyeOutlined />}
+          onClick={() => onViewUser(record)}
+          size="middle"
+        >
+          View
+        </Button>
+      ),
     },
   ];
 
@@ -347,7 +303,7 @@ export const UsersTable: React.FC<UsersTableProps> = ({
         pagination={pagination}
         onChange={handleTableChange}
         rowKey="id"
-        scroll={{ x: 1400 }}
+        scroll={{ x: 1300 }}
         bordered
       />
     </div>

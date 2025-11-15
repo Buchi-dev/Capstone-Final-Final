@@ -29,18 +29,26 @@ export type DeviceAction =
 
 /**
  * Device physical location information
+ * 
+ * REQUIRED for device registration and sensor data collection
+ * Devices without proper location will be rejected
  */
 export interface DeviceLocation {
-  building: string;
-  floor: string;
-  notes?: string;
+  building: string; // REQUIRED: Building name or identifier
+  floor: string;    // REQUIRED: Floor number or level
+  notes?: string;   // Optional: Additional location notes
 }
 
 /**
  * Extended device metadata
+ * 
+ * STRICT VALIDATION MODE:
+ * - location is REQUIRED for device registration via admin UI
+ * - Devices without location cannot collect sensor data
+ * - Location must include both building and floor
  */
 export interface DeviceMetadata {
-  location?: DeviceLocation;
+  location?: DeviceLocation; // REQUIRED during addDevice operation
   description?: string;
   owner?: string;
   [key: string]: string | number | boolean | undefined | DeviceLocation;
@@ -64,6 +72,12 @@ export interface DeviceData {
 /**
  * Complete device document structure
  * Represents a device in Firestore
+ * 
+ * REGISTRATION REQUIREMENTS (Strict Validation Mode):
+ * 1. Device must be manually registered via admin UI
+ * 2. Location (building + floor) is REQUIRED during registration
+ * 3. Auto-registration from IoT devices is DISABLED
+ * 4. Only devices with valid location can collect sensor data
  */
 export interface Device {
   deviceId: string;
@@ -80,7 +94,7 @@ export interface Device {
   lastSeen: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   updatedAt?: any;
-  metadata: DeviceMetadata;
+  metadata: DeviceMetadata; // Must contain location (building + floor) for proper registration
 }
 
 // ===========================

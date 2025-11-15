@@ -1,21 +1,25 @@
 /**
  * Auto Register Device - Pub/Sub Trigger
  *
- * MEDIUM PRIORITY: Automatically registers new devices on first connection
+ * STRICT VALIDATION MODE: Rejects auto-registration, requires manual admin registration
  *
  * @module pubsub/autoRegisterDevice
  *
  * Functionality:
  * - Listens to Pub/Sub topic "iot-device-registration"
- * - Auto-registers devices when they first connect to the system
- * - Creates device profile in Firestore
- * - Initializes Realtime Database structure for sensor data
- * - Updates lastSeen timestamp for existing devices
+ * - REJECTS new device registration attempts (must be registered via UI with location)
+ * - Updates lastSeen timestamp for existing registered devices only
+ * - Logs unregistered device connection attempts for admin awareness
+ *
+ * Security Policy:
+ * - Only manually registered devices (with location metadata) can collect sensor data
+ * - Auto-registration is DISABLED to enforce proper device onboarding
+ * - All devices MUST be registered through admin UI before sensor data collection
  *
  * Migration Notes:
  * - Ported from src/pubsub/autoRegisterDevice.ts
- * - Enhanced with validation and error handling
- * - Uses modular constants and types
+ * - Enhanced with strict validation and location requirements
+ * - Disabled auto-registration to enforce manual registration workflow
  */
 
 import * as admin from "firebase-admin";
@@ -63,17 +67,22 @@ export interface Device {
 }
 
 /**
- * Auto-register devices when they first connect
+ * Handle device registration requests (STRICT VALIDATION MODE)
  *
  * Trigger: MQTT Bridge → Pub/Sub Topic → This Function
  * Topic: iot-device-registration
  *
- * Process:
+ * STRICT VALIDATION Process:
  * 1. Extract device information from message
- * 2. Check if device already exists
- * 3. If exists, update lastSeen timestamp
- * 4. If new, create device profile in Firestore
- * 5. Initialize Realtime Database structure
+ * 2. Check if device already exists in Firestore
+ * 3. If exists AND has location → Update lastSeen timestamp (connection acknowledgment)
+ * 4. If exists BUT missing location → Log warning (incomplete registration)
+ * 5. If NEW device → REJECT and log (must be registered via admin UI first)
+ *
+ * SECURITY POLICY:
+ * - Auto-registration is DISABLED
+ * - Only manually registered devices with location can operate
+ * - Unregistered device attempts are logged for admin review
  *
  * @param {*} event - Pub/Sub CloudEvent with device registration info
  *
@@ -87,6 +96,7 @@ export interface Device {
  *     firmwareVersion: '1.0.0'
  *   }
  * });
+ * // Result: Rejected if device123 not manually registered via admin UI
  */
 export const autoRegisterDevice = onMessagePublished(
   {
@@ -116,47 +126,55 @@ export const autoRegisterDevice = onMessagePublished(
         return; // Don't retry for invalid device ID
       }
 
-      logger.info(`Device registration request: ${deviceId}`);
+      logger.info(`Device registration request received: ${deviceId}`);
 
-      // Check if device already exists
+      // Check if device is manually registered in Firestore
       const deviceRef = db.collection(COLLECTIONS.DEVICES).doc(deviceId);
       const doc = await deviceRef.get();
 
       if (doc.exists) {
-        logger.info(`Device ${deviceId} already registered - will be updated by sensor data`);
-        // NOTE: Status is intentionally NOT updated here to avoid redundancy
-        // processSensorData will update status when actual sensor data arrives
-        // This prevents race conditions and maintains single source of truth
-        return;
+        // Device is already registered - verify it has proper location metadata
+        const deviceData = doc.data();
+        const hasLocation = deviceData?.metadata?.location?.building &&
+                           deviceData?.metadata?.location?.floor;
+
+        if (hasLocation) {
+          logger.info(
+            `✅ Device ${deviceId} is properly registered with location - connection acknowledged`
+          );
+          // NOTE: Status and lastSeen will be updated by processSensorData
+          // when actual sensor data arrives (maintains single source of truth)
+          return;
+        } else {
+          logger.warn(
+            `⚠️ Device ${deviceId} exists but MISSING LOCATION - sensor data will be rejected`,
+            {
+              deviceId,
+              hasMetadata: !!deviceData?.metadata,
+              hasLocation: !!deviceData?.metadata?.location,
+              location: deviceData?.metadata?.location,
+            }
+          );
+          return;
+        }
       }
 
-      // Register new device
-      const newDevice: Device = {
-        deviceId: deviceId,
-        name: deviceInfo.name || deviceId,
-        type: deviceInfo.type || "water_quality",
-        firmwareVersion: deviceInfo.firmwareVersion,
-        macAddress: deviceInfo.macAddress,
-        ipAddress: deviceInfo.ipAddress,
-        sensors: deviceInfo.sensors || ["turbidity", "tds", "ph"],
-        status: "online",
-        registeredAt: admin.firestore.FieldValue.serverTimestamp(),
-        lastSeen: admin.firestore.FieldValue.serverTimestamp(),
-        metadata: {},
-      };
+      // NEW DEVICE - REJECT (Auto-registration is DISABLED)
+      logger.error(
+        `❌ REJECTED: Device ${deviceId} is NOT registered - must be registered via admin UI first`,
+        {
+          deviceId,
+          deviceInfo,
+          reason: "Auto-registration disabled - requires manual admin registration with location",
+          action: "Admin must register device via UI with building and floor location before use",
+        }
+      );
 
-      await deviceRef.set(newDevice);
-
-      // Initialize Realtime Database structure
-      await rtdb.ref(`sensorReadings/${deviceId}`).set({
-        deviceId: deviceId,
-        latestReading: null,
-        status: "waiting_for_data",
-      });
-
-      logger.info(`Device registered successfully: ${deviceId}`);
+      // Do NOT create the device - this is intentional
+      // Admins must manually register devices via the UI with proper location metadata
+      return;
     } catch (error) {
-      logger.error("Error registering device:", error);
+      logger.error("Error processing device registration request:", error);
       throw error; // Trigger retry for unexpected errors
     }
   }

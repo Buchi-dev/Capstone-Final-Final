@@ -99,3 +99,28 @@ export const RTDB_PATHS = {
   LATEST_READING: (deviceId: string) => `sensorReadings/${deviceId}/latestReading`,
   HISTORY: (deviceId: string) => `sensorReadings/${deviceId}/history`,
 } as const;
+
+/**
+ * Input validation constraints
+ */
+export const INPUT_CONSTRAINTS = {
+  /** Maximum device ID length to prevent DoS */
+  MAX_DEVICE_ID_LENGTH: 128,
+
+  /** Maximum timestamp drift allowed (5 minutes in milliseconds) */
+  MAX_TIMESTAMP_DRIFT_MS: 300000,
+
+  /** Maximum batch size for sensor readings */
+  MAX_BATCH_SIZE: 100,
+} as const;
+
+/**
+ * Cache configuration for alert debouncing
+ */
+export const CACHE_CONFIG = {
+  /** Maximum cache entries before cleanup */
+  MAX_CACHE_SIZE: 10000,
+
+  /** Cache TTL matches alert cooldown */
+  CACHE_TTL_MS: ALERT_COOLDOWN_MS,
+} as const;

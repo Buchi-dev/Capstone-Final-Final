@@ -354,7 +354,7 @@ export const generateComplianceReport = async (
     // Copyright and Report ID (centered)
     doc.setFontSize(FONTS.tiny.size);
     doc.text(
-      `© ${dayjs().format('YYYY')} IoT Water Quality Monitoring System | Report ID: ${reportId}`,
+      `© ${dayjs().format('YYYY')} PureTrack | Report ID: ${reportId}`,
       105,
       289,
       { align: 'center' }

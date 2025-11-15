@@ -91,10 +91,14 @@ export const USER_MANAGEMENT_ERRORS = {
   // Business logic errors
   CANNOT_SUSPEND_SELF: "You cannot suspend your own account",
   CANNOT_CHANGE_OWN_ROLE: "You cannot change your own role",
+  CANNOT_DELETE_SELF: "You cannot delete your own account",
 
   // Operation errors
   UPDATE_STATUS_FAILED: "Failed to update user status",
   UPDATE_USER_FAILED: "Failed to update user",
+  DELETE_USER_FAILED: "Failed to delete user",
+  DELETE_AUTH_FAILED: "Failed to delete user from authentication",
+  DELETE_FIRESTORE_FAILED: "Failed to delete user from database",
 } as const;
 
 /**
@@ -103,6 +107,7 @@ export const USER_MANAGEMENT_ERRORS = {
 export const USER_MANAGEMENT_MESSAGES = {
   STATUS_UPDATED: (status: UserStatus) => `User status updated to ${status}`,
   USER_UPDATED: "User updated successfully",
+  USER_DELETED: "User account deleted successfully",
 } as const;
 
 export const NOTIFICATION_PREFERENCES_ERRORS = {

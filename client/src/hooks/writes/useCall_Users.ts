@@ -16,7 +16,7 @@ import type { UserRole, UserStatus } from '../../schemas';
 /**
  * User operation types
  */
-type UserOperation = 'updateStatus' | 'updateUser' | 'getUserPreferences' | 'setupPreferences';
+type UserOperation = 'updateStatus' | 'updateUser' | 'updateUserProfile' | 'deleteUser' | 'getUserPreferences' | 'setupPreferences';
 
 /**
  * Update user response
@@ -29,6 +29,25 @@ interface UpdateUserResult {
     status?: UserStatus;
     role?: UserRole;
   };
+  /** Indicates whether the user should be logged out after this operation */
+  requiresLogout?: boolean;
+}
+
+/**
+ * Update user profile response
+ * Profile updates (name, department, phone) do NOT trigger logout
+ */
+interface UpdateUserProfileResult {
+  success: boolean;
+  message: string;
+  userId: string;
+  updates: {
+    firstname?: string;
+    middlename?: string;
+    lastname?: string;
+    department?: string;
+    phoneNumber?: string;
+  };
 }
 
 /**
@@ -39,6 +58,19 @@ interface UseCallUsersReturn {
   updateUserStatus: (userId: string, status: UserStatus) => Promise<void>;
   /** Update user status and/or role */
   updateUser: (userId: string, status?: UserStatus, role?: UserRole) => Promise<UpdateUserResult>;
+  /** Update user profile information (name, department, phone) */
+  updateUserProfile: (
+    userId: string,
+    profileData: {
+      firstname?: string;
+      middlename?: string;
+      lastname?: string;
+      department?: string;
+      phoneNumber?: string;
+    }
+  ) => Promise<UpdateUserProfileResult>;
+  /** Delete user account (Firebase Auth + Firestore) */
+  deleteUser: (userId: string) => Promise<void>;
   /** Get user notification preferences */
   getUserPreferences: (userId: string) => Promise<any>;
   /** Setup/update user notification preferences */
@@ -52,7 +84,7 @@ interface UseCallUsersReturn {
   /** Currently executing operation type */
   operationType: UserOperation | null;
   /** Result from last update operation */
-  updateResult: UpdateUserResult | null;
+  updateResult: UpdateUserResult | UpdateUserProfileResult | null;
   /** Reset error, success states, and update result */
   reset: () => void;
 }
@@ -105,7 +137,7 @@ export const useCall_Users = (): UseCallUsersReturn => {
   const [error, setError] = useState<Error | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [operationType, setOperationType] = useState<UserOperation | null>(null);
-  const [updateResult, setUpdateResult] = useState<UpdateUserResult | null>(null);
+  const [updateResult, setUpdateResult] = useState<UpdateUserResult | UpdateUserProfileResult | null>(null);
 
   const reset = useCallback(() => {
     setError(null);
@@ -224,9 +256,73 @@ export const useCall_Users = (): UseCallUsersReturn => {
     }
   }, []);
 
+  const updateUserProfile = useCallback(async (
+    userId: string,
+    profileData: {
+      firstname?: string;
+      middlename?: string;
+      lastname?: string;
+      department?: string;
+      phoneNumber?: string;
+    }
+  ): Promise<UpdateUserProfileResult> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      setIsSuccess(false);
+      setOperationType('updateUserProfile');
+      setUpdateResult(null);
+
+      const response = await usersService.updateUserProfile(userId, profileData);
+
+      const result: UpdateUserProfileResult = {
+        success: response.success,
+        message: response.message,
+        userId: response.userId,
+        updates: response.updates as any,
+      };
+
+      setIsSuccess(true);
+      setUpdateResult(result);
+      return result;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to update user profile');
+      console.error('[useCall_Users] Update user profile error:', error);
+      setError(error);
+      setIsSuccess(false);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const deleteUser = useCallback(async (userId: string): Promise<void> => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      setIsSuccess(false);
+      setOperationType('deleteUser');
+      setUpdateResult(null);
+
+      await usersService.deleteUser(userId);
+
+      setIsSuccess(true);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to delete user');
+      console.error('[useCall_Users] Delete user error:', error);
+      setError(error);
+      setIsSuccess(false);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   return {
     updateUserStatus,
     updateUser,
+    updateUserProfile,
+    deleteUser,
     getUserPreferences,
     setupPreferences,
     isLoading,

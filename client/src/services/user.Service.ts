@@ -43,6 +43,8 @@ export interface UpdateStatusResponse {
   message: string;
   userId: string;
   status: UserStatus;
+  /** Indicates whether the user should be logged out after this operation */
+  requiresLogout?: boolean;
 }
 
 export interface UpdateUserResponse {
@@ -53,6 +55,8 @@ export interface UpdateUserResponse {
     status?: UserStatus;
     role?: UserRole;
   };
+  /** Indicates whether the user should be logged out after this operation */
+  requiresLogout?: boolean;
 }
 
 export interface ListUsersResponse {
@@ -369,6 +373,73 @@ export class UsersService {
 
   async demoteToStaff(userId: string): Promise<UpdateUserResponse> {
     return this.updateUser(userId, undefined, 'Staff');
+  }
+
+  /**
+   * Update user profile information (name, department, phone)
+   * 
+   * @param userId - User document ID
+   * @param profileData - Profile fields to update
+   * @returns Promise with update response
+   * @throws {ErrorResponse} If update operation fails
+   * @example
+   * await usersService.updateUserProfile('user-123', {
+   *   firstname: 'John',
+   *   lastname: 'Doe',
+   *   department: 'Engineering',
+   *   phoneNumber: '+1234567890'
+   * });
+   */
+  async updateUserProfile(
+    userId: string,
+    profileData: {
+      firstname?: string;
+      middlename?: string;
+      lastname?: string;
+      department?: string;
+      phoneNumber?: string;
+    }
+  ): Promise<UpdateUserResponse> {
+    return this.callFunction<
+      { 
+        action: string; 
+        userId: string; 
+        firstname?: string;
+        middlename?: string;
+        lastname?: string;
+        department?: string;
+        phoneNumber?: string;
+      },
+      UpdateUserResponse
+    >('updateUserProfile', { userId, ...profileData });
+  }
+
+  /**
+   * Delete user account (both Firebase Auth and Firestore)
+   * 
+   * @param userId - User document ID to delete
+   * @returns Promise with deletion response
+   * @throws {ErrorResponse} If delete operation fails
+   * @example
+   * await usersService.deleteUser('user-123');
+   */
+  async deleteUser(userId: string): Promise<{
+    success: boolean;
+    message: string;
+    userId: string;
+    deletedFromAuth: boolean;
+    deletedFromFirestore: boolean;
+  }> {
+    return this.callFunction<
+      { action: string; userId: string },
+      {
+        success: boolean;
+        message: string;
+        userId: string;
+        deletedFromAuth: boolean;
+        deletedFromFirestore: boolean;
+      }
+    >('deleteUser', { userId });
   }
 
   async getUserPreferences(userId: string): Promise<NotificationPreferences | null> {

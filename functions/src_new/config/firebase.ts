@@ -38,6 +38,12 @@ export const db = admin.firestore();
 export const rtdb = admin.database();
 
 /**
+ * Firebase Auth instance
+ * Used for user authentication and account management
+ */
+export const auth = admin.auth();
+
+/**
  * Pub/Sub client instance
  * Used for device command publishing and MQTT bridge
  */

@@ -25,3 +25,12 @@ export {generateAlertContent, createAlert, getNotificationRecipients} from "./al
 
 // Re-export email template utilities
 export * from "./emailNotifications";
+
+// Re-export cache manager
+export * from "./CacheManager";
+
+// Re-export circuit breaker
+export * from "./CircuitBreaker";
+
+// Re-export error classification
+export * from "./errorClassification";

@@ -43,6 +43,15 @@ const handleAddDevice: ActionHandler<DeviceManagementRequest, DeviceManagementRe
     throw new HttpsError("invalid-argument", DEVICE_MANAGEMENT_ERRORS.MISSING_DEVICE_ID);
   }
 
+  // STRICT VALIDATION: Location is REQUIRED for device registration
+  if (!deviceData?.metadata?.location?.building || !deviceData?.metadata?.location?.floor) {
+    throw new HttpsError(
+      "invalid-argument",
+      "Location is required: Device must have building and floor set before registration. " +
+      "Only devices with proper location can collect sensor data."
+    );
+  }
+
   const deviceRef = db.collection("devices").doc(deviceId);
   const doc = await deviceRef.get();
 
@@ -61,7 +70,7 @@ const handleAddDevice: ActionHandler<DeviceManagementRequest, DeviceManagementRe
     status: (deviceData?.status as DeviceStatus) || DEVICE_DEFAULTS.STATUS,
     registeredAt: admin.firestore.FieldValue.serverTimestamp(),
     lastSeen: admin.firestore.FieldValue.serverTimestamp(),
-    metadata: deviceData?.metadata || {},
+    metadata: deviceData?.metadata, // Location already validated above
   };
 
   await deviceRef.set(newDevice);

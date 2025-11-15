@@ -25,6 +25,8 @@ import type {
   UserManagementResponse,
   UpdateStatusResponse,
   UpdateUserResponse,
+  UpdateUserProfileResponse,
+  DeleteUserResponse,
   PreferencesResponse,
   NotificationPreferences,
 } from "../types";
@@ -170,12 +172,16 @@ async function handleUpdateStatus(
 
       await userRef.update(buildUpdateData(request.auth!.uid, {status}));
 
+      // Self-update: user changed their own status - requires logout
+      const isSelfUpdate = request.auth!.uid === userId;
+
       return {
         success: true,
         // eslint-disable-next-line new-cap
         message: USER_MANAGEMENT_MESSAGES.STATUS_UPDATED(status),
         userId,
         status,
+        requiresLogout: isSelfUpdate,
       };
     },
     "updating user status",
@@ -225,15 +231,176 @@ async function handleUpdateUser(
 
       await userRef.update(buildUpdateData(request.auth!.uid, {status, role}));
 
+      // Self-update: user changed their own role or status - requires logout
       return {
         success: true,
         message: USER_MANAGEMENT_MESSAGES.USER_UPDATED,
         userId,
         updates: {status, role},
+        requiresLogout: isSelfUpdate,
       };
     },
     "updating user",
     USER_MANAGEMENT_ERRORS.UPDATE_USER_FAILED
+  );
+}
+
+/**
+ * Handles updating a user's profile information (name, department, phone).
+ * @param {CallableRequest<UserManagementRequest>} request - The callable request
+ * @return {Promise<UpdateUserProfileResponse>} Response with updated user profile
+ * @throws {HttpsError} If validation fails or user not found
+ */
+async function handleUpdateUserProfile(
+  request: CallableRequest<UserManagementRequest>
+): Promise<UpdateUserProfileResponse> {
+  const {userId, firstname, middlename, lastname, department, phoneNumber} = request.data;
+
+  if (!userId) {
+    throw new HttpsError("invalid-argument", USER_MANAGEMENT_ERRORS.USER_ID_REQUIRED);
+  }
+
+  // At least one field must be provided
+  if (!firstname && !middlename && !lastname && !department && !phoneNumber) {
+    throw new HttpsError("invalid-argument", "At least one field must be provided for update");
+  }
+
+  // Validate phone number format (exactly 11 digits)
+  if (phoneNumber !== undefined) {
+    const phoneRegex = /^\d{11}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+      throw new HttpsError("invalid-argument", "Phone number must be exactly 11 digits");
+    }
+  }
+
+  return await withErrorHandling(
+    async () => {
+      const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+      const userDoc = await userRef.get();
+
+      if (!userDoc.exists) {
+        throw new HttpsError("not-found", USER_MANAGEMENT_ERRORS.USER_NOT_FOUND);
+      }
+
+      // Build update data with only provided fields
+      const updateData: Record<string, unknown> = {
+        // eslint-disable-next-line new-cap
+        [FIELD_NAMES.UPDATED_AT]: FieldValue.serverTimestamp(),
+        [FIELD_NAMES.UPDATED_BY]: request.auth!.uid,
+      };
+
+      if (firstname !== undefined) updateData.firstname = firstname.trim();
+      if (middlename !== undefined) updateData.middlename = middlename.trim();
+      if (lastname !== undefined) updateData.lastname = lastname.trim();
+      if (department !== undefined) updateData.department = department.trim();
+      if (phoneNumber !== undefined) updateData.phoneNumber = phoneNumber.trim();
+
+      await userRef.update(updateData);
+
+      return {
+        success: true,
+        message: "User profile updated successfully",
+        userId,
+        updates: {firstname, middlename, lastname, department, phoneNumber},
+      };
+    },
+    "updating user profile",
+    "Failed to update user profile"
+  );
+}
+
+/**
+ * Handles deleting a user account (both Firebase Auth and Firestore).
+ * @param {CallableRequest<UserManagementRequest>} request - The callable request
+ * @return {Promise<DeleteUserResponse>} Response with deletion status
+ * @throws {HttpsError} If validation fails or user not found
+ */
+async function handleDeleteUser(
+  request: CallableRequest<UserManagementRequest>
+): Promise<DeleteUserResponse> {
+  const {userId} = request.data;
+
+  if (!userId) {
+    throw new HttpsError("invalid-argument", USER_MANAGEMENT_ERRORS.USER_ID_REQUIRED);
+  }
+
+  // Prevent self-deletion (this validation ensures requiresLogout won't be true for self-delete)
+  if (request.auth!.uid === userId) {
+    throw new HttpsError("failed-precondition", USER_MANAGEMENT_ERRORS.CANNOT_DELETE_SELF);
+  }
+
+  return await withErrorHandling(
+    async () => {
+      const userRef = db.collection(COLLECTIONS.USERS).doc(userId);
+      const userDoc = await userRef.get();
+
+      if (!userDoc.exists) {
+        throw new HttpsError("not-found", USER_MANAGEMENT_ERRORS.USER_NOT_FOUND);
+      }
+
+      const userData = userDoc.data();
+      const authUid = userData?.uuid; // UUID is the Firebase Auth UID
+
+      let deletedFromAuth = false;
+      let deletedFromFirestore = false;
+
+      // Delete from Firebase Auth
+      if (authUid) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const {auth} = require("../config/firebase");
+          await auth.deleteUser(authUid);
+          deletedFromAuth = true;
+          console.log(`[DeleteUser] Deleted user ${userId} from Firebase Auth (UID: ${authUid})`);
+        } catch (authError: unknown) {
+          console.error("[DeleteUser] Failed to delete from Auth:", authError);
+          // Continue to delete from Firestore even if Auth deletion fails
+          if ((authError as {code?: string}).code === "auth/user-not-found") {
+            // Auth account doesn't exist, that's okay
+            deletedFromAuth = true;
+          } else {
+            throw new HttpsError("internal", USER_MANAGEMENT_ERRORS.DELETE_AUTH_FAILED);
+          }
+        }
+      } else {
+        console.warn(`[DeleteUser] No UUID found for user ${userId}, skipping Auth deletion`);
+        deletedFromAuth = true; // Mark as true since there's nothing to delete
+      }
+
+      // Delete notification preferences subcollection
+      try {
+        const prefsSnapshot = await userRef.collection("notificationPreferences").get();
+        const batch = db.batch();
+        prefsSnapshot.docs.forEach((doc) => batch.delete(doc.ref));
+        await batch.commit();
+        console.log(`[DeleteUser] Deleted notification preferences for user ${userId}`);
+      } catch (prefsError) {
+        console.error("[DeleteUser] Failed to delete preferences:", prefsError);
+        // Continue with user deletion even if prefs deletion fails
+      }
+
+      // Delete from Firestore
+      try {
+        await userRef.delete();
+        deletedFromFirestore = true;
+        console.log(`[DeleteUser] Deleted user ${userId} from Firestore`);
+      } catch (firestoreError) {
+        console.error("[DeleteUser] Failed to delete from Firestore:", firestoreError);
+        throw new HttpsError("internal", USER_MANAGEMENT_ERRORS.DELETE_FIRESTORE_FAILED);
+      }
+
+      // Note: requiresLogout is false because self-deletion is blocked by validation above
+      return {
+        success: true,
+        message: USER_MANAGEMENT_MESSAGES.USER_DELETED,
+        userId,
+        deletedFromAuth,
+        deletedFromFirestore,
+        requiresLogout: false,
+      };
+    },
+    "deleting user",
+    USER_MANAGEMENT_ERRORS.DELETE_USER_FAILED
   );
 }
 
@@ -385,6 +552,8 @@ export const UserCalls = onCall<
     {
       updateStatus: handleUpdateStatus,
       updateUser: handleUpdateUser,
+      updateUserProfile: handleUpdateUserProfile,
+      deleteUser: handleDeleteUser,
       setupPreferences: handleSetupPreferences,
     },
     {

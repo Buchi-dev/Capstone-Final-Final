@@ -19,11 +19,18 @@ export interface UserManagementRequest {
   action:
     | "updateStatus"
     | "updateUser"
+    | "updateUserProfile"
+    | "deleteUser"
     | "setupPreferences";
 
   userId?: string;
   status?: UserStatus;
   role?: UserRole;
+  firstname?: string;
+  middlename?: string;
+  lastname?: string;
+  department?: string;
+  phoneNumber?: string;
   email?: string;
   emailNotifications?: boolean;
   sendScheduledAlerts?: boolean;
@@ -45,6 +52,8 @@ export interface UserManagementRequest {
 export type UserManagementResponse =
   | UpdateStatusResponse
   | UpdateUserResponse
+  | UpdateUserProfileResponse
+  | DeleteUserResponse
   | PreferencesResponse;
 
 /**
@@ -55,6 +64,8 @@ export interface UpdateStatusResponse {
   message: string;
   userId: string;
   status: UserStatus;
+  /** Indicates whether the user should be logged out after this operation */
+  requiresLogout?: boolean;
 }
 
 /**
@@ -68,6 +79,38 @@ export interface UpdateUserResponse {
     status?: UserStatus;
     role?: UserRole;
   };
+  /** Indicates whether the user should be logged out after this operation */
+  requiresLogout?: boolean;
+}
+
+/**
+ * Response for user profile update operation
+ * Profile updates (name, department, phone) do NOT trigger logout
+ */
+export interface UpdateUserProfileResponse {
+  success: boolean;
+  message: string;
+  userId: string;
+  updates: {
+    firstname?: string;
+    middlename?: string;
+    lastname?: string;
+    department?: string;
+    phoneNumber?: string;
+  };
+}
+
+/**
+ * Response for user deletion operation
+ */
+export interface DeleteUserResponse {
+  success: boolean;
+  message: string;
+  userId: string;
+  deletedFromAuth: boolean;
+  deletedFromFirestore: boolean;
+  /** Indicates whether the user should be logged out after this operation */
+  requiresLogout?: boolean;
 }
 
 /**

@@ -15,11 +15,15 @@
  *   - Alert debouncing (5-min cooldown)
  *   - Throttled Firestore updates (5-min threshold)
  *   - Filtered history storage (every 5th reading)
+ * - Anti-duplication: Prevents duplicate alerts for same issue
+ *   - Only creates new alert if previous one is Acknowledged/Resolved
+ *   - Checks for existing Active alerts before creating new ones
  *
  * Migration Notes:
  * - Ported from src/pubsub/processSensorData.ts
  * - Enhanced with modular utilities and type safety
  * - Maintains all optimization strategies from original
+ * - Added anti-duplication logic to prevent alert spam
  */
 
 import * as admin from "firebase-admin";
@@ -38,28 +42,50 @@ import {
   SENSOR_DATA_ERRORS,
   SENSOR_DATA_PUBSUB_CONFIG,
   RTDB_PATHS,
+  INPUT_CONSTRAINTS,
+  CACHE_CONFIG,
 } from "../constants/Sensor.Constants";
-import type {WaterParameter} from "../types/Alert.Types";
+import type {WaterParameter, TrendDirection} from "../types/Alert.Types";
 import type {SensorData, SensorReading, BatchSensorData} from "../types/Sensor.Types";
 import {createAlert, getNotificationRecipients} from "../utils/alertHelpers";
+import {CacheManager} from "../utils/CacheManager";
+import {createCircuitBreaker} from "../utils/CircuitBreaker";
 import {sendEmailNotification} from "../utils/emailNotifications";
+import {classifyError, ErrorAction, executeWithErrorHandling} from "../utils/errorClassification";
 import {getThresholdConfig, checkThreshold, analyzeTrend} from "../utils/thresholdHelpers";
 import {isValidDeviceId, isValidSensorReading} from "../utils/validators";
 
 /**
- * OPTIMIZATION: In-memory cache for alert debouncing
+ * OPTIMIZATION: Size-limited TTL cache for alert debouncing
  * Prevents duplicate alerts within cooldown period (5 minutes)
+ * Auto-cleans expired entries to prevent memory leaks
  * Reduces Firestore reads and alert spam by 50-70%
  *
  * Cache key format: "{deviceId}-{parameter}" or "{deviceId}-{parameter}-trend"
  */
-const alertCache = new Map<string, number>();
+const alertCache = new CacheManager<number>(
+  CACHE_CONFIG.CACHE_TTL_MS,
+  CACHE_CONFIG.MAX_CACHE_SIZE
+);
 
 /**
  * OPTIMIZATION: Reading counter for history storage filtering
  * Only stores every Nth reading to reduce Realtime DB writes by 80%
+ * Uses CacheManager to prevent memory leaks
  */
-const readingCounters = new Map<string, number>();
+const readingCounters = new CacheManager<number>(
+  24 * 60 * 60 * 1000, // 24 hour TTL
+  CACHE_CONFIG.MAX_CACHE_SIZE
+);
+
+/**
+ * Circuit breaker for email notifications
+ * Prevents cascading failures when email service is down
+ */
+const emailCircuitBreaker = createCircuitBreaker(
+  sendEmailNotification,
+  "EmailNotification"
+);
 
 /**
  * Process sensor data from IoT devices via Pub/Sub
@@ -95,21 +121,39 @@ export const processSensorData = onMessagePublished(
     secrets: [EMAIL_USER_SECRET_REF, EMAIL_PASSWORD_SECRET_REF],
   },
   async (event: CloudEvent<MessagePublishedData<SensorData | BatchSensorData>>): Promise<void> => {
+    const startTime = Date.now();
+    let deviceId = "";
+    let readingCount = 0;
+
     try {
       // Extract device ID from message attributes (support both snake_case and camelCase)
-      const deviceId = event.data.message.attributes?.device_id ||
-                       event.data.message.attributes?.deviceId;
+      const rawDeviceId = (
+        event.data.message.attributes?.device_id ||
+        event.data.message.attributes?.deviceId
+      )?.trim();
 
-      if (!deviceId) {
+      if (!rawDeviceId) {
         logger.error(SENSOR_DATA_ERRORS.NO_DEVICE_ID, {
           attributes: event.data.message.attributes,
         });
         return; // Don't retry for missing device ID
       }
 
+      // INPUT VALIDATION: Check device ID length to prevent DoS
+      if (rawDeviceId.length > INPUT_CONSTRAINTS.MAX_DEVICE_ID_LENGTH) {
+        logger.error("Device ID exceeds maximum length", {
+          deviceId: rawDeviceId.substring(0, 50),
+          length: rawDeviceId.length,
+          maxLength: INPUT_CONSTRAINTS.MAX_DEVICE_ID_LENGTH,
+        });
+        return; // Don't retry for invalid input
+      }
+
+      deviceId = rawDeviceId;
+
       // Validate device ID format
       if (!isValidDeviceId(deviceId)) {
-        logger.error(`Invalid device ID format: ${deviceId}`);
+        logger.error("Invalid device ID format", {deviceId});
         return; // Don't retry for invalid device ID
       }
 
@@ -127,19 +171,62 @@ export const processSensorData = onMessagePublished(
         (messageData as BatchSensorData).readings :
         [messageData as SensorData];
 
-      logger.info(`Processing ${readingsArray.length} reading(s) for device: ${deviceId}`);
-
-      // Process each reading in the batch
-      for (const sensorData of readingsArray) {
-        await processSingleReading(deviceId, sensorData);
+      // Validate batch size to prevent resource exhaustion
+      if (readingsArray.length > INPUT_CONSTRAINTS.MAX_BATCH_SIZE) {
+        logger.error("Batch size exceeds maximum", {
+          deviceId,
+          batchSize: readingsArray.length,
+          maxBatchSize: INPUT_CONSTRAINTS.MAX_BATCH_SIZE,
+        });
+        return; // Don't retry for oversized batch
       }
 
-      logger.info(
-        `Completed processing ${readingsArray.length} reading(s) for device: ${deviceId}`
+      readingCount = readingsArray.length;
+
+      // PERFORMANCE: Process readings in parallel with controlled concurrency
+      const results = await Promise.allSettled(
+        readingsArray.map((sensorData) => processSingleReading(deviceId, sensorData))
       );
+
+      // Count successes and failures
+      const successCount = results.filter((r) => r.status === "fulfilled").length;
+      const failureCount = results.filter((r) => r.status === "rejected").length;
+
+      // Log processing completion with metrics
+      logger.info("Sensor data processing completed", {
+        deviceId,
+        totalReadings: readingCount,
+        successCount,
+        failureCount,
+        durationMs: Date.now() - startTime,
+        cacheStats: alertCache.getStats(),
+      });
+
+      // If all readings failed, log detailed errors
+      if (failureCount === readingCount && failureCount > 0) {
+        results.forEach((result, index) => {
+          if (result.status === "rejected") {
+            logger.error(`Reading ${index + 1} failed`, {
+              deviceId,
+              error: result.reason,
+            });
+          }
+        });
+      }
     } catch (error) {
-      logger.error(SENSOR_DATA_ERRORS.PROCESSING_FAILED, error);
-      throw error; // Trigger retry for unexpected errors
+      logger.error(SENSOR_DATA_ERRORS.PROCESSING_FAILED, {
+        deviceId: deviceId || "unknown",
+        readingCount,
+        durationMs: Date.now() - startTime,
+        error,
+      });
+
+      // Classify error to determine if retry is appropriate
+      const action = classifyError(error, "processSensorData");
+      if (action === ErrorAction.RETRY) {
+        throw error; // Trigger Pub/Sub retry
+      }
+      // For SKIP or CONTINUE, don't throw (no retry)
     }
   }
 );
@@ -161,28 +248,72 @@ export const processSensorData = onMessagePublished(
 async function processSingleReading(deviceId: string, sensorData: SensorData): Promise<void> {
   // Validate sensor reading values
   if (!isValidSensorReading(sensorData)) {
-    logger.warn(`${SENSOR_DATA_ERRORS.INVALID_SENSOR_DATA} for device: ${deviceId}`, sensorData);
+    logger.warn(`${SENSOR_DATA_ERRORS.INVALID_SENSOR_DATA} for device: ${deviceId}`, {
+      turbidity: sensorData.turbidity,
+      tds: sensorData.tds,
+      ph: sensorData.ph,
+    });
     return; // Skip invalid readings
   }
 
-  // Check if device is registered in Firestore before storing data
-  const deviceDoc = await db.collection(COLLECTIONS.DEVICES).doc(deviceId).get();
+  // TIMESTAMP VALIDATION: Prevent future/past timestamp attacks
+  const now = Date.now();
+  let validatedTimestamp = sensorData.timestamp;
+
+  if (!validatedTimestamp ||
+      validatedTimestamp < now - INPUT_CONSTRAINTS.MAX_TIMESTAMP_DRIFT_MS ||
+      validatedTimestamp > now + INPUT_CONSTRAINTS.MAX_TIMESTAMP_DRIFT_MS) {
+    logger.warn("Invalid timestamp detected, using server time", {
+      deviceId,
+      receivedTimestamp: validatedTimestamp,
+      serverTime: now,
+      drift: validatedTimestamp ? Math.abs(now - validatedTimestamp) : null,
+    });
+    validatedTimestamp = now;
+  }
+
+  // STRICT VALIDATION: Check if device is registered in Firestore before storing data
+  // ERROR HANDLING: Wrap Firestore operations with proper error classification
+  const deviceDoc = await executeWithErrorHandling(
+    async () => db.collection(COLLECTIONS.DEVICES).doc(deviceId).get(),
+    `Fetch device ${deviceId}`,
+    ErrorAction.RETRY // Retry on Firestore errors
+  );
+
+  if (!deviceDoc) {
+    logger.error("Failed to fetch device document", {deviceId});
+    throw new Error(`Device lookup failed for ${deviceId}`);
+  }
 
   if (!deviceDoc.exists) {
-    logger.warn(
-      `Device ${deviceId} is not registered - rejecting sensor data`,
-      {deviceId, sensorData}
-    );
+    logger.warn("Device not registered - sensor data rejected", {
+      deviceId,
+      reason: "Device must be registered via admin UI first",
+    });
     return; // Skip unregistered devices - don't store data
   }
 
-  // Prepare reading data with server timestamp
+  // STRICT VALIDATION: Verify device has location metadata
+  const deviceData = deviceDoc.data();
+  const hasLocation = deviceData?.metadata?.location?.building &&
+                     deviceData?.metadata?.location?.floor;
+
+  if (!hasLocation) {
+    logger.warn("Device missing location - sensor data rejected", {
+      deviceId,
+      hasMetadata: !!deviceData?.metadata,
+      reason: "Device must have building and floor location set",
+    });
+    return; // Skip devices without location - don't store data
+  }
+
+  // Prepare reading data with validated timestamp
   const readingData: SensorReading = {
     deviceId: deviceId,
     turbidity: sensorData.turbidity || 0,
     tds: sensorData.tds || 0,
     ph: sensorData.ph || 0,
-    timestamp: sensorData.timestamp || Date.now(),
+    timestamp: validatedTimestamp,
     receivedAt: admin.database.ServerValue.TIMESTAMP,
   };
 
@@ -199,7 +330,10 @@ async function processSingleReading(deviceId: string, sensorData: SensorData): P
   if (newCount % HISTORY_STORAGE_INTERVAL === 0) {
     /* eslint-disable-next-line new-cap */
     await rtdb.ref(RTDB_PATHS.HISTORY(deviceId)).push(readingData);
-    logger.info(`Stored reading #${newCount} in history for device: ${deviceId}`);
+    // LOGGING OPTIMIZATION: Only log every 100th storage
+    if (newCount % 100 === 0) {
+      logger.debug("History storage milestone", {deviceId, readingCount: newCount});
+    }
   }
 
   // OPTIMIZATION: Update device status in Firestore (throttled)
@@ -229,12 +363,15 @@ async function updateDeviceStatus(
   deviceDoc?: FirebaseFirestore.DocumentSnapshot
 ): Promise<void> {
   try {
-    // Use provided document or fetch it
-    const docSnapshot = deviceDoc || await db.collection(COLLECTIONS.DEVICES).doc(deviceId).get();
+    // Use provided document or fetch it with error handling
+    const docSnapshot = deviceDoc || await executeWithErrorHandling(
+      async () => db.collection(COLLECTIONS.DEVICES).doc(deviceId).get(),
+      `updateDeviceStatus for ${deviceId}`,
+      ErrorAction.CONTINUE // Non-critical operation
+    );
 
-    if (!docSnapshot.exists) {
-      logger.warn(`Device ${deviceId} not found in Firestore - skipping status update`);
-      return;
+    if (!docSnapshot || !docSnapshot.exists) {
+      return; // Skip silently for non-critical operation
     }
 
     const deviceData = docSnapshot.data();
@@ -260,14 +397,100 @@ async function updateDeviceStatus(
         updateData.offlineSince = admin.firestore.FieldValue.delete();
       }
 
-      await db.collection(COLLECTIONS.DEVICES).doc(deviceId).update(updateData);
-      logger.info(
-        `Updated device ${deviceId}: status=${currentStatus}→online, lastSeen refreshed`
+      await executeWithErrorHandling(
+        async () => db.collection(COLLECTIONS.DEVICES).doc(deviceId).update(updateData),
+        `Update status for ${deviceId}`,
+        ErrorAction.CONTINUE // Non-critical operation
       );
+
+      // LOGGING OPTIMIZATION: Use debug level for frequent updates
+      logger.debug("Device status updated", {
+        deviceId,
+        previousStatus: currentStatus,
+        newStatus: "online",
+      });
     }
   } catch (error) {
-    logger.warn(`Failed to update device status for ${deviceId}:`, error);
-    // Don't throw - device status update is not critical
+    // Catch any unexpected errors - non-critical operation
+    logger.debug("Device status update skipped", {deviceId, error});
+  }
+}
+
+/**
+ * Create alert with transaction to prevent race conditions
+ *
+ * ANTI-DUPLICATION Logic with Transaction:
+ * - Checks for existing active alerts within a transaction
+ * - Creates new alert only if no active alert exists
+ * - Prevents race conditions when multiple function instances run simultaneously
+ * - Ensures atomicity of check-and-create operation
+ *
+ * @param {*} deviceId - Device ID
+ * @param {*} parameter - Water parameter (tds, ph, turbidity)
+ * @param {*} alertType - Alert type (threshold or trend)
+ * @param {*} severity - Alert severity (Advisory, Warning, Critical)
+ * @param {*} alertData - Alert data to create if no duplicate exists
+ * @return {Promise<string | null>} Created alert ID or null if duplicate exists
+ */
+async function createAlertWithDuplicationCheck(
+  deviceId: string,
+  parameter: WaterParameter,
+  alertType: string,
+  severity: string,
+  alertData: Record<string, unknown>
+): Promise<string | null> {
+  try {
+    // Use transaction to atomically check and create
+    const result = await db.runTransaction(async (transaction) => {
+      // Check for existing active alert within transaction
+      const alertsQuery = await transaction.get(
+        db.collection(COLLECTIONS.ALERTS)
+          .where("deviceId", "==", deviceId)
+          .where("parameter", "==", parameter)
+          .where("alertType", "==", alertType)
+          .where("status", "==", "Active")
+          .limit(1)
+      );
+
+      if (!alertsQuery.empty) {
+        // Duplicate found
+        const existingAlert = alertsQuery.docs[0];
+        logger.info("Duplicate alert detected in transaction", {
+          deviceId,
+          parameter,
+          alertType,
+          existingAlertId: existingAlert.id,
+        });
+        return null; // Signal duplicate exists
+      }
+
+      // No duplicate - create new alert within transaction
+      const newAlertRef = db.collection(COLLECTIONS.ALERTS).doc();
+      transaction.set(newAlertRef, {
+        ...alertData,
+        alertId: newAlertRef.id,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return newAlertRef.id;
+    });
+
+    return result;
+  } catch (error) {
+    const action = classifyError(error, "createAlertWithDuplicationCheck");
+
+    if (action === ErrorAction.RETRY) {
+      throw error; // Re-throw retriable errors
+    }
+
+    logger.error("Failed to create alert with transaction", {
+      deviceId,
+      parameter,
+      alertType,
+      error,
+    });
+    return null;
   }
 }
 
@@ -277,102 +500,196 @@ async function updateDeviceStatus(
  * Alert Logic:
  * 1. Check each parameter against thresholds
  * 2. Apply debouncing (skip if alerted recently)
- * 3. Create alert if threshold exceeded
+ * 3. Create alert with transaction (anti-duplication)
  * 4. Analyze trends and create trend alerts
  * 5. Send notifications to eligible users
+ *
+ * OPTIMIZATION: Processes all parameters in parallel
  *
  * @param {*} reading - The sensor reading to process
  */
 async function processSensorReadingForAlerts(reading: SensorReading): Promise<void> {
   const thresholds = await getThresholdConfig();
 
-  logger.info(`Processing reading for alerts: device ${reading.deviceId}`);
-
   const parameters: WaterParameter[] = ["tds", "ph", "turbidity"];
 
-  for (const parameter of parameters) {
-    const value = reading[parameter];
+  // PERFORMANCE: Process all parameters in parallel
+  const results = await Promise.allSettled(
+    parameters.map((parameter) => processParameterAlert(reading, parameter, thresholds))
+  );
 
-    // OPTIMIZATION: Alert debouncing - check cache first
-    // Skip alert processing if same parameter was alerted recently (5-min cooldown)
-    const cacheKey = `${reading.deviceId}-${parameter}`;
-    const lastAlertTime = alertCache.get(cacheKey);
-    const now = Date.now();
-
-    if (lastAlertTime && now - lastAlertTime < ALERT_COOLDOWN_MS) {
-      logger.info(`Skipping alert check for ${cacheKey} (cooldown active)`);
-      continue; // Skip this parameter, already alerted recently
+  // Log any failures
+  results.forEach((result, index) => {
+    if (result.status === "rejected") {
+      logger.warn("Alert processing failed for parameter", {
+        deviceId: reading.deviceId,
+        parameter: parameters[index],
+        error: result.reason,
+      });
     }
+  });
+}
 
-    // Check threshold violations
-    const thresholdCheck = checkThreshold(parameter, value, thresholds);
+/**
+ * Process alert logic for a single parameter
+ *
+ * @param {*} reading - Sensor reading
+ * @param {*} parameter - Water parameter to check
+ * @param {*} thresholds - Threshold configuration
+ */
+async function processParameterAlert(
+  reading: SensorReading,
+  parameter: WaterParameter,
+  thresholds: any
+): Promise<void> {
+  const value = reading[parameter];
 
-    if (thresholdCheck.exceeded) {
-      const alertId = await createAlert(
-        reading.deviceId,
+  // OPTIMIZATION: Alert debouncing - check cache first
+  const cacheKey = `${reading.deviceId}-${parameter}`;
+  const lastAlertTime = alertCache.get(cacheKey);
+
+  if (lastAlertTime) {
+    logger.debug("Alert cooldown active", {cacheKey});
+    return; // Skip this parameter, already alerted recently
+  }
+
+  // Check threshold violations
+  const thresholdCheck = checkThreshold(parameter, value, thresholds);
+
+  if (thresholdCheck.exceeded) {
+    // Create alert with transaction-based duplication check
+    await createAndNotifyAlertWithTransaction(
+      reading,
+      parameter,
+      "threshold",
+      thresholdCheck.severity!,
+      value,
+      thresholdCheck.threshold,
+      undefined,
+      {location: reading.deviceId},
+      cacheKey
+    );
+  }
+
+  // Check for trends
+  const trendAnalysis = await analyzeTrend(reading.deviceId, parameter, value, thresholds);
+
+  if (trendAnalysis && trendAnalysis.hasTrend) {
+    const trendCacheKey = `${reading.deviceId}-${parameter}-trend`;
+    const lastTrendAlert = alertCache.get(trendCacheKey);
+
+    if (!lastTrendAlert) {
+      const severity =
+        trendAnalysis.changeRate > 30 ?
+          "Critical" :
+          trendAnalysis.changeRate > 20 ?
+            "Warning" :
+            "Advisory";
+
+      // Create trend alert with transaction-based duplication check
+      await createAndNotifyAlertWithTransaction(
+        reading,
         parameter,
-        "threshold",
-        thresholdCheck.severity!,
+        "trend",
+        severity as "Advisory" | "Warning" | "Critical",
         value,
-        thresholdCheck.threshold,
-        undefined,
-        {location: reading.deviceId}
+        null,
+        trendAnalysis.direction,
+        {
+          previousValue: trendAnalysis.previousValue,
+          changeRate: trendAnalysis.changeRate,
+        },
+        trendCacheKey
       );
+    }
+  }
+}
 
-      // Fetch alert data for notifications
-      const alertDoc = await db.collection(COLLECTIONS.ALERTS).doc(alertId).get();
+/**
+ * Create alert with transaction and send notifications
+ *
+ * Consolidates alert creation with anti-duplication:
+ * 1. Create alert using transaction (prevents race conditions)
+ * 2. Send notifications if alert was created
+ * 3. Update alert cache
+ *
+ * @param {*} reading - Sensor reading that triggered alert
+ * @param {*} parameter - Water parameter
+ * @param {*} alertType - Alert type (threshold or trend)
+ * @param {*} severity - Alert severity
+ * @param {*} value - Current sensor value
+ * @param {*} thresholdValue - Threshold value (null for trend alerts)
+ * @param {*} trendDirection - Trend direction (undefined for threshold alerts)
+ * @param {*} metadata - Additional metadata
+ * @param {*} cacheKey - Cache key for debouncing
+ */
+async function createAndNotifyAlertWithTransaction(
+  reading: SensorReading,
+  parameter: WaterParameter,
+  alertType: "threshold" | "trend",
+  severity: "Advisory" | "Warning" | "Critical",
+  value: number,
+  thresholdValue: number | null,
+  trendDirection?: TrendDirection,
+  metadata?: Record<string, unknown>,
+  cacheKey?: string
+): Promise<void> {
+  // Build alert data
+  const alertDataPayload = {
+    deviceId: reading.deviceId,
+    parameter,
+    alertType,
+    severity,
+    value,
+    thresholdValue,
+    trendDirection,
+    status: "Active",
+    ...metadata,
+  };
+
+  // Create alert with transaction-based duplication check
+  const alertId = await createAlertWithDuplicationCheck(
+    reading.deviceId,
+    parameter,
+    alertType,
+    severity,
+    alertDataPayload
+  );
+
+  // If alert was created (not a duplicate)
+  if (alertId) {
+    // Fetch alert data for notifications
+    const alertDoc = await executeWithErrorHandling(
+      async () => db.collection(COLLECTIONS.ALERTS).doc(alertId).get(),
+      `Fetch alert ${alertId}`,
+      ErrorAction.CONTINUE
+    );
+
+    if (alertDoc) {
       const alertData = {alertId, ...alertDoc.data()};
 
+      // Send notifications
       await processNotifications(alertId, alertData);
-
-      // Update cache after successful alert
-      alertCache.set(cacheKey, now);
-      logger.info(`Alert cache updated for ${cacheKey}`);
     }
 
-    // Check for trends
-    const trendAnalysis = await analyzeTrend(reading.deviceId, parameter, value, thresholds);
-
-    if (trendAnalysis && trendAnalysis.hasTrend) {
-      // OPTIMIZATION: Check cache for trend alerts too
-      const trendCacheKey = `${reading.deviceId}-${parameter}-trend`;
-      const lastTrendAlert = alertCache.get(trendCacheKey);
-
-      if (!lastTrendAlert || now - lastTrendAlert >= ALERT_COOLDOWN_MS) {
-        const severity =
-          trendAnalysis.changeRate > 30 ?
-            "Critical" :
-            trendAnalysis.changeRate > 20 ?
-              "Warning" :
-              "Advisory";
-
-        const alertId = await createAlert(
-          reading.deviceId,
-          parameter,
-          "trend",
-          severity,
-          value,
-          null,
-          trendAnalysis.direction,
-          {
-            previousValue: trendAnalysis.previousValue,
-            changeRate: trendAnalysis.changeRate,
-          }
-        );
-
-        // Fetch alert data for notifications
-        const alertDoc = await db.collection(COLLECTIONS.ALERTS).doc(alertId).get();
-        const alertData = {alertId, ...alertDoc.data()};
-
-        await processNotifications(alertId, alertData);
-
-        // Update cache after successful trend alert
-        alertCache.set(trendCacheKey, now);
-        logger.info(`Trend alert cache updated for ${trendCacheKey}`);
-      } else {
-        logger.info(`Skipping trend alert for ${trendCacheKey} (cooldown active)`);
-      }
+    // Update cache after successful alert
+    if (cacheKey) {
+      alertCache.set(cacheKey, Date.now());
     }
+
+    logger.info("Alert created and notifications sent", {
+      alertId,
+      deviceId: reading.deviceId,
+      parameter,
+      severity,
+      alertType,
+    });
+  } else {
+    logger.debug("Alert creation skipped - duplicate exists", {
+      deviceId: reading.deviceId,
+      parameter,
+      alertType,
+    });
   }
 }
 
@@ -381,8 +698,10 @@ async function processSensorReadingForAlerts(reading: SensorReading): Promise<vo
  *
  * Steps:
  * 1. Get notification recipients based on preferences
- * 2. Send email notifications
+ * 2. Send email notifications with circuit breaker protection
  * 3. Update alert with notification tracking
+ *
+ * OPTIMIZATION: Uses circuit breaker to prevent cascading failures
  *
  * @param {*} alertId - The alert ID
  * @param {*} alert - The alert data object
@@ -395,31 +714,69 @@ async function processNotifications(
     const recipients = await getNotificationRecipients(alert);
 
     if (recipients.length === 0) {
-      logger.info(`No recipients found for alert ${alertId}`);
+      logger.debug("No recipients for alert", {alertId});
       return;
     }
 
     const notifiedUsers: string[] = [];
+    const failedUsers: string[] = [];
 
-    // Send email notifications to each recipient
-    for (const recipient of recipients) {
-      const success = await sendEmailNotification(recipient, alert);
-      if (success) notifiedUsers.push(recipient.userId);
-    }
+    // PERFORMANCE: Send emails in parallel with circuit breaker protection
+    const emailResults = await Promise.allSettled(
+      recipients.map((recipient) =>
+        emailCircuitBreaker
+          .execute(recipient, alert)
+          .then(() => ({userId: recipient.userId, success: true}))
+          .catch((error) => ({userId: recipient.userId, success: false, error}))
+      )
+    );
+
+    // Process results
+    emailResults.forEach((result) => {
+      if (result.status === "fulfilled") {
+        if (result.value.success) {
+          notifiedUsers.push(result.value.userId);
+        } else {
+          failedUsers.push(result.value.userId);
+          logger.warn("Email notification failed", {
+            alertId,
+            userId: result.value.userId,
+            error: (result.value as any).error,
+          });
+        }
+      } else {
+        logger.warn("Email notification promise rejected", {
+          alertId,
+          error: result.reason,
+        });
+      }
+    });
 
     // Update alert with notification tracking
     if (notifiedUsers.length > 0) {
-      await db
-        .collection(COLLECTIONS.ALERTS)
-        .doc(alertId)
-        .update({
-          notificationsSent: admin.firestore.FieldValue.arrayUnion(...notifiedUsers),
-        });
+      await executeWithErrorHandling(
+        async () =>
+          db
+            .collection(COLLECTIONS.ALERTS)
+            .doc(alertId)
+            .update({
+              notificationsSent: admin.firestore.FieldValue.arrayUnion(...notifiedUsers),
+            }),
+        `Update alert ${alertId} notifications`,
+        ErrorAction.CONTINUE
+      );
     }
 
-    logger.info(`Notifications sent for alert ${alertId} to ${notifiedUsers.length} users`);
+    // Log notification summary
+    logger.info("Notification processing completed", {
+      alertId,
+      totalRecipients: recipients.length,
+      notifiedCount: notifiedUsers.length,
+      failedCount: failedUsers.length,
+      circuitState: emailCircuitBreaker.getState(),
+    });
   } catch (error) {
-    logger.error(`Failed to process notifications for alert ${alertId}:`, error);
-    // Don't throw - notification failure shouldn't block processing
+    logger.error("Failed to process notifications", {alertId, error});
+    // Don't throw - notification failure shouldn't block sensor data processing
   }
 }

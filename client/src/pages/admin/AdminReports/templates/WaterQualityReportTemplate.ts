@@ -17,6 +17,7 @@ const COLORS = {
   white: { r: 255, g: 255, b: 255 },      // White
   black: { r: 0, g: 0, b: 0 },            // Black
   text: { r: 51, g: 51, b: 51 },          // Dark Gray Text
+  textSecondary: { r: 128, g: 128, b: 128 }, // Gray Text
 };
 
 const SPACING = {
@@ -145,7 +146,7 @@ export const generateWaterQualityReport = async (
   yPos += 10;
 
   // ============================================================================
-  // EXECUTIVE SUMMARY - Status Badge with Metrics
+  // OPTIMIZED EXECUTIVE SUMMARY - Full-width with metrics table
   // ============================================================================
   if (reportData.summary) {
     if (yPos > 220) {
@@ -169,42 +170,42 @@ export const generateWaterQualityReport = async (
     const summary = reportData.summary;
     const overallStatus = getOverallStatus(summary);
 
-    // Status badge with rounded corners
+    // Status badge with rounded corners - WIDER (full 180mm)
+    const badgeHeight = 28;
     doc.setFillColor(overallStatus.color[0], overallStatus.color[1], overallStatus.color[2]);
-    doc.roundedRect(SPACING.page.left, yPos, 180, 35, 3, 3, 'F');
+    doc.roundedRect(SPACING.page.left, yPos, 180, badgeHeight, 3, 3, 'F');
     
-    // Status title
+    // Status title (larger, bolder)
     doc.setTextColor(COLORS.white.r, COLORS.white.g, COLORS.white.b);
-    doc.setFont('helvetica', FONTS.subheading.style);
-    doc.setFontSize(FONTS.subheading.size);
-    doc.text(`Overall Water Quality: ${overallStatus.status}`, SPACING.page.left + 5, yPos + 8);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(`Overall Water Quality: ${overallStatus.status}`, SPACING.page.left + 5, yPos + 10);
     
-    yPos += 16;
-
-    // Check if we have actual data (not just zeros)
+    // Check if we have actual data
     const hasData = summary.averageTurbidity !== undefined && 
                     summary.totalReadings > 0;
 
-    doc.setFont('helvetica', FONTS.body.style);
-    doc.setFontSize(FONTS.body.size);
-
+    // Add summary stats in badge (smaller text, two rows)
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(FONTS.small.size);
+    
     if (hasData) {
-      doc.text(`• Average Turbidity: ${summary.averageTurbidity.toFixed(2)} NTU (Safe: ≤ 5 NTU)`, SPACING.page.left + 5, yPos);
-      yPos += 5;
-      doc.text(`• Average TDS: ${summary.averageTDS.toFixed(2)} ppm (Safe: ≤ 500 ppm)`, SPACING.page.left + 5, yPos);
-      yPos += 5;
-      doc.text(`• Average pH: ${summary.averagePH.toFixed(2)} (Safe: 6.5 - 8.5)`, SPACING.page.left + 5, yPos);
-      yPos += 7;
+      doc.text(
+        `Turbidity: ${summary.averageTurbidity.toFixed(2)} NTU | TDS: ${summary.averageTDS.toFixed(2)} ppm | pH: ${summary.averagePH.toFixed(2)} | Total Readings: ${summary.totalReadings}`, 
+        SPACING.page.left + 5, 
+        yPos + 18
+      );
+      doc.text(
+        `Period: ${reportData.period || 'N/A'} | Devices Monitored: ${reportData.devices?.length || 0}`, 
+        SPACING.page.left + 5, 
+        yPos + 24
+      );
     } else {
-      doc.text('⚠ No sensor data available for the selected period', SPACING.page.left + 5, yPos);
-      yPos += 5;
-      doc.setFontSize(FONTS.small.size);
-      doc.text('Please check device connectivity and try a different date range', SPACING.page.left + 5, yPos);
-      yPos += 7;
+      doc.text('No sensor data available for the selected period', SPACING.page.left + 5, yPos + 18);
     }
 
+    yPos += badgeHeight + 10;
     doc.setTextColor(COLORS.text.r, COLORS.text.g, COLORS.text.b);
-    yPos += 10;
   }
 
   // ============================================================================
@@ -235,126 +236,282 @@ export const generateWaterQualityReport = async (
         yPos = SPACING.page.top;
       }
 
-      // Device header card
+      // Device header card with proper height
+      const deviceHeaderHeight = 12;
       doc.setFillColor(COLORS.lightGray.r, COLORS.lightGray.g, COLORS.lightGray.b);
-      doc.roundedRect(SPACING.page.left, yPos - 2, 180, 10, 1, 1, 'F');
+      doc.roundedRect(SPACING.page.left, yPos, 180, deviceHeaderHeight, 2, 2, 'F');
+      doc.setDrawColor(COLORS.gray.r, COLORS.gray.g, COLORS.gray.b);
+      doc.setLineWidth(0.2);
+      doc.roundedRect(SPACING.page.left, yPos, 180, deviceHeaderHeight, 2, 2, 'S');
       
-      doc.setFont('helvetica', FONTS.subheading.style);
+      // Device name (left side)
+      doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONTS.subheading.size);
       doc.setTextColor(COLORS.primary.r, COLORS.primary.g, COLORS.primary.b);
-      doc.text(`📍 ${deviceReport.deviceName || deviceReport.deviceId}`, SPACING.page.left + 3, yPos + 5);
+      const deviceName = deviceReport.deviceName || deviceReport.deviceId || 'Unknown Device';
+      doc.text(`Device: ${deviceName}`, SPACING.page.left + 3, yPos + 7.5);
       
+      // Location (right side) with proper text wrapping
       if (deviceReport.location) {
-        doc.setFont('helvetica', FONTS.small.style);
+        doc.setFont('helvetica', 'normal');
         doc.setFontSize(FONTS.small.size);
-        doc.setTextColor(COLORS.gray.r, COLORS.gray.g, COLORS.gray.b);
-        doc.text(`Location: ${deviceReport.location}`, SPACING.page.left + 100, yPos + 5);
+        doc.setTextColor(COLORS.textSecondary.r, COLORS.textSecondary.g, COLORS.textSecondary.b);
+        const locationText = `Location: ${deviceReport.location}`;
+        const maxLocationWidth = 70;
+        const wrappedLocation = doc.splitTextToSize(locationText, maxLocationWidth);
+        doc.text(wrappedLocation[0], SPACING.page.left + 105, yPos + 7.5);
       }
       
-      yPos += 12;
+      yPos += deviceHeaderHeight + 5;
 
-      // Metrics table with enhanced styling
+      // OPTIMIZED Metrics table - Maximizes PDF space (180mm full width)
       if (deviceReport.metrics) {
         const metrics = deviceReport.metrics;
         
         autoTable(doc, {
           startY: yPos,
-          head: [['Parameter', 'Average', 'Min / Max', 'Safe Range', 'Status']],
+          head: [['Parameter', 'Average Value', 'Min / Max Range', 'Safe Range', 'Status']],
           body: [
             [
               'Turbidity',
               `${metrics.avgTurbidity?.toFixed(2) || 'N/A'} NTU`,
               `${metrics.minTurbidity?.toFixed(2) || 'N/A'} / ${metrics.maxTurbidity?.toFixed(2) || 'N/A'}`,
-              '≤ 5 NTU',
-              (metrics.avgTurbidity || 0) <= 5 ? '✓ GOOD' : '⚠ WARNING'
+              'Max: 5 NTU',
+              (metrics.avgTurbidity || 0) <= 5 ? 'GOOD' : 'WARNING'
             ],
             [
               'TDS',
               `${metrics.avgTDS?.toFixed(2) || 'N/A'} ppm`,
               `${metrics.minTDS?.toFixed(2) || 'N/A'} / ${metrics.maxTDS?.toFixed(2) || 'N/A'}`,
-              '≤ 500 ppm',
-              (metrics.avgTDS || 0) <= 500 ? '✓ GOOD' : '⚠ WARNING'
+              'Max: 500 ppm',
+              (metrics.avgTDS || 0) <= 500 ? 'GOOD' : 'WARNING'
             ],
             [
               'pH Level',
               metrics.avgPH?.toFixed(2) || 'N/A',
               `${metrics.minPH?.toFixed(2) || 'N/A'} / ${metrics.maxPH?.toFixed(2) || 'N/A'}`,
               '6.5 - 8.5',
-              ((metrics.avgPH || 0) >= 6.5 && (metrics.avgPH || 0) <= 8.5) ? '✓ GOOD' : '⚠ WARNING'
+              ((metrics.avgPH || 0) >= 6.5 && (metrics.avgPH || 0) <= 8.5) ? 'GOOD' : 'WARNING'
             ],
           ],
           styles: { 
-            fontSize: FONTS.small.size, 
-            cellPadding: 3,
+            fontSize: FONTS.body.size, 
+            cellPadding: { top: 5, right: 4, bottom: 5, left: 4 },
             lineColor: [COLORS.gray.r, COLORS.gray.g, COLORS.gray.b],
-            lineWidth: 0.1,
+            lineWidth: 0.15,
+            halign: 'left',
+            valign: 'middle',
+            overflow: 'linebreak',
+            minCellHeight: 11,
           },
           headStyles: { 
             fillColor: [COLORS.primary.r, COLORS.primary.g, COLORS.primary.b],
             textColor: [COLORS.white.r, COLORS.white.g, COLORS.white.b],
             fontSize: FONTS.body.size,
             fontStyle: 'bold',
+            halign: 'center',
+            valign: 'middle',
+            minCellHeight: 11,
+            cellPadding: { top: 5, right: 4, bottom: 5, left: 4 },
           },
           alternateRowStyles: { 
             fillColor: [COLORS.lightGray.r, COLORS.lightGray.g, COLORS.lightGray.b] 
           },
           columnStyles: {
-            0: { fontStyle: 'bold', cellWidth: 30 },
+            0: { fontStyle: 'bold', cellWidth: 32, halign: 'left' },    // Parameter - wider
+            1: { cellWidth: 35, halign: 'center' },                      // Average - wider
+            2: { cellWidth: 40, halign: 'center' },                      // Min/Max - wider for ranges
+            3: { cellWidth: 35, halign: 'center' },                      // Safe Range - wider
             4: { 
-              cellWidth: 25,
+              cellWidth: 38,                                              // Status - wider for full text
               fontStyle: 'bold',
+              halign: 'center',
             }
           },
           didParseCell: function(data: any) {
+            // Color-code Status column
             if (data.column.index === 4) {
-              const status = data.cell.raw;
+              const status = String(data.cell.raw || '').toUpperCase();
               if (status.includes('GOOD')) {
                 data.cell.styles.textColor = [COLORS.success.r, COLORS.success.g, COLORS.success.b];
+                data.cell.styles.fillColor = [240, 255, 240]; // Light green background
               } else if (status.includes('WARNING')) {
                 data.cell.styles.textColor = [COLORS.warning.r, COLORS.warning.g, COLORS.warning.b];
+                data.cell.styles.fillColor = [255, 250, 230]; // Light yellow background
               } else {
                 data.cell.styles.textColor = [COLORS.danger.r, COLORS.danger.g, COLORS.danger.b];
+                data.cell.styles.fillColor = [255, 240, 240]; // Light red background
               }
             }
           },
           margin: { left: SPACING.page.left, right: SPACING.page.right },
+          tableWidth: 'auto',
         });
 
         yPos = (doc as jsPDFWithAutoTable).lastAutoTable?.finalY ?? yPos + 10;
         yPos += 5;
       }
 
-      // Alerts badge section
+      // OPTIMIZED Alerts section - Organized by severity (CRITICAL → HIGH → MEDIUM → LOW)
       if (deviceReport.alerts && deviceReport.alerts.length > 0) {
-        if (yPos > 250) {
+        if (yPos > 230) {
           doc.addPage();
           yPos = SPACING.page.top;
         }
 
-        // Alert section background
-        doc.setFillColor(COLORS.warning.r, COLORS.warning.g, COLORS.warning.b);
-        doc.setFillColor(255, 250, 240); // Light orange background
-        doc.roundedRect(SPACING.page.left, yPos, 180, 8, 1, 1, 'F');
-        
-        doc.setFont('helvetica', FONTS.body.style);
-        doc.setFontSize(FONTS.body.size);
-        doc.setTextColor(COLORS.warning.r, COLORS.warning.g, COLORS.warning.b);
-        doc.text(`⚠ Active Alerts (${deviceReport.alerts.length})`, SPACING.page.left + 3, yPos + 5);
-        yPos += 10;
+        // Sort alerts by severity priority
+        const severityOrder: { [key: string]: number } = { 
+          'critical': 1, 
+          'high': 2, 
+          'medium': 3, 
+          'low': 4 
+        };
+        const sortedAlerts = [...deviceReport.alerts].sort((a, b) => {
+          const severityA = (a.severity || 'low').toLowerCase();
+          const severityB = (b.severity || 'low').toLowerCase();
+          return (severityOrder[severityA] || 5) - (severityOrder[severityB] || 5);
+        });
 
-        deviceReport.alerts.slice(0, 5).forEach((alert: any) => {
-          doc.setFont('helvetica', FONTS.small.style);
-          doc.setFontSize(FONTS.small.size);
-          const alertColor = alert.severity === 'high' ? COLORS.danger : COLORS.warning;
-          doc.setTextColor(alertColor.r, alertColor.g, alertColor.b);
-          doc.text(`• ${alert.message}`, SPACING.page.left + 5, yPos);
-          doc.setTextColor(COLORS.text.r, COLORS.text.g, COLORS.text.b);
-          yPos += 4;
+        // Count alerts by severity
+        const criticalCount = sortedAlerts.filter(a => a.severity?.toLowerCase() === 'critical').length;
+        const highCount = sortedAlerts.filter(a => a.severity?.toLowerCase() === 'high').length;
+        const mediumCount = sortedAlerts.filter(a => a.severity?.toLowerCase() === 'medium').length;
+        const lowCount = sortedAlerts.filter(a => a.severity?.toLowerCase() === 'low').length;
+
+        // Alert section header with severity breakdown
+        const alertHeaderHeight = 12;
+        doc.setFillColor(255, 250, 240); // Light orange background
+        doc.roundedRect(SPACING.page.left, yPos, 180, alertHeaderHeight, 2, 2, 'F');
+        doc.setDrawColor(COLORS.warning.r, COLORS.warning.g, COLORS.warning.b);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(SPACING.page.left, yPos, 180, alertHeaderHeight, 2, 2, 'S');
+        
+        // Title
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(FONTS.subheading.size);
+        doc.setTextColor(COLORS.danger.r, COLORS.danger.g, COLORS.danger.b);
+        doc.text(`Active Alerts: ${deviceReport.alerts.length}`, SPACING.page.left + 3, yPos + 5);
+        
+        // Severity breakdown (smaller text on second line)
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(FONTS.tiny.size);
+        doc.setTextColor(COLORS.textSecondary.r, COLORS.textSecondary.g, COLORS.textSecondary.b);
+        const breakdownText = `Critical: ${criticalCount} | High: ${highCount} | Medium: ${mediumCount} | Low: ${lowCount}`;
+        doc.text(breakdownText, SPACING.page.left + 3, yPos + 9);
+        
+        yPos += alertHeaderHeight + 5;
+
+        // Display alerts in organized table format (max 10 alerts)
+        const alertsToShow = sortedAlerts.slice(0, 10);
+        const alertTableData = alertsToShow.map((alert: any) => {
+          const severity = (alert.severity || 'low').toUpperCase();
+          
+          // Get message with fallback to description or location info
+          let message = alert.message || alert.description || 'Alert triggered';
+          if (alert.location && message.indexOf(alert.location) === -1) {
+            message = `[${alert.location}] ${message}`;
+          }
+          
+          // Check multiple possible timestamp fields and format properly
+          let timestamp = 'Just now';
+          const timeField = alert.timestamp || alert.createdAt || alert.triggeredAt || alert.detectedAt;
+          
+          if (timeField) {
+            try {
+              // Handle both Firestore Timestamp and regular Date objects
+              const timeValue = timeField.toDate ? timeField.toDate() : timeField;
+              timestamp = dayjs(timeValue).format('MMM D, HH:mm');
+            } catch (error) {
+              timestamp = 'Recent';
+            }
+          }
+          
+          return [severity, message, timestamp];
+        });
+
+        autoTable(doc, {
+          startY: yPos,
+          head: [['Severity', 'Alert Message', 'Time']],
+          body: alertTableData,
+          styles: { 
+            fontSize: FONTS.small.size,
+            cellPadding: { top: 4, right: 4, bottom: 4, left: 4 },
+            lineColor: [COLORS.gray.r, COLORS.gray.g, COLORS.gray.b],
+            lineWidth: 0.15,
+            halign: 'left',
+            valign: 'middle',
+            overflow: 'linebreak',
+            minCellHeight: 10,
+          },
+          headStyles: { 
+            fillColor: [COLORS.danger.r, COLORS.danger.g, COLORS.danger.b],
+            textColor: [COLORS.white.r, COLORS.white.g, COLORS.white.b],
+            fontSize: FONTS.body.size,
+            fontStyle: 'bold',
+            halign: 'center',
+            cellPadding: { top: 5, right: 4, bottom: 5, left: 4 },
+            minCellHeight: 11,
+          },
+          alternateRowStyles: {
+            fillColor: [252, 252, 252] // Very light gray for alternating rows
+          },
+          columnStyles: {
+            0: { 
+              cellWidth: 28, 
+              fontStyle: 'bold', 
+              halign: 'center',
+              fontSize: FONTS.small.size,
+            },
+            1: { 
+              cellWidth: 117,  // Slightly adjusted for better fit
+              halign: 'left',
+              fontSize: FONTS.small.size,
+            },
+            2: { 
+              cellWidth: 35, 
+              halign: 'center',
+              fontSize: FONTS.small.size,
+              fontStyle: 'normal',
+            }
+          },
+          didParseCell: function(data: any) {
+            // Color-code Severity column with distinct backgrounds
+            if (data.column.index === 0 && data.section === 'body') {
+              const severity = String(data.cell.raw || '').toLowerCase();
+              if (severity === 'critical') {
+                data.cell.styles.fillColor = [255, 230, 230]; // Stronger light red
+                data.cell.styles.textColor = [COLORS.danger.r, COLORS.danger.g, COLORS.danger.b];
+              } else if (severity === 'high') {
+                data.cell.styles.fillColor = [255, 240, 225]; // Stronger light orange
+                data.cell.styles.textColor = [255, 87, 34]; // Deep orange
+              } else if (severity === 'medium') {
+                data.cell.styles.fillColor = [255, 248, 220]; // Stronger light yellow
+                data.cell.styles.textColor = [COLORS.warning.r, COLORS.warning.g, COLORS.warning.b];
+              } else {
+                data.cell.styles.fillColor = [240, 248, 255]; // Stronger light blue
+                data.cell.styles.textColor = [COLORS.secondary.r, COLORS.secondary.g, COLORS.secondary.b];
+              }
+            }
+            
+            // Style Time column with gray text
+            if (data.column.index === 2 && data.section === 'body') {
+              data.cell.styles.textColor = [COLORS.textSecondary.r, COLORS.textSecondary.g, COLORS.textSecondary.b];
+            }
+          },
+          margin: { left: SPACING.page.left, right: SPACING.page.right },
+          tableWidth: 'auto',
         });
         
-        if (deviceReport.alerts.length > 5) {
+        yPos = (doc as jsPDFWithAutoTable).lastAutoTable?.finalY ?? yPos + 10;
+        
+        // Show remaining alerts count if more than 10
+        if (sortedAlerts.length > 10) {
+          yPos += 3;
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(FONTS.small.size);
           doc.setTextColor(COLORS.gray.r, COLORS.gray.g, COLORS.gray.b);
-          doc.text(`... and ${deviceReport.alerts.length - 5} more alerts`, SPACING.page.left + 5, yPos);
+          doc.text(`+ ${sortedAlerts.length - 10} more alerts not shown (view in system for full list)`, SPACING.page.left + 5, yPos);
+          yPos += 5;
         }
         
         yPos += 8;
@@ -430,7 +587,7 @@ export const generateWaterQualityReport = async (
     // Footer text with report metadata
     doc.setFontSize(FONTS.tiny.size);
     doc.text(
-      `IoT Water Quality Monitoring System © ${dayjs().format('YYYY')} | Report ID: ${reportId}`,
+      `PureTrack © ${dayjs().format('YYYY')} | Report ID: ${reportId}`,
       105,
       289,
       { align: 'center' }
