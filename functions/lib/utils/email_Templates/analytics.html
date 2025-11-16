@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{{reportTitle}}</title>
+    <style>
+      /* Basic email-safe styles */
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #f6f8fa;
+        font-family: Arial, Helvetica, sans-serif;
+        color: #0f172a;
+      }
+      .container {
+        max-width: 700px;
+        margin: 0 auto;
+        background-color: #ffffff;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
+      }
+      .header {
+        background-color: #0f62fe;
+        color: #ffffff;
+        padding: 24px 32px;
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 22px;
+      }
+      .content {
+        padding: 24px 32px;
+      }
+      .section-title {
+        font-size: 16px;
+        font-weight: bold;
+        margin-bottom: 8px;
+        color: #0f172a;
+      }
+      .muted {
+        color: #6b7280;
+        font-size: 13px;
+      }
+      .metrics {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 12px;
+      }
+      .metric {
+        background: #f8fafc;
+        border-radius: 6px;
+        padding: 12px;
+        flex: 1 1 30%;
+        min-width: 150px;
+        text-align: center;
+        border: 1px solid #e2e8f0;
+      }
+      .metric .label {
+        font-size: 12px;
+        color: #6b7280;
+      }
+      .metric .value {
+        font-size: 18px;
+        font-weight: bold;
+        margin-top: 4px;
+      }
+      .alert-summary {
+        background: {{alertSummaryBg}};
+        border: 1px solid {{alertSummaryBorder}};
+        border-radius: 6px;
+        padding: 12px;
+        margin-top: 16px;
+      }
+      .alert-pill {
+        display: inline-block;
+        margin: 4px;
+        padding: 8px 12px;
+        border-radius: 20px;
+        background: rgba(255,255,255,0.5);
+        font-size: 13px;
+        font-weight: bold;
+      }
+      .health-bar {
+        height: 14px;
+        border-radius: 8px;
+        background: #e5e7eb;
+        overflow: hidden;
+        margin-top: 6px;
+      }
+      .health-fill {
+        height: 14px;
+        width: {{healthScore}}%;
+        background: {{healthScoreColor}};
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+      }
+      th, td {
+        border: 1px solid #e5e7eb;
+        padding: 8px 10px;
+        font-size: 13px;
+        text-align: left;
+      }
+      th {
+        background: #f1f5f9;
+      }
+      .footer {
+        text-align: center;
+        padding: 20px;
+        font-size: 12px;
+        color: #6b7280;
+        background: #f9fafb;
+      }
+      a.btn {
+        background-color: #0f62fe;
+        color: #ffffff !important;
+        padding: 10px 16px;
+        border-radius: 6px;
+        text-decoration: none;
+        display: inline-block;
+        margin-top: 12px;
+        font-weight: bold;
+      }
+      @media only screen and (max-width: 600px) {
+        .content { padding: 20px; }
+        .metrics { flex-direction: column; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1>{{reportTitle}}</h1>
+        <p style="margin:4px 0 0;font-size:14px;">
+          {{reportType}} Report — {{periodText}}
+        </p>
+      </div>
+
+      <!-- Content -->
+      <div class="content">
+        <p>Hello <strong>{{recipientName}}</strong>,</p>
+        <p>
+          Here’s your <strong>{{reportType}}</strong> report for
+          <strong>{{periodTextLower}}</strong> ({{periodRange}}).
+        </p>
+
+        <div class="section-title">Device Overview</div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="label">Total Devices</div>
+            <div class="value">{{totalDevices}}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Online</div>
+            <div class="value">{{onlineDevices}}</div>
+          </div>
+          <div class="metric">
+            <div class="label">Offline</div>
+            <div class="value">{{offlineDevices}}</div>
+          </div>
+        </div>
+
+        <div style="margin-top:20px;">
+          <div class="label">Health Score</div>
+          <div class="health-bar">
+            <div class="health-fill"></div>
+          </div>
+          <div style="margin-top:4px;font-weight:bold;">
+            {{healthScore}}%
+          </div>
+        </div>
+
+        <div class="section-title" style="margin-top:20px;">Alert Summary</div>
+        <div class="alert-summary">
+          <span class="alert-pill">Critical: {{criticalCount}}</span>
+          <span class="alert-pill">Warning: {{warningCount}}</span>
+          <span class="alert-pill">Advisory: {{advisoryCount}}</span>
+          <span class="alert-pill">Total: {{totalAlerts}}</span>
+        </div>
+
+        <div style="margin-top:24px;">
+          <div class="section-title">Device Details</div>
+          {{deviceTable}}
+        </div>
+
+        <div style="margin-top:24px;">
+          <div class="section-title">Alerts</div>
+          {{alertTable}}
+        </div>
+
+        <div style="text-align:center;margin-top:28px;">
+          <a href="{{dashboardUrl}}" class="btn" target="_blank">View in Dashboard</a>
+        </div>
+
+        <p class="muted" style="margin-top:20px;">
+          Generated on {{timestamp}} • {{reportTitle}}
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        &copy; {{timestamp}} — Automated {{reportType}} Report
+      </div>
+    </div>
+  </body>
+</html>

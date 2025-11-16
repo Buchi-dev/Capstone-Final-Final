@@ -168,19 +168,57 @@ export const sendUnifiedAnalytics = onSchedule(
       // ===================================
       // 2. FETCH USERS WITH ENABLED ALERTS
       // ===================================
-      const subscribedUsersSnapshot = await db
-        .collection(COLLECTIONS.USERS)
-        .where("notificationPreferences.emailNotifications", "==", true)
-        .where("notificationPreferences.sendScheduledAlerts", "==", true)
-        .get();
+      // Since notificationPreferences is a sub-collection, we need to:
+      // 1. Get all users
+      // 2. Check each user's notificationPreferences sub-collection
+      const allUsersSnapshot = await db.collection(COLLECTIONS.USERS).get();
 
-      if (subscribedUsersSnapshot.empty) {
+      const subscribedUsers: Array<{
+        userId: string;
+        userData: FirebaseFirestore.DocumentData;
+        preferences: NotificationPreferences;
+      }> = [];
+
+      for (const userDoc of allUsersSnapshot.docs) {
+        const userData = userDoc.data();
+
+        // Get the notificationPreferences sub-collection for this user
+        const preferencesSnapshot = await db
+          .collection(COLLECTIONS.USERS)
+          .doc(userDoc.id)
+          .collection("notificationPreferences")
+          .limit(1)
+          .get();
+
+        if (!preferencesSnapshot.empty) {
+          const preferencesDoc = preferencesSnapshot.docs[0];
+          const preferences = preferencesDoc.data() as NotificationPreferences;
+
+          // Check if user has email notifications and scheduled alerts enabled
+          if (
+            preferences.emailNotifications === true &&
+            preferences.sendScheduledAlerts === true &&
+            preferences.email
+          ) {
+            subscribedUsers.push({
+              userId: userDoc.id,
+              userData,
+              preferences: {
+                ...preferences,
+                userId: preferences.userId ?? userDoc.id,
+              },
+            });
+          }
+        }
+      }
+
+      if (subscribedUsers.length === 0) {
         logger.info("[UNIFIED][Asia/Manila] " + SCHEDULER_MESSAGES.NO_RECIPIENTS);
         return;
       }
 
       logger.info(
-        `[UNIFIED][Asia/Manila] Found ${subscribedUsersSnapshot.size} users subscribed to ${reportType} analytics`
+        `[UNIFIED][Asia/Manila] Found ${subscribedUsers.length} users subscribed to ${reportType} analytics`
       );
 
       // ===================================
@@ -204,27 +242,12 @@ export const sendUnifiedAnalytics = onSchedule(
       let emailsSent = 0;
       let emailsFailed = 0;
 
-      for (const userDoc of subscribedUsersSnapshot.docs) {
-        const userData = userDoc.data() as FirebaseFirestore.DocumentData & {
-          notificationPreferences?: NotificationPreferences;
-        };
-
-        const rawPreferences = userData.notificationPreferences;
-        if (!rawPreferences) {
-          logger.warn(
-            `[UNIFIED][Asia/Manila] User ${userDoc.id} has no notificationPreferences field`
-          );
-          continue;
-        }
-
-        const preferences: NotificationPreferences = {
-          ...rawPreferences,
-          userId: rawPreferences.userId ?? userDoc.id,
-        };
+      for (const subscribedUser of subscribedUsers) {
+        const {userId, userData, preferences} = subscribedUser;
 
         if (!preferences.email) {
           logger.warn(
-            `[UNIFIED][Asia/Manila] Skipping user ${preferences.userId} due to missing email`
+            `[UNIFIED][Asia/Manila] Skipping user ${userId} due to missing email`
           );
           continue;
         }
