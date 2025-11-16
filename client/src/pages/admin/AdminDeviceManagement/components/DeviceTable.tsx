@@ -21,7 +21,6 @@ interface DeviceTableProps {
     unregistered: number;
   };
   onView: (device: Device) => void;
-  onEdit: (device: Device) => void;
   onDelete: (device: Device) => void;
   onRegister: (device: Device) => void;
 }
@@ -33,7 +32,6 @@ export const DeviceTable = ({
   loading,
   stats,
   onView,
-  onEdit,
   onDelete,
   onRegister,
 }: DeviceTableProps) => {
@@ -43,7 +41,6 @@ export const DeviceTable = ({
     activeTab,
     token,
     onView,
-    onEdit,
     onDelete,
     onRegister,
   });

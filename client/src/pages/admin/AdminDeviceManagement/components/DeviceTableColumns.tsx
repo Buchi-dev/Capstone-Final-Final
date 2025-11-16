@@ -1,7 +1,6 @@
 import type { ColumnsType } from 'antd/es/table';
 import { Space, Tag, Tooltip, Button, Typography } from 'antd';
 import {
-  EditOutlined,
   DeleteOutlined,
   EyeOutlined,
   CheckCircleOutlined,
@@ -30,7 +29,6 @@ interface UseDeviceColumnsProps {
   activeTab: 'registered' | 'unregistered';
   token: any;
   onView: (device: Device) => void;
-  onEdit: (device: Device) => void;
   onDelete: (device: Device) => void;
   onRegister: (device: Device) => void;
 }
@@ -39,7 +37,6 @@ export const useDeviceColumns = ({
   activeTab,
   token,
   onView,
-  onEdit,
   onDelete,
   onRegister,
 }: UseDeviceColumnsProps) => {
@@ -218,14 +215,6 @@ export const useDeviceColumns = ({
                     type="default"
                     icon={<EyeOutlined />}
                     onClick={() => onView(record)}
-                    size="small"
-                  />
-                </Tooltip>
-                <Tooltip title="Edit Device">
-                  <Button
-                    type="default"
-                    icon={<EditOutlined />}
-                    onClick={() => onEdit(record)}
                     size="small"
                   />
                 </Tooltip>

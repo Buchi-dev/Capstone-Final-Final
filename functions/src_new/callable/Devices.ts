@@ -13,12 +13,9 @@ import {db, rtdb} from "../config/firebase";
 import {
   DEVICE_MANAGEMENT_ERRORS,
   DEVICE_MANAGEMENT_MESSAGES,
-  DEVICE_DEFAULTS,
 } from "../constants/Device.Constants";
 // Types
 import type {
-  Device,
-  DeviceStatus,
   DeviceManagementRequest,
   DeviceManagementResponse,
 } from "../types/Device.Types";
@@ -30,62 +27,11 @@ import type {ActionHandler} from "../utils/SwitchCaseRouting";
 // ============================================================================
 // 🧩 DEVICE MANAGEMENT HANDLERS
 // ============================================================================
-
-// --------------------------------------------------------------------------
-// 🔹 Add Device
-// --------------------------------------------------------------------------
-const handleAddDevice: ActionHandler<DeviceManagementRequest, DeviceManagementResponse> = async (
-  req: CallableRequest<DeviceManagementRequest>
-) => {
-  const {deviceId, deviceData} = req.data;
-
-  if (!deviceId) {
-    throw new HttpsError("invalid-argument", DEVICE_MANAGEMENT_ERRORS.MISSING_DEVICE_ID);
-  }
-
-  // STRICT VALIDATION: Location is REQUIRED for device registration
-  if (!deviceData?.metadata?.location?.building || !deviceData?.metadata?.location?.floor) {
-    throw new HttpsError(
-      "invalid-argument",
-      "Location is required: Device must have building and floor set before registration. " +
-      "Only devices with proper location can collect sensor data."
-    );
-  }
-
-  const deviceRef = db.collection("devices").doc(deviceId);
-  const doc = await deviceRef.get();
-
-  if (doc.exists) {
-    throw new HttpsError("already-exists", DEVICE_MANAGEMENT_ERRORS.DEVICE_ALREADY_EXISTS);
-  }
-
-  const newDevice: Device = {
-    deviceId,
-    name: deviceData?.name || `Device-${deviceId}`,
-    type: deviceData?.type || DEVICE_DEFAULTS.TYPE,
-    firmwareVersion: deviceData?.firmwareVersion || DEVICE_DEFAULTS.FIRMWARE_VERSION,
-    macAddress: deviceData?.macAddress || "",
-    ipAddress: deviceData?.ipAddress || "",
-    sensors: deviceData?.sensors || DEVICE_DEFAULTS.SENSORS,
-    status: (deviceData?.status as DeviceStatus) || DEVICE_DEFAULTS.STATUS,
-    registeredAt: admin.firestore.FieldValue.serverTimestamp(),
-    lastSeen: admin.firestore.FieldValue.serverTimestamp(),
-    metadata: deviceData?.metadata, // Location already validated above
-  };
-
-  await deviceRef.set(newDevice);
-
-  // Initialize RTDB sensor readings entry
-  await rtdb.ref(`sensorReadings/${deviceId}`).set({
-    deviceId,
-    latestReading: null,
-    status: "waiting_for_data",
-  });
-
-  return {success: true, message: DEVICE_MANAGEMENT_MESSAGES.DEVICE_ADDED, device: newDevice};
-};
-
-
+//
+// ⚠️ MANUAL DEVICE CREATION REMOVED
+// Devices are now auto-created by autoRegisterDevice.ts when detected via MQTT.
+// Admin users assign location via updateDevice to complete registration.
+//
 // --------------------------------------------------------------------------
 // 🔹 Update Device
 // --------------------------------------------------------------------------
@@ -155,7 +101,6 @@ export const DevicesCalls = onCall<
 >(
   createRoutedFunction<DeviceManagementRequest, DeviceManagementResponse>(
     {
-      addDevice: handleAddDevice,
       updateDevice: handleUpdateDevice,
       deleteDevice: handleDeleteDevice,
     },

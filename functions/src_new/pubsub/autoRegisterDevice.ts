@@ -22,6 +22,7 @@
  * - Disabled auto-registration to enforce manual registration workflow
  */
 
+import * as admin from "firebase-admin";
 import type {CloudEvent} from "firebase-functions/v2";
 import {logger} from "firebase-functions/v2";
 import type {MessagePublishedData} from "firebase-functions/v2/pubsub";
@@ -132,7 +133,7 @@ export const autoRegisterDevice = onMessagePublished(
       const doc = await deviceRef.get();
 
       if (doc.exists) {
-        // Device is already registered - verify it has proper location metadata
+        // Device already exists - just acknowledge connection
         const deviceData = doc.data();
         const hasLocation = deviceData?.metadata?.location?.building &&
                            deviceData?.metadata?.location?.floor;
@@ -141,37 +142,33 @@ export const autoRegisterDevice = onMessagePublished(
           logger.info(
             `✅ Device ${deviceId} is properly registered with location - connection acknowledged`
           );
-          // NOTE: Status and lastSeen will be updated by processSensorData
-          // when actual sensor data arrives (maintains single source of truth)
-          return;
         } else {
-          logger.warn(
-            `⚠️ Device ${deviceId} exists but MISSING LOCATION - sensor data will be rejected`,
-            {
-              deviceId,
-              hasMetadata: !!deviceData?.metadata,
-              hasLocation: !!deviceData?.metadata?.location,
-              location: deviceData?.metadata?.location,
-            }
+          logger.info(
+            `📝 Device ${deviceId} exists but UNREGISTERED (no location) - awaiting admin assignment`
           );
-          return;
         }
+        return; // Don't recreate existing device
       }
 
-      // NEW DEVICE - REJECT (Auto-registration is DISABLED)
-      logger.error(
-        `❌ REJECTED: Device ${deviceId} is NOT registered - must be registered via admin UI first`,
-        {
-          deviceId,
-          deviceInfo,
-          reason: "Auto-registration disabled - requires manual admin registration with location",
-          action: "Admin must register device via UI with building and floor location before use",
-        }
-      );
+      // NEW DEVICE - AUTO-CREATE as UNREGISTERED
+      logger.info(`🆕 New device detected: ${deviceId} - creating unregistered entry`);
 
-      // Do NOT create the device - this is intentional
-      // Admins must manually register devices via the UI with proper location metadata
-      return;
+      const newDevice: Device = {
+        deviceId,
+        name: deviceInfo?.name || `Device ${deviceId}`,
+        type: deviceInfo?.type || "Unknown",
+        firmwareVersion: deviceInfo?.firmwareVersion || "1.0.0",
+        macAddress: deviceInfo?.macAddress || "",
+        ipAddress: deviceInfo?.ipAddress || "",
+        sensors: deviceInfo?.sensors || [],
+        status: "offline", // Will be updated by processSensorData when data arrives
+        registeredAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastSeen: admin.firestore.FieldValue.serverTimestamp(),
+        metadata: {}, // NO LOCATION - intentionally unregistered
+      };
+
+      await deviceRef.set(newDevice);
+      logger.info(`✅ Device ${deviceId} auto-created in UNREGISTERED state (no location)`);
     } catch (error) {
       logger.error("Error processing device registration request:", error);
       throw error; // Trigger retry for unexpected errors

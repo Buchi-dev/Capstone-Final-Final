@@ -19,9 +19,12 @@
  * - WRITE operations: Cloud Functions only for security and validation
  * 
  * Cloud Functions (functions/src_new/callable/Devices.ts):
- *   - addDevice: Create new device (admin only)
- *   - updateDevice: Modify device properties (admin only)
+ *   - updateDevice: Modify device properties and register location (admin only)
  *   - deleteDevice: Remove device and sensor data (admin only)
+ * 
+ * Device Creation:
+ *   - Devices are AUTO-CREATED by autoRegisterDevice Cloud Function when detected via MQTT
+ *   - Admin assigns location via updateDevice to complete registration
  * 
  * @module services/devices
  */
@@ -311,15 +314,11 @@ export class DevicesService {
     }
   }
 
-  /** WRITE - Cloud Function */
-  async addDevice(deviceId: string, deviceData: DeviceData): Promise<Device> {
-    const result = await this.callFunction<{ action: string; deviceId: string; deviceData: DeviceData }>(
-      'addDevice',
-      { deviceId, deviceData }
-    );
-    if (!result.device) throw new Error('Device creation failed');
-    return result.device;
-  }
+  /**
+   * ⚠️ MANUAL DEVICE CREATION REMOVED
+   * Devices are now auto-created by backend when detected via MQTT.
+   * Use registerDevice() to assign location to unregistered devices.
+   */
 
   /** WRITE - Cloud Function */
   async updateDevice(deviceId: string, deviceData: DeviceData): Promise<void> {

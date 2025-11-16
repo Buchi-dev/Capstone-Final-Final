@@ -5,7 +5,6 @@ import {
   DeviceHeader,
   DeviceStats,
   DeviceTable,
-  AddEditDeviceModal,
   ViewDeviceModal,
   RegisterDeviceModal,
 } from './components';
@@ -28,10 +27,8 @@ export const AdminDeviceManagement = () => {
   const [searchText, setSearchText] = useState('');
   const [activeTab, setActiveTab] = useState<'registered' | 'unregistered'>('registered');
   const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
-  const [isAddEditModalVisible, setIsAddEditModalVisible] = useState(false);
   const [isViewModalVisible, setIsViewModalVisible] = useState(false);
   const [isRegisterModalVisible, setIsRegisterModalVisible] = useState(false);
-  const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
 
   // ✅ GLOBAL HOOK - Real-time device data
   const {
@@ -42,8 +39,6 @@ export const AdminDeviceManagement = () => {
 
   // ✅ GLOBAL HOOK - Device write operations
   const {
-    addDevice,
-    updateDevice,
     deleteDevice,
     registerDevice,
   } = useCall_Devices();
@@ -66,12 +61,6 @@ export const AdminDeviceManagement = () => {
   const handleView = (device: Device) => {
     setSelectedDevice(device);
     setIsViewModalVisible(true);
-  };
-
-  const handleEdit = (device: Device) => {
-    setModalMode('edit');
-    setSelectedDevice(device);
-    setIsAddEditModalVisible(true);
   };
 
   const handleDelete = (device: Device) => {
@@ -100,27 +89,9 @@ export const AdminDeviceManagement = () => {
   };
 
   const handleModalClose = () => {
-    setIsAddEditModalVisible(false);
     setIsViewModalVisible(false);
     setIsRegisterModalVisible(false);
     setSelectedDevice(null);
-  };
-
-  const handleSave = async (deviceData: Partial<Device>) => {
-    try {
-      if (modalMode === 'add') {
-        await addDevice(deviceData.deviceId!, deviceData);
-        message.success('Device added successfully');
-      } else {
-        await updateDevice(selectedDevice!.deviceId, deviceData);
-        message.success('Device updated successfully');
-      }
-      handleModalClose();
-      refetch();
-    } catch (error) {
-      message.error(`Failed to ${modalMode} device`);
-      console.error(`Error ${modalMode}ing device:`, error);
-    }
   };
 
   const handleRegisterWithTabSwitch = async (
@@ -156,7 +127,10 @@ export const AdminDeviceManagement = () => {
           padding: '4px',
         }}
       >
-        <DeviceHeader onRefresh={refetch} onSearchChange={setSearchText} />
+        <DeviceHeader 
+          onRefresh={refetch} 
+          onSearchChange={setSearchText}
+        />
 
         <DeviceStats stats={stats} />
 
@@ -167,17 +141,8 @@ export const AdminDeviceManagement = () => {
           loading={isLoading}
           stats={stats}
           onView={handleView}
-          onEdit={handleEdit}
           onDelete={handleDelete}
           onRegister={handleRegister}
-        />
-
-        <AddEditDeviceModal
-          visible={isAddEditModalVisible}
-          mode={modalMode}
-          device={selectedDevice}
-          onSave={handleSave}
-          onCancel={handleModalClose}
         />
 
         <ViewDeviceModal

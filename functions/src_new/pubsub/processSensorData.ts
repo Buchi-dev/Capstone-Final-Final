@@ -285,26 +285,30 @@ async function processSingleReading(deviceId: string, sensorData: SensorData): P
   }
 
   if (!deviceDoc.exists) {
-    logger.warn("Device not registered - sensor data rejected", {
+    logger.warn("Device not found in Firestore - sensor data rejected", {
       deviceId,
-      reason: "Device must be registered via admin UI first",
+      reason: "Device must exist in Firestore (may be auto-created by autoRegisterDevice)",
     });
-    return; // Skip unregistered devices - don't store data
+    return; // Skip non-existent devices
   }
 
-  // STRICT VALIDATION: Verify device has location metadata
+  // STRICT VALIDATION: Verify device has location metadata before storing data
   const deviceData = deviceDoc.data();
   const hasLocation = deviceData?.metadata?.location?.building &&
                      deviceData?.metadata?.location?.floor;
 
   if (!hasLocation) {
-    logger.warn("Device missing location - sensor data rejected", {
+    logger.info("Device UNREGISTERED (no location) - sensor data NOT stored", {
       deviceId,
       hasMetadata: !!deviceData?.metadata,
-      reason: "Device must have building and floor location set",
+      reason: "Waiting for admin to assign building and floor location",
+      action: "Data will be stored after registration via admin UI",
     });
-    return; // Skip devices without location - don't store data
+    return; // Skip unregistered devices - don't store data yet
   }
+
+  // Device exists AND has location - proceed with data storage
+  logger.debug("Device registered - processing sensor data", {deviceId});
 
   // Prepare reading data with validated timestamp
   const readingData: SensorReading = {

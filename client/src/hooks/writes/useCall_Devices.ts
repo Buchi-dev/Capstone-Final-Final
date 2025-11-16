@@ -1,29 +1,28 @@
 /**
  * useCall_Devices - Write Hook
  * 
- * Handles device write operations (add, update, delete, register).
+ * Handles device write operations (update, delete, register).
  * Wraps devicesService functions with React-friendly state management.
  * 
  * ⚠️ WRITE ONLY - Does not handle real-time subscriptions
+ * ⚠️ MANUAL DEVICE CREATION REMOVED - Devices auto-created via MQTT
  * 
  * @module hooks/writes
  */
 
 import { useState, useCallback } from 'react';
 import { devicesService } from '../../services/devices.Service';
-import type { Device, DeviceData } from '../../schemas';
+import type { DeviceData } from '../../schemas';
 
 /**
  * Device operation types
  */
-type DeviceOperation = 'add' | 'update' | 'delete' | 'register';
+type DeviceOperation = 'update' | 'delete' | 'register';
 
 /**
  * Hook return value
  */
 interface UseCallDevicesReturn {
-  /** Add a new device */
-  addDevice: (deviceId: string, deviceData: DeviceData) => Promise<Device>;
   /** Update an existing device */
   updateDevice: (deviceId: string, deviceData: DeviceData) => Promise<void>;
   /** Delete a device */
@@ -38,9 +37,7 @@ interface UseCallDevicesReturn {
   isSuccess: boolean;
   /** Currently executing operation type */
   operationType: DeviceOperation | null;
-  /** Result from last add operation */
-  addedDevice: Device | null;
-  /** Reset error, success states, and added device */
+  /** Reset error, success states */
   reset: () => void;
 }
 
@@ -53,27 +50,18 @@ interface UseCallDevicesReturn {
  * @example
  * ```tsx
  * const { 
- *   addDevice, 
  *   updateDevice, 
  *   deleteDevice, 
  *   registerDevice,
  *   isLoading, 
  *   error, 
- *   isSuccess,
- *   addedDevice
+ *   isSuccess
  * } = useCall_Devices();
- * 
- * // Add new device
- * const device = await addDevice('ESP32-001', {
- *   name: 'Water Quality Sensor 1',
- *   type: 'ESP32',
- *   sensors: ['tds', 'ph', 'turbidity']
- * });
  * 
  * // Update device
  * await updateDevice('ESP32-001', { status: 'maintenance' });
  * 
- * // Register device location
+ * // Register device location (assigns building + floor to unregistered device)
  * await registerDevice('ESP32-001', 'Building A', 'Floor 2', 'Near cafeteria');
  * 
  * // Delete device
@@ -87,40 +75,11 @@ export const useCall_Devices = (): UseCallDevicesReturn => {
   const [error, setError] = useState<Error | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [operationType, setOperationType] = useState<DeviceOperation | null>(null);
-  const [addedDevice, setAddedDevice] = useState<Device | null>(null);
 
   const reset = useCallback(() => {
     setError(null);
     setIsSuccess(false);
     setOperationType(null);
-    setAddedDevice(null);
-  }, []);
-
-  const addDevice = useCallback(async (
-    deviceId: string, 
-    deviceData: DeviceData
-  ): Promise<Device> => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      setIsSuccess(false);
-      setOperationType('add');
-      setAddedDevice(null);
-
-      const device = await devicesService.addDevice(deviceId, deviceData);
-
-      setIsSuccess(true);
-      setAddedDevice(device);
-      return device;
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Failed to add device');
-      console.error('[useCall_Devices] Add error:', error);
-      setError(error);
-      setIsSuccess(false);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
   }, []);
 
   const updateDevice = useCallback(async (
@@ -195,7 +154,6 @@ export const useCall_Devices = (): UseCallDevicesReturn => {
   }, []);
 
   return {
-    addDevice,
     updateDevice,
     deleteDevice,
     registerDevice,
@@ -203,7 +161,6 @@ export const useCall_Devices = (): UseCallDevicesReturn => {
     error,
     isSuccess,
     operationType,
-    addedDevice,
     reset,
   };
 };
