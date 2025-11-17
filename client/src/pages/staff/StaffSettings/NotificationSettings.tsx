@@ -57,12 +57,13 @@ const NotificationSettings: React.FC = () => {
   const { devices: devicesWithReadings } = useRealtime_Devices();
   const { getUserPreferences, setupPreferences, isLoading: saving } = useCall_Users();
 
-  // Transform devices for select component - metadata from DeviceWithSensorData contains full Device object
+  // Transform devices for select component
+  // DeviceWithSensorData already has location as a formatted string
   const devices = devicesWithReadings.map(d => ({
     deviceId: d.deviceId,
     name: d.deviceName,
     status: d.status,
-    location: d.metadata?.metadata?.location // Access nested metadata.metadata.location
+    location: d.location // location is already a formatted string from the hook
   }));
 
   useEffect(() => {
@@ -572,7 +573,7 @@ const NotificationSettings: React.FC = () => {
                         <Text style={{ fontSize: '14px', fontWeight: 500 }}>{device.name}</Text>
                         {device.location && (
                           <Text type="secondary" style={{ fontSize: '12px' }}>
-                            📍 {device.location.building} - Floor {device.location.floor}
+                            📍 {device.location}
                           </Text>
                         )}
                       </div>
