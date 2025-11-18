@@ -96,7 +96,7 @@ export const RegisterDeviceModal = ({
       closable={!isSubmitting}
       maskClosable={!isSubmitting}
     >
-      {device && (
+      {device ? (
         <>
           <Alert
             message="Device Registration"
@@ -181,6 +181,8 @@ export const RegisterDeviceModal = ({
             />
           </Form>
         </>
+      ) : (
+        <Form form={form} layout="vertical" style={{ display: 'none' }} />
       )}
     </Modal>
   );

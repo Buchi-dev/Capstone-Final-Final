@@ -9,7 +9,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Card,
   Form,
-  message,
+  App,
   Spin,
   Typography,
   Row,
@@ -53,6 +53,7 @@ interface NotificationPreferences {
  */
 const NotificationSettings: React.FC = () => {
   const { user } = useAuth();
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);

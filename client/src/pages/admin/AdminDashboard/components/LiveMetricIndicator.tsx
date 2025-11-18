@@ -118,9 +118,11 @@ export const LiveMetricIndicator = memo<LiveMetricIndicatorProps>(({
         boxShadow: isActive ? `0 0 12px ${color}40` : '0 2px 8px rgba(0,0,0,0.1)',
         transition: 'all 0.3s ease',
       }}
-      bodyStyle={{ 
-        width: '100%',
-        padding: '16px'
+      styles={{
+        body: {
+          width: '100%',
+          padding: '16px'
+        }
       }}
     >
       <Space 

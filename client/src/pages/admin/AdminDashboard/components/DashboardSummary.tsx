@@ -154,7 +154,7 @@ export const DashboardSummary = memo<DashboardSummaryProps>(({
         <Col xs={24} lg={10}>
           <Card 
             loading={loading}
-            bordered={false}
+            variant="outlined"
             style={{ 
               borderRadius: '12px',
               boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
@@ -165,12 +165,14 @@ export const DashboardSummary = memo<DashboardSummaryProps>(({
               justifyContent: 'center',
               background: `linear-gradient(135deg, ${getSystemHealthColor(systemHealth.status)}15 0%, ${getSystemHealthColor(systemHealth.status)}05 100%)`
             }}
-            bodyStyle={{
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              padding: '32px',
-              textAlign: 'center'
+            styles={{
+              body: {
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                padding: '32px',
+                textAlign: 'center'
+              }
             }}
           >
             <Space direction="vertical" size="large" style={{ width: '100%' }}>

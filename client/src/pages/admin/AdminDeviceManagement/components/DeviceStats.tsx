@@ -29,7 +29,7 @@ export const DeviceStats = ({ stats }: DeviceStatsProps) => {
         gap: '16px',
       }}
     >
-      <Card size="small" bodyStyle={{ padding: '16px' }} style={{ borderRadius: '8px' }}>
+      <Card size="small" styles={{ body: { padding: '16px' } }} style={{ borderRadius: '8px' }}>
         <Statistic
           title={<span style={{ fontSize: '13px', fontWeight: 500 }}>Total Devices</span>}
           value={stats.total}
@@ -37,7 +37,7 @@ export const DeviceStats = ({ stats }: DeviceStatsProps) => {
           prefix={<Badge status="processing" />}
         />
       </Card>
-      <Card size="small" bodyStyle={{ padding: '16px' }} style={{ borderRadius: '8px' }}>
+      <Card size="small" styles={{ body: { padding: '16px' } }} style={{ borderRadius: '8px' }}>
         <Statistic
           title={<span style={{ fontSize: '13px', fontWeight: 500 }}>Online</span>}
           value={stats.online}
@@ -45,7 +45,7 @@ export const DeviceStats = ({ stats }: DeviceStatsProps) => {
           prefix={<CheckCircleOutlined />}
         />
       </Card>
-      <Card size="small" bodyStyle={{ padding: '16px' }} style={{ borderRadius: '8px' }}>
+      <Card size="small" styles={{ body: { padding: '16px' } }} style={{ borderRadius: '8px' }}>
         <Statistic
           title={<span style={{ fontSize: '13px', fontWeight: 500 }}>Offline</span>}
           value={stats.offline}
@@ -53,7 +53,7 @@ export const DeviceStats = ({ stats }: DeviceStatsProps) => {
           prefix={<CloseCircleOutlined />}
         />
       </Card>
-      <Card size="small" bodyStyle={{ padding: '16px' }} style={{ borderRadius: '8px' }}>
+      <Card size="small" styles={{ body: { padding: '16px' } }} style={{ borderRadius: '8px' }}>
         <Statistic
           title={<span style={{ fontSize: '13px', fontWeight: 500 }}>Maintenance</span>}
           value={stats.maintenance}
@@ -61,7 +61,7 @@ export const DeviceStats = ({ stats }: DeviceStatsProps) => {
           prefix={<ToolOutlined />}
         />
       </Card>
-      <Card size="small" bodyStyle={{ padding: '16px' }} style={{ borderRadius: '8px' }}>
+      <Card size="small" styles={{ body: { padding: '16px' } }} style={{ borderRadius: '8px' }}>
         <Statistic
           title={<span style={{ fontSize: '13px', fontWeight: 500 }}>Registered</span>}
           value={stats.registered}
@@ -69,7 +69,7 @@ export const DeviceStats = ({ stats }: DeviceStatsProps) => {
           prefix={<CheckCircleOutlined />}
         />
       </Card>
-      <Card size="small" bodyStyle={{ padding: '16px' }} style={{ borderRadius: '8px' }}>
+      <Card size="small" styles={{ body: { padding: '16px' } }} style={{ borderRadius: '8px' }}>
         <Statistic
           title={<span style={{ fontSize: '13px', fontWeight: 500 }}>Unregistered</span>}
           value={stats.unregistered}

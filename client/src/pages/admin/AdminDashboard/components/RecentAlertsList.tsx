@@ -107,11 +107,13 @@ export const RecentAlertsList = memo<RecentAlertsListProps>(({
         height: '100%',
         boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
       }}
-      bodyStyle={{ 
-        padding: '12px',
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column'
+      styles={{
+        body: {
+          padding: '12px',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column'
+        }
       }}
     >
       <Space direction="vertical" size="small" style={{ width: '100%', flex: 1 }}>

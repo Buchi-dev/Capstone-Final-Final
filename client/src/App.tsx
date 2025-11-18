@@ -3,7 +3,7 @@ import { router } from './router';
 import { AuthProvider } from './contexts/AuthContext';
 import { useResponsiveTheme } from './theme';
 import { themeConfig } from './theme/themeConfig';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, App as AntdApp } from 'antd';
 import './App.css';
 
 /**
@@ -13,6 +13,8 @@ import './App.css';
  * - Mobile devices (0-767px): Compact spacing, touch-friendly controls
  * - Tablets (768-991px): Balanced layout
  * - Desktops (992px+): Generous spacing, full features
+ * 
+ * Includes Antd App component for message/notification context support
  */
 const App = () => {
   // Get responsive theme configuration based on screen size
@@ -20,9 +22,11 @@ const App = () => {
 
   return (
     <ConfigProvider theme={responsiveTheme}>
-      <AuthProvider>
-        <RouterProvider router={router} />
-      </AuthProvider>
+      <AntdApp>
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
+      </AntdApp>
     </ConfigProvider>
   );
 }

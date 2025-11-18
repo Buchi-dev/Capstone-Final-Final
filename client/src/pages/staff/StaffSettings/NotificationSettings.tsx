@@ -6,7 +6,7 @@ import {
   Select,
   TimePicker,
   Button,
-  message,
+  App,
   Spin,
   Typography,
   Alert,
@@ -49,6 +49,7 @@ interface NotificationPreferences {
 
 const NotificationSettings: React.FC = () => {
   const { user } = useAuth();
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);

@@ -141,9 +141,6 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
         collapsible
         collapsed={collapsed}
         breakpoint="lg"
-        onBreakpoint={(broken) => {
-          console.log('Breakpoint:', broken);
-        }}
         style={{
           overflow: 'auto',
           height: '100vh',

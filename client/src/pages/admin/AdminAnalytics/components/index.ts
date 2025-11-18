@@ -6,3 +6,8 @@ export { DeviceStatusOverview } from './DeviceStatusOverview';
 export { WaterQualityMetrics } from './WaterQualityMetrics';
 export { TimeSeriesCharts } from './TimeSeriesCharts';
 export { WaterQualityAssessment } from './WaterQualityAssessment';
+export { HistoricalTrends } from './HistoricalTrends';
+export { ComplianceTracker } from './ComplianceTracker';
+export { PredictiveInsights } from './PredictiveInsights';
+export { DevicePerformance } from './DevicePerformance';
+export { LocationAnalytics } from './LocationAnalytics';

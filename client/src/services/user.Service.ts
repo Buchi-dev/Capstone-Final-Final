@@ -16,7 +16,7 @@
  */
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, getDocs } from 'firebase/firestore';
 import type { Unsubscribe } from 'firebase/firestore';
 import type { UserStatus, UserRole, UserListData } from '../schemas';
 import { refreshUserToken } from '../utils/authHelpers';
@@ -442,30 +442,95 @@ export class UsersService {
     >('deleteUser', { userId });
   }
 
+  /**
+   * Get user notification preferences from Firestore subcollection
+   * @param userId - The user ID to get preferences for
+   * @returns Notification preferences or null if not found
+   * @throws {Error} If retrieval fails
+   */
   async getUserPreferences(userId: string): Promise<NotificationPreferences | null> {
-    const result = await this.callFunction<
-      GetUserPreferencesRequest,
-      PreferencesResponse
-    >('getUserPreferences', { userId });
+    try {
+      // Read preferences from subcollection: users/{userId}/notificationPreferences
+      const userRef = doc(db, 'users', userId);
+      const prefsCollectionRef = collection(userRef, 'notificationPreferences');
+      const querySnapshot = await getDocs(prefsCollectionRef);
 
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to get user preferences');
+      if (querySnapshot.empty) {
+        console.log(`[UsersService] No preferences found for user: ${userId}`);
+        return null;
+      }
+
+      // Get the first (and should be only) preference document
+      const prefsDoc = querySnapshot.docs[0];
+      const data = prefsDoc.data();
+      
+      return {
+        userId: data.userId,
+        email: data.email,
+        emailNotifications: data.emailNotifications ?? false,
+        pushNotifications: data.pushNotifications ?? false,
+        sendScheduledAlerts: data.sendScheduledAlerts ?? true,
+        alertSeverities: data.alertSeverities || ["Critical", "Warning", "Advisory"],
+        parameters: data.parameters || [],
+        devices: data.devices || [],
+        quietHoursEnabled: data.quietHoursEnabled || false,
+        quietHoursStart: data.quietHoursStart,
+        quietHoursEnd: data.quietHoursEnd,
+        createdAt: data.createdAt?.toDate?.(),
+        updatedAt: data.updatedAt?.toDate?.(),
+      };
+    } catch (error) {
+      console.error('[UsersService] Error getting user preferences:', error);
+      throw new Error('Failed to get user preferences');
     }
-
-    return result.data || null;
   }
 
+  /**
+   * List all user notification preferences (Admin only)
+   * Note: This queries all users' subcollections, which can be expensive.
+   * Consider using Cloud Function for production use.
+   * @returns Array of all notification preferences
+   * @throws {Error} If retrieval fails
+   */
   async listAllPreferences(): Promise<NotificationPreferences[]> {
-    const result = await this.callFunction<
-      ListAllPreferencesRequest,
-      ListPreferencesResponse
-    >('listAllPreferences');
+    try {
+      // Read all users first
+      const usersRef = collection(db, 'users');
+      const usersSnapshot = await getDocs(usersRef);
 
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to list all preferences');
+      const preferences: NotificationPreferences[] = [];
+
+      // For each user, query their notificationPreferences subcollection
+      for (const userDoc of usersSnapshot.docs) {
+        const userRef = doc(db, 'users', userDoc.id);
+        const prefsCollectionRef = collection(userRef, 'notificationPreferences');
+        const prefsSnapshot = await getDocs(prefsCollectionRef);
+
+        prefsSnapshot.forEach((prefsDoc) => {
+          const data = prefsDoc.data();
+          preferences.push({
+            userId: data.userId,
+            email: data.email,
+            emailNotifications: data.emailNotifications ?? false,
+            pushNotifications: data.pushNotifications ?? false,
+            sendScheduledAlerts: data.sendScheduledAlerts ?? true,
+            alertSeverities: data.alertSeverities || ["Critical", "Warning", "Advisory"],
+            parameters: data.parameters || [],
+            devices: data.devices || [],
+            quietHoursEnabled: data.quietHoursEnabled || false,
+            quietHoursStart: data.quietHoursStart,
+            quietHoursEnd: data.quietHoursEnd,
+            createdAt: data.createdAt?.toDate?.(),
+            updatedAt: data.updatedAt?.toDate?.(),
+          });
+        });
+      }
+
+      return preferences;
+    } catch (error) {
+      console.error('[UsersService] Error listing preferences:', error);
+      throw new Error('Failed to list all preferences');
     }
-
-    return result.data || [];
   }
 
   async setupPreferences(

@@ -217,6 +217,213 @@ const calculateSystemHealthSummary = (
 };
 
 /**
+ * Calculate WHO compliance status for water quality parameters
+ */
+const calculateComplianceStatus = (metrics: WaterQualityMetrics) => {
+  const { phReadings, tdsReadings, turbidityReadings } = metrics;
+
+  const complianceStatus = [];
+
+  // pH Compliance (WHO: 6.5-8.5)
+  if (phReadings.length > 0) {
+    const phCompliant = phReadings.filter(ph => ph >= 6.5 && ph <= 8.5).length;
+    const phViolations = phReadings.length - phCompliant;
+    complianceStatus.push({
+      parameter: 'ph' as const,
+      compliant: phViolations === 0,
+      compliancePercentage: (phCompliant / phReadings.length) * 100,
+      violationCount: phViolations,
+      threshold: { min: 6.5, max: 8.5 },
+    });
+  }
+
+  // TDS Compliance (WHO: ≤ 500 ppm)
+  if (tdsReadings.length > 0) {
+    const tdsCompliant = tdsReadings.filter(tds => tds <= 500).length;
+    const tdsViolations = tdsReadings.length - tdsCompliant;
+    complianceStatus.push({
+      parameter: 'tds' as const,
+      compliant: tdsViolations === 0,
+      compliancePercentage: (tdsCompliant / tdsReadings.length) * 100,
+      violationCount: tdsViolations,
+      threshold: { max: 500 },
+    });
+  }
+
+  // Turbidity Compliance (WHO: ≤ 5 NTU)
+  if (turbidityReadings.length > 0) {
+    const turbidityCompliant = turbidityReadings.filter(t => t <= 5).length;
+    const turbidityViolations = turbidityReadings.length - turbidityCompliant;
+    complianceStatus.push({
+      parameter: 'turbidity' as const,
+      compliant: turbidityViolations === 0,
+      compliancePercentage: (turbidityCompliant / turbidityReadings.length) * 100,
+      violationCount: turbidityViolations,
+      threshold: { max: 5 },
+    });
+  }
+
+  return complianceStatus;
+};
+
+/**
+ * Calculate device performance metrics
+ */
+const calculateDevicePerformance = (devices: DeviceWithSensorData[], alerts: WaterQualityAlert[]) => {
+  return devices.map(device => {
+    const deviceAlerts = alerts.filter(a => a.deviceId === device.deviceId);
+    
+    // Calculate quality score based on readings compliance
+    let qualityScore = 100;
+    if (device.latestReading) {
+      const { ph, tds, turbidity } = device.latestReading;
+      
+      // pH penalty (WHO: 6.5-8.5)
+      if (ph < 6.5 || ph > 8.5) {
+        qualityScore -= 30;
+      } else if (ph < 6.8 || ph > 8.2) {
+        qualityScore -= 10;
+      }
+      
+      // TDS penalty (WHO: ≤ 500 ppm)
+      if (tds > 500) {
+        qualityScore -= 30;
+      } else if (tds > 400) {
+        qualityScore -= 10;
+      }
+      
+      // Turbidity penalty (WHO: ≤ 5 NTU)
+      if (turbidity > 5) {
+        qualityScore -= 30;
+      } else if (turbidity > 4) {
+        qualityScore -= 10;
+      }
+
+      // Alert penalty
+      qualityScore -= Math.min(deviceAlerts.length * 5, 20);
+    } else {
+      qualityScore = 0; // No readings
+    }
+
+    const uptimePercentage = device.status === 'online' ? 95 : 20; // Simplified for now
+    
+    // Get location string - metadata is a flexible record type
+    const metadata = device.metadata as any;
+    const location = metadata?.location 
+      ? `${metadata.location.building} - Floor ${metadata.location.floor}`
+      : undefined;
+
+    return {
+      deviceId: device.deviceId,
+      deviceName: device.deviceName || `Device ${device.deviceId}`,
+      location,
+      uptimePercentage,
+      totalReadings: 1, // Would need historical data
+      avgPh: device.latestReading?.ph || 0,
+      avgTds: device.latestReading?.tds || 0,
+      avgTurbidity: device.latestReading?.turbidity || 0,
+      alertCount: deviceAlerts.length,
+      lastSeen: device.latestReading?.timestamp || Date.now(),
+      qualityScore: Math.max(0, qualityScore),
+    };
+  });
+};
+
+/**
+ * Calculate location-based analytics
+ */
+const calculateLocationAnalytics = (devices: DeviceWithSensorData[], alerts: WaterQualityAlert[]) => {
+  // Group devices by building/floor
+  const locationMap = new Map<string, DeviceWithSensorData[]>();
+  
+  devices.forEach(device => {
+    const metadata = device.metadata as any;
+    const building = metadata?.location?.building || 'Unknown Building';
+    const floor = metadata?.location?.floor || 'Unknown Floor';
+    const key = `${building}|${floor}`;
+    
+    if (!locationMap.has(key)) {
+      locationMap.set(key, []);
+    }
+    locationMap.get(key)!.push(device);
+  });
+
+  return Array.from(locationMap.entries()).map(([key, locationDevices]) => {
+    const [building, floor] = key.split('|');
+    
+    const deviceIds = locationDevices.map(d => d.deviceId);
+    const locationAlerts = alerts.filter(a => deviceIds.includes(a.deviceId) && a.status === 'Active');
+    
+    // Calculate average readings
+    const phValues = locationDevices
+      .map(d => d.latestReading?.ph)
+      .filter((v): v is number => v !== undefined && v > 0);
+    const tdsValues = locationDevices
+      .map(d => d.latestReading?.tds)
+      .filter((v): v is number => v !== undefined && v > 0);
+    const turbidityValues = locationDevices
+      .map(d => d.latestReading?.turbidity)
+      .filter((v): v is number => v !== undefined && v >= 0);
+
+    const avgPh = phValues.length > 0 
+      ? phValues.reduce((sum, v) => sum + v, 0) / phValues.length 
+      : 0;
+    const avgTds = tdsValues.length > 0 
+      ? tdsValues.reduce((sum, v) => sum + v, 0) / tdsValues.length 
+      : 0;
+    const avgTurbidity = turbidityValues.length > 0 
+      ? turbidityValues.reduce((sum, v) => sum + v, 0) / turbidityValues.length 
+      : 0;
+
+    // Calculate quality score
+    let qualityScore = 100;
+    if (avgPh < 6.5 || avgPh > 8.5) qualityScore -= 30;
+    if (avgTds > 500) qualityScore -= 30;
+    if (avgTurbidity > 5) qualityScore -= 30;
+    if (locationAlerts.length > 0) qualityScore -= Math.min(locationAlerts.length * 10, 30);
+
+    return {
+      building,
+      floor,
+      deviceCount: locationDevices.length,
+      avgWaterQualityScore: Math.max(0, qualityScore),
+      activeAlertCount: locationAlerts.length,
+      readings: {
+        avgPh,
+        avgTds,
+        avgTurbidity,
+      },
+    };
+  });
+};
+
+/**
+ * Calculate aggregated metrics for historical trends
+ */
+const calculateAggregatedMetrics = (devices: DeviceWithSensorData[]) => {
+  // For now, create a simple aggregation from current readings
+  // In a real scenario, this would aggregate historical data by time periods
+  if (devices.length === 0) return [];
+
+  const metrics = calculateWaterQualityMetrics(devices);
+  
+  return [{
+    period: new Date().toISOString().split('T')[0],
+    avgPh: metrics.averagePh,
+    avgTds: metrics.averageTds,
+    avgTurbidity: metrics.averageTurbidity,
+    minPh: metrics.minPh,
+    maxPh: metrics.maxPh,
+    minTds: metrics.minTds,
+    maxTds: metrics.maxTds,
+    minTurbidity: metrics.minTurbidity,
+    maxTurbidity: metrics.maxTurbidity,
+    readingCount: metrics.totalReadings,
+    devicesCount: devices.length,
+  }];
+};
+
+/**
  * Calculate analytics statistics from real-time data
  * 
  * Pure calculation hook - no side effects or data fetching.
@@ -234,7 +441,11 @@ const calculateSystemHealthSummary = (
  *   deviceStats, 
  *   alertStats,
  *   waterQualityMetrics,
- *   systemHealth 
+ *   systemHealth,
+ *   complianceStatus,
+ *   devicePerformance,
+ *   locationAnalytics,
+ *   aggregatedMetrics,
  * } = useAnalyticsStats(devices, alerts, mqttHealth, mqttStatus);
  * ```
  */
@@ -251,11 +462,19 @@ export const useAnalyticsStats = (
     () => calculateSystemHealthSummary(devices, alerts, mqttHealth, mqttStatus?.memory || null),
     [devices, alerts, mqttHealth, mqttStatus]
   );
+  const complianceStatus = useMemo(() => calculateComplianceStatus(waterQualityMetrics), [waterQualityMetrics]);
+  const devicePerformance = useMemo(() => calculateDevicePerformance(devices, alerts), [devices, alerts]);
+  const locationAnalytics = useMemo(() => calculateLocationAnalytics(devices, alerts), [devices, alerts]);
+  const aggregatedMetrics = useMemo(() => calculateAggregatedMetrics(devices), [devices]);
 
   return {
     deviceStats,
     alertStats,
     waterQualityMetrics,
     systemHealth,
+    complianceStatus,
+    devicePerformance,
+    locationAnalytics,
+    aggregatedMetrics,
   };
 };
