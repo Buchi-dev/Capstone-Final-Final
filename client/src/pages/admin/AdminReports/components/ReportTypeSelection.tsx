@@ -7,12 +7,10 @@
 import { Card, Row, Col, Space, Typography, Tag, Badge, Tooltip } from 'antd';
 import {
   ExperimentOutlined,
-  DatabaseOutlined,
-  BarChartOutlined,
-  CheckCircleOutlined,
   ArrowRightOutlined,
   StarOutlined,
-  FileTextOutlined
+  FileTextOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
 import type { ReportType } from '../../../../schemas';
 
@@ -175,31 +173,9 @@ export const getReportTypes = (token: any): ReportTypeOption[] => [
   {
     key: 'water_quality',
     title: 'Water Quality Report',
-    description: 'Comprehensive analysis of water quality parameters including turbidity, TDS, and pH levels',
+    description: 'Comprehensive analysis of water quality parameters including turbidity, TDS, pH levels, and compliance assessment against WHO standards',
     icon: <ExperimentOutlined />,
     color: token.colorInfo,
     popular: true,
-  },
-  {
-    key: 'device_status',
-    title: 'Device Status Report',
-    description: 'Overview of all device statuses, connectivity, and operational health',
-    icon: <DatabaseOutlined />,
-    color: token.colorSuccess,
-  },
-  {
-    key: 'data_summary',
-    title: 'Data Summary Report',
-    description: 'Statistical summary of sensor data over selected time period',
-    icon: <BarChartOutlined />,
-    color: token.colorPrimary,
-    popular: true,
-  },
-  {
-    key: 'compliance',
-    title: 'Compliance Report',
-    description: 'Regulatory compliance assessment and quality standards verification',
-    icon: <CheckCircleOutlined />,
-    color: token.colorWarning,
   },
 ];

@@ -63,24 +63,12 @@ export const ReportHistorySidebar = ({
   onViewAll,
   fullView = false,
 }: ReportHistorySidebarProps) => {
-  const getReportTypeColor = (type: string) => {
-    switch (type) {
-      case 'water_quality': return 'blue';
-      case 'device_status': return 'green';
-      case 'data_summary': return 'purple';
-      case 'compliance': return 'orange';
-      default: return 'default';
-    }
+  const getReportTypeColor = (_type: string) => {
+    return 'blue';
   };
 
-  const getReportTypeLabel = (type: string) => {
-    switch (type) {
-      case 'water_quality': return 'Water Quality';
-      case 'device_status': return 'Device Status';
-      case 'data_summary': return 'Data Summary';
-      case 'compliance': return 'Compliance';
-      default: return type;
-    }
+  const getReportTypeLabel = (_type: string) => {
+    return 'Water Quality';
   };
 
   if (fullView) {

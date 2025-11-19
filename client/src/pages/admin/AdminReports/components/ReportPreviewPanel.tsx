@@ -61,24 +61,12 @@ export const ReportPreviewPanel = ({
   onBack,
   generating,
 }: ReportPreviewPanelProps) => {
-  const getReportTypeLabel = (type: ReportType) => {
-    const labels = {
-      water_quality: 'Water Quality Report',
-      device_status: 'Device Status Report',
-      data_summary: 'Data Summary Report',
-      compliance: 'Compliance Report',
-    };
-    return labels[type] || type;
+  const getReportTypeLabel = (_type: ReportType) => {
+    return 'Water Quality Report';
   };
 
-  const getReportTypeColor = (type: ReportType) => {
-    const colors = {
-      water_quality: 'blue',
-      device_status: 'green',
-      data_summary: 'purple',
-      compliance: 'orange',
-    };
-    return colors[type] || 'default';
+  const getReportTypeColor = (_type: ReportType) => {
+    return 'blue';
   };
 
   const selectedDevices = devices.filter(d => 

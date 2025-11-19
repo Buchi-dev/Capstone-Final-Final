@@ -1,17 +1,12 @@
 /**
- * AdminReports Page
+ * AdminReports Page - Simplified Water Quality Report Generation
  * 
- * Comprehensive report generation system with multi-step wizard.
- * Uses global hooks for data operations following architecture guidelines.
+ * Clean, user-friendly interface for generating water quality reports
+ * with compliance assessment.
  * 
  * Architecture:
  * - Global hooks: useRealtime_Devices (device data), useCall_Reports (report generation)
  * - Local hook: useReportHistory (localStorage UI state)
- * 
- * Features:
- * - Wizard mode: Step-by-step report creation
- * - Dashboard mode: Quick report generation overview
- * - History mode: View past generated reports
  * 
  * @module pages/admin/AdminReports
  */
@@ -20,39 +15,39 @@ import {
   Row, 
   Col, 
   Typography, 
-  Steps, 
   Card, 
   Space, 
-  Segmented,
+  Button,
   Divider,
   Statistic,
-  Badge,
-  FloatButton,
+  Form,
+  Select,
+  DatePicker,
+  Input,
+  Switch,
+  Alert,
+  List,
+  Tag,
+  Empty,
   message
 } from 'antd';
 import dayjs from 'dayjs';
-import { 
-  FileTextOutlined, 
-  DashboardOutlined,
-  HistoryOutlined,
-  SettingOutlined,
-  QuestionCircleOutlined,
-  RocketOutlined
-} from '@ant-design/icons';
-import { AdminLayout } from '../../../components/layouts';
-import type { ReportType, Device } from '../../../schemas';
-import { useThemeToken } from '../../../theme';
-import { Form } from 'antd';
-
-// Components
+import relativeTime from 'dayjs/plugin/relativeTime';
 import {
-  ReportTypeSelection,
-  getReportTypes,
-  ReportConfigForm,
-  ReportHistorySidebar,
-  ReportPreviewPanel,
-  QuickStatsPanel
-} from './components';
+  FileTextOutlined, 
+  HistoryOutlined,
+  DownloadOutlined,
+  CalendarOutlined,
+  DatabaseOutlined,
+  CheckCircleOutlined,
+  ExperimentOutlined,
+  ClockCircleOutlined
+} from '@ant-design/icons';
+
+dayjs.extend(relativeTime);
+import { AdminLayout } from '../../../components/layouts';
+import type { Device } from '../../../schemas';
+import { useThemeToken } from '../../../theme';
 
 // Global Hooks
 import { useRealtime_Devices, useCall_Reports } from '../../../hooks';
@@ -61,40 +56,24 @@ import { useRealtime_Devices, useCall_Reports } from '../../../hooks';
 import { useReportHistory } from './hooks';
 
 // PDF Templates
-import {
-  generateWaterQualityReport,
-  generateDeviceStatusReport,
-  generateDataSummaryReport,
-  generateComplianceReport,
-} from './templates';
+import { generateWaterQualityReport } from './templates';
 
-const { Title, Paragraph } = Typography;
-
-type ViewMode = 'wizard' | 'dashboard' | 'history';
+const { Title, Paragraph, Text } = Typography;
+const { RangePicker } = DatePicker;
+const { TextArea } = Input;
 
 /**
- * Admin report management center
- * 
- * Multi-mode interface for generating and managing reports:
- * - Water quality reports
- * - Device status reports
- * - Data summary reports
- * - Compliance reports
+ * Simplified Water Quality Report Generation Interface
  */
 export const AdminReports = () => {
   const token = useThemeToken();
-  const [selectedType, setSelectedType] = useState<ReportType>('water_quality');
-  const [currentStep, setCurrentStep] = useState(0);
-  const [viewMode, setViewMode] = useState<ViewMode>('wizard');
+  const [showHistory, setShowHistory] = useState(false);
   const [form] = Form.useForm();
 
   // Global hooks
   const { devices: devicesWithReadings, isLoading: devicesLoading } = useRealtime_Devices();
   const { 
     generateWaterQualityReport: fetchWaterQualityData,
-    generateDeviceStatusReport: fetchDeviceStatusData,
-    generateDataSummaryReport: fetchDataSummaryData,
-    generateComplianceReport: fetchComplianceData,
     isLoading: generating,
     reset: resetReportState
   } = useCall_Reports();
@@ -120,265 +99,82 @@ export const AdminReports = () => {
     }));
   }, [devicesWithReadings]);
 
-  const reportTypes = getReportTypes(token);
+  // Set default values for form
+  useMemo(() => {
+    form.setFieldsValue({
+      dateRange: [dayjs().subtract(7, 'days'), dayjs()],
+      includeStatistics: true,
+      includeCharts: true,
+    });
+  }, [form]);
 
-  const onFinish = async (values: any) => {
+  const handleGenerateReport = async (values: any) => {
     try {
       resetReportState();
       
-      const { dateRange, devices: deviceIds, title, notes, includeStatistics, includeRawData } = values;
+      const { dateRange, devices: deviceIds, title, notes, includeStatistics, includeCharts } = values;
       const startDate = dateRange?.[0]?.valueOf();
       const endDate = dateRange?.[1]?.valueOf();
 
-      console.log('[AdminReports] Starting report generation:', {
-        type: selectedType,
-        deviceIds,
-        startDate: startDate ? new Date(startDate).toISOString() : 'none',
-        endDate: endDate ? new Date(endDate).toISOString() : 'none'
-      });
+      message.loading({ content: 'Generating report...', key: 'report', duration: 0 });
 
-      // Step 1: Fetch report data from Cloud Function
-      let reportData: any;
-
-      switch (selectedType) {
-        case 'water_quality':
-          reportData = await fetchWaterQualityData(deviceIds, startDate, endDate);
-          break;
-        case 'device_status':
-          reportData = await fetchDeviceStatusData(deviceIds);
-          break;
-        case 'data_summary':
-          reportData = await fetchDataSummaryData(deviceIds, startDate, endDate);
-          break;
-        case 'compliance':
-          reportData = await fetchComplianceData(deviceIds, startDate, endDate);
-          break;
-      }
-
-      console.log('[AdminReports] Report data fetched:', reportData);
+      // Fetch water quality data with compliance information
+      const reportData = await fetchWaterQualityData(deviceIds, startDate, endDate);
 
       if (reportData) {
-        // Step 2: Create report configuration
+        // Create report configuration
         const reportConfig = {
-          type: selectedType,
-          title: title || `${selectedType.replace(/_/g, ' ').toUpperCase()} Report`,
+          type: 'water_quality' as const,
+          title: title || 'Water Quality Analysis Report',
           deviceIds: deviceIds || [],
           dateRange: dateRange || null,
-          generatedBy: 'Administrator', // TODO: Get from auth context
+          generatedBy: 'Administrator',
           notes: notes || '',
           includeStatistics: includeStatistics !== false,
-          includeRawData: includeRawData !== false,
-          includeCharts: true,
+          includeRawData: false,
+          includeCharts: includeCharts !== false,
         };
 
-        console.log('[AdminReports] Report config:', reportConfig);
+        // Generate PDF
+        const pdfDoc = await generateWaterQualityReport(reportConfig, reportData);
 
-        // Step 3: Generate PDF using appropriate template
-        let pdfDoc: any;
-        
-        try {
-          switch (selectedType) {
-            case 'water_quality':
-              pdfDoc = await generateWaterQualityReport(reportConfig, reportData);
-              break;
-            case 'device_status':
-              pdfDoc = await generateDeviceStatusReport(reportConfig, reportData);
-              break;
-            case 'data_summary':
-              pdfDoc = await generateDataSummaryReport(reportConfig, reportData);
-              break;
-            case 'compliance':
-              pdfDoc = await generateComplianceReport(reportConfig, reportData);
-              break;
-          }
+        if (pdfDoc) {
+          const filename = `water_quality_report_${dayjs().format('YYYY-MM-DD_HHmmss')}.pdf`;
+          pdfDoc.save(filename);
 
-          console.log('[AdminReports] PDF generated successfully');
-
-          // Step 4: Download the PDF
-          if (pdfDoc) {
-            const filename = `${selectedType}_report_${dayjs().format('YYYY-MM-DD_HHmmss')}.pdf`;
-            pdfDoc.save(filename);
-            console.log('[AdminReports] PDF downloaded:', filename);
-          }
-
-          // Step 5: Add to history
-          const reportTypeLabels = {
-            water_quality: 'Water Quality Report',
-            device_status: 'Device Status Report',
-            data_summary: 'Data Summary Report',
-            compliance: 'Compliance Report',
-          };
-
+          // Add to history
           const historyItem = {
             id: `report-${Date.now()}`,
-            type: selectedType,
+            type: 'water_quality' as const,
             title: reportConfig.title,
             generatedAt: new Date(),
             devices: deviceIds?.length || 0,
-            pages: pdfDoc?.getNumberOfPages() || 1,
+            pages: pdfDoc.getNumberOfPages() || 1,
           };
           addReportToHistory(historyItem);
 
-          // Show success message
-          message.success(`${reportTypeLabels[selectedType]} generated successfully!`);
-        } catch (pdfError) {
-          console.error('[AdminReports] PDF generation failed:', pdfError);
-          message.error('Failed to generate PDF. Please check the console for details.');
-          throw pdfError;
+          message.success({ content: 'Report generated and downloaded successfully!', key: 'report' });
+          form.resetFields();
         }
       }
     } catch (error) {
+      message.error({ content: error instanceof Error ? error.message : 'Failed to generate report', key: 'report' });
       console.error('[AdminReports] Report generation failed:', error);
-      message.error(error instanceof Error ? error.message : 'Failed to generate report');
     }
   };
 
-  const steps = [
-    {
-      title: 'Report Type',
-      icon: <FileTextOutlined />,
-      description: 'Choose your report type'
-    },
-    {
-      title: 'Configuration',
-      icon: <SettingOutlined />,
-      description: 'Set parameters and options'
-    },
-    {
-      title: 'Preview & Generate',
-      icon: <RocketOutlined />,
-      description: 'Review and create report'
-    },
-  ];
 
-  const renderWizardView = () => (
-    <>
-      {/* Progress Steps */}
-      <Card 
-        style={{ marginBottom: 24 }}
-        bodyStyle={{ paddingTop: 32, paddingBottom: 32 }}
-      >
-        <Steps 
-          current={currentStep} 
-          items={steps}
-          onChange={setCurrentStep}
-          style={{ maxWidth: 900, margin: '0 auto' }}
-        />
-      </Card>
-
-      {/* Step Content */}
-      {currentStep === 0 && (
-        <ReportTypeSelection
-          selectedType={selectedType}
-          onSelectType={(type) => {
-            setSelectedType(type);
-            setCurrentStep(1);
-          }}
-          reportTypes={reportTypes}
-        />
-      )}
-
-      {currentStep === 1 && (
-        <Row gutter={24}>
-          <Col xs={24} xl={16}>
-            <ReportConfigForm
-              form={form}
-              devices={devices}
-              loading={devicesLoading}
-              generating={generating}
-              onFinish={(values) => {
-                onFinish(values);
-                setCurrentStep(2);
-              }}
-              selectedType={selectedType}
-              onBack={() => setCurrentStep(0)}
-            />
-          </Col>
-          <Col xs={24} xl={8}>
-            <QuickStatsPanel 
-              devices={devices}
-              reportHistory={reportHistory}
-            />
-          </Col>
-        </Row>
-      )}
-
-      {currentStep === 2 && (
-        <ReportPreviewPanel
-          selectedType={selectedType}
-          formValues={form.getFieldsValue()}
-          devices={devices}
-          onGenerate={() => onFinish(form.getFieldsValue())}
-          onBack={() => setCurrentStep(1)}
-          generating={generating}
-        />
-      )}
-    </>
-  );
-
-  const renderDashboardView = () => (
-    <Row gutter={24}>
-      <Col xs={24} lg={16}>
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          {/* Quick Actions */}
-          <Card 
-            title={
-              <Space>
-                <RocketOutlined />
-                <span>Quick Generate</span>
-              </Space>
-            }
-          >
-            <ReportTypeSelection
-              selectedType={selectedType}
-              onSelectType={(type) => {
-                setSelectedType(type);
-                setViewMode('wizard');
-                setCurrentStep(1);
-              }}
-              reportTypes={reportTypes}
-              compact
-            />
-          </Card>
-
-          {/* Recent Activity */}
-          <ReportHistorySidebar
-            reportHistory={reportHistory.slice(0, 5)}
-            token={token}
-            title="Recent Reports"
-            showViewAll
-            onViewAll={() => setViewMode('history')}
-          />
-        </Space>
-      </Col>
-      <Col xs={24} lg={8}>
-        <QuickStatsPanel 
-          devices={devices}
-          reportHistory={reportHistory}
-          detailed
-        />
-      </Col>
-    </Row>
-  );
-
-  const renderHistoryView = () => (
-    <Card>
-      <ReportHistorySidebar
-        reportHistory={reportHistory}
-        token={token}
-        fullView
-      />
-    </Card>
-  );
 
   return (
     <AdminLayout>
-      <div style={{ padding: '24px', maxWidth: 1600, margin: '0 auto' }}>
+      <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
         {/* Header */}
         <Card 
           style={{ 
             marginBottom: 24,
-            background: `linear-gradient(135deg, ${token.colorPrimary}15 0%, ${token.colorPrimaryBg} 100%)`
+            background: '#ffffff',
+            borderTop: `4px solid ${token.colorPrimary}`,
+            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.06)'
           }}
           bordered={false}
         >
@@ -386,81 +182,269 @@ export const AdminReports = () => {
             <Col>
               <Space direction="vertical" size={4}>
                 <Title level={2} style={{ margin: 0 }}>
-                  <FileTextOutlined /> Report Management Center
+                  <FileTextOutlined /> Water Quality Reports
                 </Title>
                 <Paragraph style={{ margin: 0, fontSize: 16 }} type="secondary">
-                  Generate comprehensive reports for water quality analysis, device monitoring, and compliance tracking
+                  Generate comprehensive water quality analysis reports with compliance assessment
                 </Paragraph>
               </Space>
             </Col>
             <Col>
-              <Statistic 
-                title="Total Reports Generated" 
-                value={reportHistory.length} 
-                prefix={<Badge status="success" />}
-                valueStyle={{ color: token.colorSuccess }}
-              />
+              <Button 
+                icon={<HistoryOutlined />} 
+                onClick={() => setShowHistory(!showHistory)}
+                type={showHistory ? 'primary' : 'default'}
+              >
+                History ({reportHistory.length})
+              </Button>
             </Col>
-          </Row>
-
-          <Divider style={{ marginTop: 20, marginBottom: 20 }} />
-
-          {/* View Mode Toggle */}
-          <Row justify="center">
-            <Segmented
-              size="large"
-              value={viewMode}
-              onChange={(value) => {
-                setViewMode(value as ViewMode);
-                if (value === 'wizard') setCurrentStep(0);
-              }}
-              options={[
-                {
-                  label: (
-                    <Space>
-                      <RocketOutlined />
-                      <span>Create Report</span>
-                    </Space>
-                  ),
-                  value: 'wizard',
-                },
-                {
-                  label: (
-                    <Space>
-                      <DashboardOutlined />
-                      <span>Dashboard</span>
-                    </Space>
-                  ),
-                  value: 'dashboard',
-                },
-                {
-                  label: (
-                    <Space>
-                      <HistoryOutlined />
-                      <span>History</span>
-                      {reportHistory.length > 0 && (
-                        <Badge count={reportHistory.length} showZero={false} />
-                      )}
-                    </Space>
-                  ),
-                  value: 'history',
-                },
-              ]}
-            />
           </Row>
         </Card>
 
-        {/* Main Content */}
-        {viewMode === 'wizard' && renderWizardView()}
-        {viewMode === 'dashboard' && renderDashboardView()}
-        {viewMode === 'history' && renderHistoryView()}
+        <Row gutter={24}>
+          {/* Main Form Section */}
+          <Col xs={24} lg={showHistory ? 16 : 24}>
+            <Card
+              title={
+                <Space>
+                  <ExperimentOutlined style={{ color: token.colorPrimary }} />
+                  <span>Generate Report</span>
+                </Space>
+              }
+              extra={
+                <Tag color="blue" icon={<CheckCircleOutlined />}>
+                  Includes Compliance Assessment
+                </Tag>
+              }
+            >
+              <Alert
+                message="Water Quality & Compliance Report"
+                description="This report includes comprehensive water quality analysis (pH, TDS, Turbidity) and WHO standards compliance assessment for the selected devices and time period."
+                type="info"
+                showIcon
+                style={{ marginBottom: 24 }}
+              />
 
-        {/* Help Float Button */}
-        <FloatButton 
-          icon={<QuestionCircleOutlined />} 
-          type="primary"
-          tooltip="Report Generation Help"
-        />
+              <Form
+                form={form}
+                layout="vertical"
+                onFinish={handleGenerateReport}
+                initialValues={{
+                  dateRange: [dayjs().subtract(7, 'days'), dayjs()],
+                  includeStatistics: true,
+                  includeCharts: true,
+                }}
+              >
+                <Row gutter={16}>
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      label={
+                        <Space>
+                          <CalendarOutlined />
+                          <span>Date Range</span>
+                        </Space>
+                      }
+                      name="dateRange"
+                      rules={[{ required: true, message: 'Please select a date range' }]}
+                    >
+                      <RangePicker 
+                        style={{ width: '100%' }}
+                        format="YYYY-MM-DD"
+                        disabled={generating}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} md={12}>
+                    <Form.Item
+                      label={
+                        <Space>
+                          <DatabaseOutlined />
+                          <span>Select Devices</span>
+                        </Space>
+                      }
+                      name="devices"
+                      rules={[{ required: true, message: 'Please select at least one device' }]}
+                    >
+                      <Select
+                        mode="multiple"
+                        placeholder="Select devices to include"
+                        loading={devicesLoading}
+                        disabled={generating}
+                        options={devices.map(d => ({
+                          label: `${d.name} (${d.deviceId})`,
+                          value: d.deviceId,
+                        }))}
+                        maxTagCount="responsive"
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Form.Item
+                  label="Report Title (Optional)"
+                  name="title"
+                >
+                  <Input 
+                    placeholder="e.g., Weekly Water Quality Report"
+                    disabled={generating}
+                  />
+                </Form.Item>
+
+                <Form.Item
+                  label="Notes (Optional)"
+                  name="notes"
+                >
+                  <TextArea 
+                    rows={3}
+                    placeholder="Add any notes or observations to include in the report..."
+                    disabled={generating}
+                  />
+                </Form.Item>
+
+                <Row gutter={16}>
+                  <Col xs={24} sm={12}>
+                    <Form.Item
+                      label="Include Statistics"
+                      name="includeStatistics"
+                      valuePropName="checked"
+                    >
+                      <Switch 
+                        checkedChildren="Yes" 
+                        unCheckedChildren="No"
+                        disabled={generating}
+                      />
+                    </Form.Item>
+                  </Col>
+
+                  <Col xs={24} sm={12}>
+                    <Form.Item
+                      label="Include Charts"
+                      name="includeCharts"
+                      valuePropName="checked"
+                    >
+                      <Switch 
+                        checkedChildren="Yes" 
+                        unCheckedChildren="No"
+                        disabled={generating}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Divider />
+
+                <Form.Item style={{ marginBottom: 0 }}>
+                  <Space style={{ width: '100%', justifyContent: 'center' }}>
+                    <Button
+                      type="primary"
+                      htmlType="submit"
+                      size="large"
+                      icon={<DownloadOutlined />}
+                      loading={generating}
+                      disabled={devicesLoading}
+                      style={{ minWidth: 200 }}
+                    >
+                      {generating ? 'Generating Report...' : 'Generate & Download Report'}
+                    </Button>
+                  </Space>
+                </Form.Item>
+              </Form>
+
+              {/* Quick Stats */}
+              <Divider />
+              <Row gutter={16} style={{ marginTop: 24 }}>
+                <Col xs={12} sm={6}>
+                  <Statistic
+                    title="Active Devices"
+                    value={devices.filter(d => d.status === 'online').length}
+                    suffix={`/ ${devices.length}`}
+                    valueStyle={{ color: token.colorSuccess }}
+                  />
+                </Col>
+                <Col xs={12} sm={6}>
+                  <Statistic
+                    title="Total Reports"
+                    value={reportHistory.length}
+                    prefix={<FileTextOutlined />}
+                    valueStyle={{ color: token.colorPrimary }}
+                  />
+                </Col>
+                <Col xs={12} sm={6}>
+                  <Statistic
+                    title="Last Generated"
+                    value={reportHistory.length > 0 ? dayjs(reportHistory[0].generatedAt).fromNow() : 'Never'}
+                    prefix={<ClockCircleOutlined />}
+                    valueStyle={{ fontSize: 14 }}
+                  />
+                </Col>
+                <Col xs={12} sm={6}>
+                  <Statistic
+                    title="Available Sensors"
+                    value={devices.reduce((acc, d) => acc + (d.sensors?.length || 0), 0)}
+                    valueStyle={{ color: token.colorInfo }}
+                  />
+                </Col>
+              </Row>
+            </Card>
+          </Col>
+
+          {/* History Sidebar */}
+          {showHistory && (
+            <Col xs={24} lg={8}>
+              <Card
+                title={
+                  <Space>
+                    <HistoryOutlined />
+                    <span>Report History</span>
+                  </Space>
+                }
+                bodyStyle={{ padding: '12px' }}
+              >
+                {reportHistory.length === 0 ? (
+                  <Empty
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description="No reports generated yet"
+                    style={{ padding: '40px 0' }}
+                  />
+                ) : (
+                  <List
+                    dataSource={reportHistory.slice(0, 10)}
+                    renderItem={(item) => (
+                      <List.Item
+                        style={{ 
+                          padding: '12px',
+                          borderRadius: 8,
+                          marginBottom: 8,
+                          background: '#fafafa'
+                        }}
+                      >
+                        <List.Item.Meta
+                          avatar={<FileTextOutlined style={{ fontSize: 20, color: token.colorPrimary }} />}
+                          title={
+                            <Text strong ellipsis style={{ fontSize: 13 }}>
+                              {item.title}
+                            </Text>
+                          }
+                          description={
+                            <Space direction="vertical" size={2} style={{ width: '100%' }}>
+                              <Text type="secondary" style={{ fontSize: 11 }}>
+                                <ClockCircleOutlined /> {dayjs(item.generatedAt).format('MMM D, YYYY h:mm A')}
+                              </Text>
+                              <Text type="secondary" style={{ fontSize: 11 }}>
+                                <DatabaseOutlined /> {item.devices} device{item.devices !== 1 ? 's' : ''}
+                              </Text>
+                            </Space>
+                          }
+                        />
+                      </List.Item>
+                    )}
+                  />
+                )}
+              </Card>
+            </Col>
+          )}
+        </Row>
       </div>
     </AdminLayout>
   );

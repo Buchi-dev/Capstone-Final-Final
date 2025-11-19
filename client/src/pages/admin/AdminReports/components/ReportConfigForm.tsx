@@ -67,42 +67,15 @@ export const ReportConfigForm = ({
   loading,
   generating,
   onFinish,
-  selectedType,
+  selectedType: _selectedType,
   onBack,
 }: ReportConfigFormProps) => {
   const getReportTypeInfo = () => {
-    switch (selectedType) {
-      case 'water_quality':
-        return {
-          title: 'Water Quality Report Configuration',
-          description: 'Configure parameters for comprehensive water quality analysis',
-          color: '#1890ff'
-        };
-      case 'device_status':
-        return {
-          title: 'Device Status Report Configuration',
-          description: 'Set up device health and connectivity monitoring report',
-          color: '#52c41a'
-        };
-      case 'data_summary':
-        return {
-          title: 'Data Summary Report Configuration',
-          description: 'Configure statistical analysis and data trends report',
-          color: '#722ed1'
-        };
-      case 'compliance':
-        return {
-          title: 'Compliance Report Configuration',
-          description: 'Set up regulatory compliance verification report',
-          color: '#fa8c16'
-        };
-      default:
-        return {
-          title: 'Report Configuration',
-          description: 'Configure your report parameters',
-          color: '#1890ff'
-        };
-    }
+    return {
+      title: 'Water Quality Report Configuration',
+      description: 'Configure parameters for comprehensive water quality analysis with compliance assessment',
+      color: '#1890ff'
+    };
   };
 
   const reportInfo = getReportTypeInfo();
