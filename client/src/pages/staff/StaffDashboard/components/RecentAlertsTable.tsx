@@ -78,13 +78,13 @@ export default function RecentAlertsTable({ alerts }: RecentAlertsTableProps) {
         render: (_: unknown, record: RecentAlert) => (
           <Space size={4}>
             <Text strong style={{ fontSize: '13px', color: token.colorError }}>
-              {record.value.toFixed(2)}
+              {record.value != null ? record.value.toFixed(2) : 'N/A'}
             </Text>
             <Text type="secondary" style={{ fontSize: '12px' }}>
               /
             </Text>
             <Text type="secondary" style={{ fontSize: '13px' }}>
-              {record.threshold.toFixed(2)}
+              {record.threshold != null ? record.threshold.toFixed(2) : 'N/A'}
             </Text>
           </Space>
         ),

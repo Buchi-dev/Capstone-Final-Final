@@ -151,10 +151,10 @@ export const PredictiveInsights = memo<PredictiveInsightsProps>(({
 
                       <Descriptions column={1} size="small">
                         <Descriptions.Item label="Prediction">
-                          {trend.prediction.toFixed(2)}
+                          {trend.prediction != null ? trend.prediction.toFixed(2) : 'N/A'}
                         </Descriptions.Item>
                         <Descriptions.Item label="Rate of Change">
-                          {trend.slope >= 0 ? '+' : ''}{trend.slope.toFixed(4)} per reading
+                          {trend.slope != null ? `${trend.slope >= 0 ? '+' : ''}${trend.slope.toFixed(4)} per reading` : 'N/A'}
                         </Descriptions.Item>
                       </Descriptions>
 
@@ -203,23 +203,27 @@ export const PredictiveInsights = memo<PredictiveInsightsProps>(({
                     <Col xs={12} md={5}>
                       <Text type="secondary">Current</Text>
                       <br />
-                      <Text strong style={{ fontSize: 18 }}>{prediction.currentValue.toFixed(2)}</Text>
+                      <Text strong style={{ fontSize: 18 }}>
+                        {prediction.currentValue != null ? prediction.currentValue.toFixed(2) : 'N/A'}
+                      </Text>
                     </Col>
                     <Col xs={12} md={5}>
                       <Text type="secondary">Predicted</Text>
                       <br />
                       <Text strong style={{ fontSize: 18, color: changeColor }}>
-                        {prediction.predictedValue.toFixed(2)}
+                        {prediction.predictedValue != null ? prediction.predictedValue.toFixed(2) : 'N/A'}
                       </Text>
                     </Col>
                     <Col xs={24} md={8}>
                       <Space direction="vertical" size="small" style={{ width: '100%' }}>
                         <div>
                           <Tag color={isPositiveChange ? 'warning' : 'success'}>
-                            {isPositiveChange ? '+' : ''}{prediction.predictedChange.toFixed(1)}% change
+                            {prediction.predictedChange != null 
+                              ? `${isPositiveChange ? '+' : ''}${prediction.predictedChange.toFixed(1)}% change`
+                              : 'N/A'}
                           </Tag>
                           <Tag>
-                            {prediction.confidence}% confidence
+                            {prediction.confidence != null ? `${prediction.confidence}% confidence` : 'N/A'}
                           </Tag>
                         </div>
                         <Progress 
@@ -275,18 +279,18 @@ export const PredictiveInsights = memo<PredictiveInsightsProps>(({
                       <Col xs={8} md={4}>
                         <Text type="secondary">Actual</Text>
                         <br />
-                        <Text strong>{anomaly.value.toFixed(2)}</Text>
+                        <Text strong>{anomaly.value != null ? anomaly.value.toFixed(2) : 'N/A'}</Text>
                       </Col>
                       <Col xs={8} md={4}>
                         <Text type="secondary">Expected</Text>
                         <br />
-                        <Text>{anomaly.expectedValue.toFixed(2)}</Text>
+                        <Text>{anomaly.expectedValue != null ? anomaly.expectedValue.toFixed(2) : 'N/A'}</Text>
                       </Col>
                       <Col xs={8} md={4}>
                         <Text type="secondary">Deviation</Text>
                         <br />
                         <Text strong style={{ color: token.colorError }}>
-                          ±{anomaly.deviation.toFixed(2)}
+                          {anomaly.deviation != null ? `±${anomaly.deviation.toFixed(2)}` : 'N/A'}
                         </Text>
                       </Col>
                       <Col xs={24} md={6}>

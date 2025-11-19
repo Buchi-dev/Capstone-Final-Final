@@ -17,6 +17,7 @@ import {
   getParameterUnit,
   getSeverityColor,
   getStatusColor,
+  formatAlertValue,
 } from '../../../../schemas';
 import type { WaterQualityAlert } from '../../../../schemas';
 
@@ -106,7 +107,7 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
         <Space direction="vertical" size={2}>
           <Text strong style={{ fontSize: '12px' }}>{record.parameter.toUpperCase()}</Text>
           <Text strong style={{ color: getSeverityColor(record.severity) }}>
-            {record.currentValue.toFixed(2)} {getParameterUnit(record.parameter)}
+            {formatAlertValue(record.currentValue)} {getParameterUnit(record.parameter)}
           </Text>
         </Space>
       ),

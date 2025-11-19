@@ -158,10 +158,16 @@ export class AlertsService {
         }
 
         // Parse alerts from snapshot
-        const alerts = snapshot.docs.map((doc) => ({
-          alertId: doc.id,
-          ...doc.data(),
-        } as WaterQualityAlert));
+        const alerts = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            alertId: doc.id,
+            ...data,
+            // ✅ CRITICAL: Database uses 'value', but schema expects 'currentValue'
+            // Map 'value' to 'currentValue' for consistent component usage
+            currentValue: data.value ?? data.currentValue,
+          } as WaterQualityAlert;
+        });
 
         dataFlowLogger.log(
           DataSource.FIRESTORE,

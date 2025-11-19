@@ -292,8 +292,8 @@ export const RealtimeAlertMonitor = () => {
                 }}
               >
                 <Text type="secondary">
-                  Latest: <strong>{latestAlert.parameter}</strong> = {latestAlert.currentValue.toFixed(2)}{' '}
-                  (Threshold: {latestAlert.threshold.toFixed(2)})
+                  Latest: <strong>{latestAlert.parameter}</strong> = {latestAlert.currentValue != null ? latestAlert.currentValue.toFixed(2) : 'N/A'}{' '}
+                  (Threshold: {latestAlert.threshold != null ? latestAlert.threshold.toFixed(2) : 'N/A'})
                 </Text>
                 <br />
                 <Text type="secondary" style={{ fontSize: '10px' }}>

@@ -29,6 +29,7 @@ import {
   getParameterName,
   getSeverityColor,
   getStatusColor,
+  formatAlertValue,
 } from '../../../../schemas';
 import type { WaterQualityAlert } from '../../../../schemas';
 import { getColorValue } from './utils';
@@ -202,7 +203,7 @@ const AlertDetailsDrawer: React.FC<AlertDetailsDrawerProps> = ({
                             color: getColorValue(getSeverityColor(alert.severity), token),
                             fontWeight: 700
                           }}>
-                            {alert.currentValue.toFixed(2)}
+                            {formatAlertValue(alert.currentValue)}
                           </Text>
                           <Text type="secondary" style={{ fontSize: 11, marginLeft: 4 }}>
                             {getParameterUnit(alert.parameter)}

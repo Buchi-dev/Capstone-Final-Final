@@ -55,18 +55,23 @@ export const WaterQualityAlertSchema = z.object({
   alertType: WaterQualityAlertTypeSchema,
   severity: WaterQualityAlertSeveritySchema,
   status: WaterQualityAlertStatusSchema,
-  currentValue: z.number(),
-  thresholdValue: z.number().optional(),
+  // ✅ Database field mapping: 'value' in DB → 'currentValue' in schema
+  currentValue: z.number().optional(), // Mapped from 'value' field in database
+  value: z.number().optional(), // Raw database field (for backwards compatibility)
+  previousValue: z.number().optional(), // Previous sensor reading
+  changeRate: z.number().optional(), // Rate of change (can be Infinity)
+  thresholdValue: z.number().nullable().optional(), // Can be null in database
   trendDirection: TrendDirectionSchema.optional(),
-  message: z.string(),
-  recommendedAction: z.string(),
+  message: z.string().optional(), // Some alerts may not have message
+  recommendedAction: z.string().optional(), // Some alerts may not have recommendations
   createdAt: z.any(), // Firestore Timestamp
+  updatedAt: z.any().optional(), // Firestore Timestamp
   acknowledgedAt: z.any().optional(), // Firestore Timestamp
   acknowledgedBy: z.string().optional(),
   resolvedAt: z.any().optional(), // Firestore Timestamp
   resolvedBy: z.string().optional(),
   resolutionNotes: z.string().optional(),
-  notificationsSent: z.array(z.string()),
+  notificationsSent: z.array(z.string()).optional(), // Can be empty array or missing
   metadata: z.record(z.string(), z.any()).optional(),
 });
 
@@ -221,4 +226,29 @@ export const getStatusColor = (status: WaterQualityAlertStatus): string => {
     default:
       return 'default';
   }
+};
+
+/**
+ * Safely format numeric value with fallback
+ * Handles undefined, null, Infinity, and NaN
+ * 
+ * @param value - Numeric value to format
+ * @param decimals - Number of decimal places (default: 2)
+ * @param fallback - Fallback text (default: 'N/A')
+ * @returns Formatted string
+ * 
+ * @example
+ * formatAlertValue(0.78241, 2) // "0.78"
+ * formatAlertValue(undefined) // "N/A"
+ * formatAlertValue(Infinity) // "N/A"
+ */
+export const formatAlertValue = (
+  value: number | undefined | null,
+  decimals: number = 2,
+  fallback: string = 'N/A'
+): string => {
+  if (value == null || !isFinite(value)) {
+    return fallback;
+  }
+  return value.toFixed(decimals);
 };
