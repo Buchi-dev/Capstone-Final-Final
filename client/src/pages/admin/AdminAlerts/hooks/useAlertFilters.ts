@@ -36,8 +36,8 @@ export const useAlertFilters = (alerts: WaterQualityAlert[]) => {
       const term = filters.searchTerm.toLowerCase();
       filtered = filtered.filter(
         (a) =>
-          a.message.toLowerCase().includes(term) ||
-          a.deviceName?.toLowerCase().includes(term) ||
+          (a.message?.toLowerCase().includes(term) ?? false) ||
+          (a.deviceName?.toLowerCase().includes(term) ?? false) ||
           a.deviceId.toLowerCase().includes(term)
       );
     }
