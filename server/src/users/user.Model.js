@@ -112,10 +112,9 @@ const userSchema = new mongoose.Schema(
 );
 
 /**
- * Create indexes for better query performance
+ * Create compound indexes for better query performance
+ * Note: email and googleId already have unique indexes from schema definition
  */
-userSchema.index({ email: 1 });
-userSchema.index({ googleId: 1 });
 userSchema.index({ role: 1, status: 1 });
 
 /**

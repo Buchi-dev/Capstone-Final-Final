@@ -94,7 +94,6 @@ const sensorReadingSchema = new mongoose.Schema(
     timestamp: {
       type: Date,
       required: true,
-      index: true,
     },
     receivedAt: {
       type: Date,
@@ -107,13 +106,14 @@ const sensorReadingSchema = new mongoose.Schema(
 );
 
 /**
- * Indexes for optimized queries
+ * Compound indexes for optimized queries
+ * Note: timestamp index is created through compound indexes and TTL index
  */
 sensorReadingSchema.index({ deviceId: 1, timestamp: -1 });
-sensorReadingSchema.index({ timestamp: -1 });
 
 /**
  * TTL Index - Automatically delete readings older than 90 days
+ * This also serves as a simple timestamp index for sorting
  */
 sensorReadingSchema.index({ timestamp: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
