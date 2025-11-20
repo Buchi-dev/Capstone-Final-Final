@@ -23,11 +23,11 @@ interface UsersStatisticsProps {
 export const UsersStatistics: React.FC<UsersStatisticsProps> = ({ users, loading = false }) => {
   const stats = useMemo(() => {
     const total = users.length;
-    const approved = users.filter((u) => u.status === 'Approved').length;
-    const pending = users.filter((u) => u.status === 'Pending').length;
-    const suspended = users.filter((u) => u.status === 'Suspended').length;
-    const admins = users.filter((u) => u.role === 'Admin').length;
-    const staff = users.filter((u) => u.role === 'Staff').length;
+    const approved = users.filter((u) => u.status === 'active').length;
+    const pending = users.filter((u) => u.status === 'pending').length;
+    const suspended = users.filter((u) => u.status === 'suspended').length;
+    const admins = users.filter((u) => u.role === 'admin').length;
+    const staff = users.filter((u) => u.role === 'staff').length;
 
     const approvedPercent = total > 0 ? (approved / total) * 100 : 0;
     const adminPercent = total > 0 ? (admins / total) * 100 : 0;

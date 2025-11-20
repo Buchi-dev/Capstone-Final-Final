@@ -222,6 +222,63 @@ class UserService {
   }
 
   /**
+   * Update user (role and/or status) - Convenience method
+   * Handles both role and status updates by calling appropriate endpoints
+   * @param userId - User ID
+   * @param status - New status (optional)
+   * @param role - New role (optional)
+   * @returns Promise resolving to update result
+   */
+  async updateUser(userId: string, status?: UserStatus, role?: UserRole): Promise<any> {
+    try {
+      const updates: any = {};
+      let response: any;
+
+      // Update role if provided
+      if (role) {
+        response = await this.updateUserRole(userId, role);
+        updates.role = role;
+      }
+
+      // Update status if provided
+      if (status) {
+        response = await this.updateUserStatus(userId, status);
+        updates.status = status;
+      }
+
+      console.log('[UserService] User updated:', { userId, updates });
+      
+      return {
+        success: true,
+        message: 'User updated successfully',
+        userId,
+        updates,
+        requiresLogout: response?.requiresLogout || false,
+      };
+    } catch (error: any) {
+      console.error('[UserService] Error updating user:', error);
+      throw new Error(error.response?.data?.message || 'Failed to update user');
+    }
+  }
+
+  /**
+   * Complete user profile (self-service for new users)
+   * @param userId - User ID
+   * @param profileData - Department and phone number
+   * @returns Promise resolving to update result
+   */
+  async completeUserProfile(userId: string, profileData: { department?: string; phoneNumber?: string }): Promise<UpdateProfileResponse> {
+    try {
+      const response = await apiClient.patch<UpdateProfileResponse>(`/api/users/${userId}/complete-profile`, profileData);
+      console.log('[UserService] User profile completed:', { userId, updates: profileData });
+      return response.data;
+    } catch (error: any) {
+      console.error('[UserService] Error completing user profile:', error);
+      throw new Error(error.response?.data?.message || 'Failed to complete user profile');
+    }
+  }
+
+  /**
    * Delete user account
    * @param userId - User ID
    * @returns Promise resolving to deletion result
@@ -279,6 +336,49 @@ class UserService {
    */
   async demoteToStaff(userId: string): Promise<UpdateUserResponse> {
     return this.updateUserRole(userId, 'staff');
+  }
+
+  // ============================================================================
+  // USER PREFERENCES
+  // ============================================================================
+
+  /**
+   * Get user notification preferences
+   * @param userId - User ID
+   * @returns Promise resolving to user preferences
+   */
+  async getUserPreferences(userId: string): Promise<any> {
+    try {
+      const response = await apiClient.get(`/api/users/${userId}/preferences`);
+      console.log('[UserService] User preferences fetched:', { userId });
+      return response.data.data;
+    } catch (error: any) {
+      console.error('[UserService] Error fetching user preferences:', error);
+      throw new Error(error.response?.data?.message || 'Failed to fetch user preferences');
+    }
+  }
+
+  /**
+   * Update user notification preferences
+   * @param userId - User ID
+   * @param preferences - Notification preferences
+   * @returns Promise resolving to updated preferences
+   */
+  async setupPreferences(preferences: any): Promise<any> {
+    try {
+      // Assuming the preferences object contains userId
+      const userId = preferences.userId;
+      if (!userId) {
+        throw new Error('User ID is required in preferences');
+      }
+      
+      const response = await apiClient.put(`/api/users/${userId}/preferences`, preferences);
+      console.log('[UserService] User preferences updated:', { userId });
+      return response.data.data;
+    } catch (error: any) {
+      console.error('[UserService] Error updating user preferences:', error);
+      throw new Error(error.response?.data?.message || 'Failed to update user preferences');
+    }
   }
 }
 

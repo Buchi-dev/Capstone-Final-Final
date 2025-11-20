@@ -143,9 +143,9 @@ export const AdminUserManagement: React.FC = () => {
   const handleSaveUser = async (
     userId: string,
     profileData: {
-      firstname: string;
-      middlename: string;
-      lastname: string;
+      firstName: string;
+      middleName: string;
+      lastName: string;
       department: string;
       phoneNumber: string;
     }

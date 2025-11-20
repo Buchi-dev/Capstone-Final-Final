@@ -95,7 +95,7 @@ export const router = createBrowserRouter([
     ),
   },
   {
-    path: '/auth/complete-account',
+    path: '/auth/account-completion',
     element: <AuthAccountCompletion />,
   },
   {

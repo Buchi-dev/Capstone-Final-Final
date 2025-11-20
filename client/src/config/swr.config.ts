@@ -12,7 +12,9 @@ import { apiClient } from './api.config';
 export const fetcher = async (url: string) => {
   const response = await apiClient.get(url);
   // Extract data from standardized API response { success, data }
-  return response.data.data || response.data;
+  // Backend returns: { success: true, data: [...], pagination?: {...} }
+  // We return the full response to preserve pagination info
+  return response.data;
 };
 
 /**

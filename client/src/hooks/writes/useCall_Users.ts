@@ -42,9 +42,9 @@ interface UpdateUserProfileResult {
   message: string;
   userId: string;
   updates: {
-    firstname?: string;
-    middlename?: string;
-    lastname?: string;
+    firstName?: string;
+    middleName?: string;
+    lastName?: string;
     department?: string;
     phoneNumber?: string;
   };
@@ -62,9 +62,9 @@ interface UseCallUsersReturn {
   updateUserProfile: (
     userId: string,
     profileData: {
-      firstname?: string;
-      middlename?: string;
-      lastname?: string;
+      firstName?: string;
+      middleName?: string;
+      lastName?: string;
       department?: string;
       phoneNumber?: string;
     }
@@ -163,8 +163,9 @@ export const useCall_Users = (): UseCallUsersReturn => {
       setUpdateResult({
         success: response.success,
         message: response.message,
-        userId: response.userId,
-        updates: { status: response.status },
+        userId: response.data.id,
+        updates: { status: response.data.status },
+        requiresLogout: response.requiresLogout,
       });
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to update user status');
@@ -259,9 +260,9 @@ export const useCall_Users = (): UseCallUsersReturn => {
   const updateUserProfile = useCallback(async (
     userId: string,
     profileData: {
-      firstname?: string;
-      middlename?: string;
-      lastname?: string;
+      firstName?: string;
+      middleName?: string;
+      lastName?: string;
       department?: string;
       phoneNumber?: string;
     }
@@ -278,8 +279,8 @@ export const useCall_Users = (): UseCallUsersReturn => {
       const result: UpdateUserProfileResult = {
         success: response.success,
         message: response.message,
-        userId: response.userId,
-        updates: response.updates as any,
+        userId: response.data.id,
+        updates: response.updates,
       };
 
       setIsSuccess(true);

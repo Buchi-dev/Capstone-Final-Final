@@ -37,7 +37,14 @@ export default function AuthLogin() {
       if (user.status === 'suspended') {
         navigate('/auth/account-suspended');
       } else if (user.status === 'pending') {
-        navigate('/auth/pending-approval');
+        // Check if profile is complete (has department and phone)
+        if (!user.department || !user.phoneNumber) {
+          // New user without complete profile - go to account completion
+          navigate('/auth/account-completion');
+        } else {
+          // Profile complete - go to pending approval
+          navigate('/auth/pending-approval');
+        }
       } else if (user.status === 'active') {
         // Active user - redirect to appropriate dashboard
         if (user.role === 'admin') {

@@ -26,7 +26,32 @@ router.get(
     failureRedirect: `${process.env.CLIENT_URL}/login?error=auth_failed`,
   }),
   (req, res) => {
-    // Successful authentication, redirect to client dashboard
+    // Successful authentication, redirect based on user status
+    const user = req.user;
+    
+    if (user.status === 'pending') {
+      // Check if profile is complete
+      if (!user.department || !user.phoneNumber) {
+        // New user needs to complete profile
+        return res.redirect(`${process.env.CLIENT_URL}/auth/account-completion`);
+      } else {
+        // Profile complete, show pending approval
+        return res.redirect(`${process.env.CLIENT_URL}/auth/pending-approval`);
+      }
+    } else if (user.status === 'suspended') {
+      return res.redirect(`${process.env.CLIENT_URL}/auth/account-suspended`);
+    } else if (user.status === 'active') {
+      // Active user - redirect to appropriate dashboard
+      if (user.role === 'admin') {
+        return res.redirect(`${process.env.CLIENT_URL}/admin/dashboard`);
+      } else if (user.role === 'staff') {
+        return res.redirect(`${process.env.CLIENT_URL}/staff/dashboard`);
+      } else {
+        return res.redirect(`${process.env.CLIENT_URL}/dashboard`);
+      }
+    }
+    
+    // Default fallback
     res.redirect(`${process.env.CLIENT_URL}/dashboard`);
   }
 );

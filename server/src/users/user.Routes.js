@@ -5,6 +5,7 @@ const {
   updateUserRole,
   updateUserStatus,
   updateUserProfile,
+  completeUserProfile,
   deleteUser,
   getUserPreferences,
   updateUserPreferences,
@@ -48,6 +49,13 @@ router.patch('/:id/status', ensureAdmin, updateUserStatus);
  * @access  Admin only
  */
 router.patch('/:id/profile', ensureAdmin, updateUserProfile);
+
+/**
+ * @route   PATCH /api/users/:id/complete-profile
+ * @desc    Complete user profile (self-service for new users)
+ * @access  Authenticated users (own profile only)
+ */
+router.patch('/:id/complete-profile', ensureAuthenticated, completeUserProfile);
 
 /**
  * @route   DELETE /api/users/:id

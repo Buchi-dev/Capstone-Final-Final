@@ -74,6 +74,11 @@ export function ApprovedRoute({ children }: ProtectedRouteProps) {
 
   // Check status - pending means awaiting admin approval
   if (isPending) {
+    // Check if profile is complete (has department and phone)
+    if (!user.department || !user.phoneNumber) {
+      // New user without complete profile - go to account completion
+      return <Navigate to="/auth/account-completion" replace />;
+    }
     return <Navigate to="/auth/pending-approval" replace />;
   }
 
@@ -107,6 +112,11 @@ export function AdminRoute({ children }: ProtectedRouteProps) {
 
   // Check status
   if (isPending) {
+    // Check if profile is complete (has department and phone)
+    if (!user.department || !user.phoneNumber) {
+      // New user without complete profile - go to account completion
+      return <Navigate to="/auth/account-completion" replace />;
+    }
     return <Navigate to="/auth/pending-approval" replace />;
   }
 
@@ -191,6 +201,11 @@ export function RoleRoute({ children, allowedRoles }: RoleRouteProps) {
 
   // Check status
   if (isPending) {
+    // Check if profile is complete (has department and phone)
+    if (!user.department || !user.phoneNumber) {
+      // New user without complete profile - go to account completion
+      return <Navigate to="/auth/account-completion" replace />;
+    }
     return <Navigate to="/auth/pending-approval" replace />;
   }
 

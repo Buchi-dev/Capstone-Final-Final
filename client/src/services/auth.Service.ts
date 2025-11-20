@@ -23,11 +23,15 @@ const authAPI = axios.create({
 // ============================================================================
 
 export interface AuthUser {
+  _id: string;
   id: string;
   email: string;
   displayName: string;
   firstName?: string;
   lastName?: string;
+  middleName?: string;
+  department?: string;
+  phoneNumber?: string;
   profilePicture?: string;
   role: 'admin' | 'staff';
   status: 'active' | 'pending' | 'suspended';

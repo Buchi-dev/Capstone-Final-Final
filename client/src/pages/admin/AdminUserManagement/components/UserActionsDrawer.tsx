@@ -48,9 +48,9 @@ interface UserActionsDrawerProps {
   onSaveProfile: (
     userId: string,
     profileData: {
-      firstname: string;
-      middlename: string;
-      lastname: string;
+      firstName: string;
+      middleName: string;
+      lastName: string;
       department: string;
       phoneNumber: string;
     }
@@ -62,9 +62,9 @@ interface UserActionsDrawerProps {
 }
 
 interface FormValues {
-  firstname: string;
-  middlename: string;
-  lastname: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
   department: string;
   phoneNumber: string;
 }
@@ -74,9 +74,9 @@ interface FormValues {
  */
 const getStatusColor = (status: UserStatus): string => {
   const colors: Record<UserStatus, string> = {
-    Approved: 'success',
-    Pending: 'warning',
-    Suspended: 'error',
+    active: 'success',
+    pending: 'warning',
+    suspended: 'error',
   };
   return colors[status] || 'default';
 };
@@ -86,9 +86,9 @@ const getStatusColor = (status: UserStatus): string => {
  */
 const getStatusIcon = (status: UserStatus) => {
   const icons: Record<UserStatus, React.ReactNode> = {
-    Approved: <CheckCircleOutlined />,
-    Pending: <ExclamationCircleOutlined />,
-    Suspended: <StopOutlined />,
+    active: <CheckCircleOutlined />,
+    pending: <ExclamationCircleOutlined />,
+    suspended: <StopOutlined />,
   };
   return icons[status] || null;
 };
@@ -98,8 +98,8 @@ const getStatusIcon = (status: UserStatus) => {
  */
 const getRoleColor = (role: UserRole): string => {
   const colors: Record<UserRole, string> = {
-    Admin: 'red',
-    Staff: 'blue',
+    admin: 'red',
+    staff: 'blue',
   };
   return colors[role] || 'default';
 };
@@ -143,10 +143,10 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
   useEffect(() => {
     if (currentUser) {
       form.setFieldsValue({
-        firstname: currentUser.firstname,
-        middlename: currentUser.middlename,
-        lastname: currentUser.lastname,
-        department: currentUser.department,
+        firstName: currentUser.firstName || '',
+        middleName: currentUser.middleName || '',
+        lastName: currentUser.lastName || '',
+        department: currentUser.department || '',
         phoneNumber: currentUser.phoneNumber || '',
       });
     }
@@ -154,7 +154,7 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
 
   if (!currentUser) return null;
 
-  const userName = `${currentUser.firstname} ${currentUser.lastname}`;
+  const userName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`;
 
   /**
    * Handle delete user with confirmation
@@ -203,10 +203,10 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
     // Reset form to original values
     if (currentUser) {
       form.setFieldsValue({
-        firstname: currentUser.firstname,
-        middlename: currentUser.middlename,
-        lastname: currentUser.lastname,
-        department: currentUser.department,
+        firstName: currentUser.firstName || '',
+        middleName: currentUser.middleName || '',
+        lastName: currentUser.lastName || '',
+        department: currentUser.department || '',
         phoneNumber: currentUser.phoneNumber || '',
       });
     }
@@ -248,13 +248,13 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
             <ul style={{ color: '#666', marginLeft: 20 }}>
               <li>Log you out immediately after the change</li>
               <li>You will need to log back in</li>
-              {status === 'Suspended' && <li style={{ color: '#ff4d4f' }}><strong>Suspend your own account</strong> - you won't be able to log back in!</li>}
+              {status === 'suspended' && <li style={{ color: '#ff4d4f' }}><strong>Suspend your own account</strong> - you won't be able to log back in!</li>}
             </ul>
             <p style={{ marginTop: 12 }}>Are you sure you want to continue?</p>
           </div>
         ),
         okText: 'Yes, Change Status',
-        okType: status === 'Suspended' ? 'danger' : 'primary',
+        okType: status === 'suspended' ? 'danger' : 'primary',
         cancelText: 'Cancel',
         onOk: () => {
           // Update local state immediately for instant UI feedback
@@ -295,7 +295,7 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
               <li>Log you out immediately after the change</li>
               <li>Update your access permissions</li>
               <li>You will need to log back in</li>
-              {role === 'Staff' && <li style={{ color: '#ff4d4f' }}><strong>Remove your Admin privileges</strong></li>}
+              {role === 'staff' && <li style={{ color: '#ff4d4f' }}><strong>Remove your Admin privileges</strong></li>}
             </ul>
             <p style={{ marginTop: 12 }}>Are you sure you want to continue?</p>
           </div>
@@ -336,7 +336,7 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
             />
           )}
           <Avatar size={40} icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }}>
-            {currentUser.firstname[0]}{currentUser.lastname[0]}
+            {(currentUser.firstName?.[0] || '')}{(currentUser.lastName?.[0] || '')}
           </Avatar>
           <div>
             <Title level={5} style={{ margin: 0 }}>
@@ -378,10 +378,10 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
               form={form}
               layout="vertical"
               initialValues={{
-                firstname: currentUser.firstname,
-                middlename: currentUser.middlename,
-                lastname: currentUser.lastname,
-                department: currentUser.department,
+                firstName: currentUser.firstName || '',
+                middleName: currentUser.middleName || '',
+                lastName: currentUser.lastName || '',
+                department: currentUser.department || '',
                 phoneNumber: currentUser.phoneNumber || '',
               }}
             >
@@ -398,13 +398,13 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                   <Col span={12}>
                     <Text type="secondary">Status: </Text>
                     <Tag icon={getStatusIcon(currentUser.status)} color={getStatusColor(currentUser.status)}>
-                      {currentUser.status}
+                      {currentUser.status === 'active' ? 'Active' : currentUser.status === 'pending' ? 'Pending' : 'Suspended'}
                     </Tag>
                   </Col>
                   <Col span={12}>
                     <Text type="secondary">Role: </Text>
                     <Tag color={getRoleColor(currentUser.role)}>
-                      {currentUser.role}
+                      {currentUser.role === 'admin' ? 'Admin' : 'Staff'}
                     </Tag>
                   </Col>
                 </Row>
@@ -414,7 +414,7 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
             <Row gutter={16}>
               <Col span={8}>
                 <Form.Item
-                  name="firstname"
+                  name="firstName"
                   label="First Name"
                   rules={[
                     { required: true, message: 'First name is required' },
@@ -432,7 +432,7 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
 
               <Col span={8}>
                 <Form.Item
-                  name="middlename"
+                  name="middleName"
                   label="Middle Name"
                   rules={[
                     { max: 50, message: 'Max 50 characters' },
@@ -447,7 +447,7 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
 
               <Col span={8}>
                 <Form.Item
-                  name="lastname"
+                  name="lastName"
                   label="Last Name"
                   rules={[
                     { required: true, message: 'Last name is required' },
@@ -658,14 +658,14 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                     <Col span={12}>
                       <Button
                         icon={<CheckCircleOutlined />}
-                        disabled={currentUser.status === 'Approved'}
-                        onClick={() => handleStatusChange('Approved')}
+                        disabled={currentUser.status === 'active'}
+                        onClick={() => handleStatusChange('active')}
                         size="large"
                         block
                         style={{ 
-                          backgroundColor: currentUser.status === 'Approved' ? undefined : '#f6ffed',
-                          borderColor: currentUser.status === 'Approved' ? undefined : '#52c41a',
-                          color: currentUser.status === 'Approved' ? undefined : '#52c41a',
+                          backgroundColor: currentUser.status === 'active' ? undefined : '#f6ffed',
+                          borderColor: currentUser.status === 'active' ? undefined : '#52c41a',
+                          color: currentUser.status === 'active' ? undefined : '#52c41a',
                           fontWeight: 500,
                           height: 44,
                         }}
@@ -676,9 +676,9 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                     <Col span={12}>
                       <Button
                         icon={<StopOutlined />}
-                        disabled={currentUser.status === 'Suspended'}
-                        onClick={() => handleStatusChange('Suspended')}
-                        danger={currentUser.status !== 'Suspended'}
+                        disabled={currentUser.status === 'suspended'}
+                        onClick={() => handleStatusChange('suspended')}
+                        danger={currentUser.status !== 'suspended'}
                         size="large"
                         block
                         style={{
@@ -714,14 +714,14 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                   <Row gutter={12}>
                     <Col span={12}>
                       <Button
-                        disabled={currentUser.role === 'Admin'}
-                        onClick={() => handleRoleChange('Admin')}
+                        disabled={currentUser.role === 'admin'}
+                        onClick={() => handleRoleChange('admin')}
                         size="large"
                         block
                         style={{ 
-                          backgroundColor: currentUser.role === 'Admin' ? undefined : '#fff1f0',
-                          borderColor: currentUser.role === 'Admin' ? undefined : '#ff4d4f',
-                          color: currentUser.role === 'Admin' ? undefined : '#ff4d4f',
+                          backgroundColor: currentUser.role === 'admin' ? undefined : '#fff1f0',
+                          borderColor: currentUser.role === 'admin' ? undefined : '#ff4d4f',
+                          color: currentUser.role === 'admin' ? undefined : '#ff4d4f',
                           fontWeight: 500,
                           height: 44,
                         }}
@@ -731,14 +731,14 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                     </Col>
                     <Col span={12}>
                       <Button
-                        disabled={currentUser.role === 'Staff'}
-                        onClick={() => handleRoleChange('Staff')}
+                        disabled={currentUser.role === 'staff'}
+                        onClick={() => handleRoleChange('staff')}
                         size="large"
                         block
                         style={{ 
-                          backgroundColor: currentUser.role === 'Staff' ? undefined : '#e6f7ff',
-                          borderColor: currentUser.role === 'Staff' ? undefined : '#1890ff',
-                          color: currentUser.role === 'Staff' ? undefined : '#1890ff',
+                          backgroundColor: currentUser.role === 'staff' ? undefined : '#e6f7ff',
+                          borderColor: currentUser.role === 'staff' ? undefined : '#1890ff',
+                          color: currentUser.role === 'staff' ? undefined : '#1890ff',
                           fontWeight: 500,
                           height: 44,
                         }}

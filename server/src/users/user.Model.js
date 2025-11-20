@@ -122,6 +122,7 @@ userSchema.index({ role: 1, status: 1 });
  */
 userSchema.methods.toPublicProfile = function () {
   return {
+    _id: this._id,
     id: this._id,
     email: this.email,
     displayName: this.displayName,

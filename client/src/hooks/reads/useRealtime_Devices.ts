@@ -86,7 +86,7 @@ export const useRealtime_Devices = (
   );
 
   return {
-    devices: data || [],
+    devices: data?.data || [],
     isLoading,
     error,
     refetch: mutate,

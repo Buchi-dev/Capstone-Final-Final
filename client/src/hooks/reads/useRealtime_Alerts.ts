@@ -88,7 +88,7 @@ export const useRealtime_Alerts = (
   );
 
   return {
-    alerts: data || [],
+    alerts: data?.data || [],
     isLoading,
     error,
     refetch: mutate,

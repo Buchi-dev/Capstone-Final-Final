@@ -215,6 +215,66 @@ const updateUserProfile = async (req, res) => {
 };
 
 /**
+ * Complete user profile (Self - for new users)
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const completeUserProfile = async (req, res) => {
+  try {
+    const { department, phoneNumber } = req.body;
+    
+    // Get the logged-in user's ID (could be _id or id depending on session serialization)
+    const loggedInUserId = (req.user._id || req.user.id).toString();
+    const targetUserId = req.params.id;
+    
+    // User can only complete their own profile
+    if (loggedInUserId !== targetUserId) {
+      return res.status(403).json({
+        success: false,
+        message: 'Forbidden: You can only complete your own profile',
+      });
+    }
+
+    const updates = {};
+    if (department) updates.department = department;
+    if (phoneNumber) updates.phoneNumber = phoneNumber;
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide department and/or phone number',
+      });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      updates,
+      { new: true, runValidators: true }
+    ).select('-googleId');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Profile completed successfully',
+      data: user.toPublicProfile(),
+      updates,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error completing user profile',
+      error: error.message,
+    });
+  }
+};
+
+/**
  * Delete user (Admin only)
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
@@ -416,6 +476,7 @@ module.exports = {
   updateUserRole,
   updateUserStatus,
   updateUserProfile,
+  completeUserProfile,
   deleteUser,
   getUserPreferences,
   updateUserPreferences,
