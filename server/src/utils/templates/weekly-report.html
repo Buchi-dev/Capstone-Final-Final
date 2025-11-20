@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weekly Water Quality Report</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      line-height: 1.6; 
+      color: #333; 
+      max-width: 600px; 
+      margin: 0 auto; 
+      padding: 20px; 
+    }
+    .header { 
+      background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%); 
+      color: white; 
+      padding: 30px 20px; 
+      border-radius: 8px 8px 0 0; 
+      text-align: center; 
+    }
+    .header h1 { 
+      margin: 0; 
+      font-size: 24px; 
+    }
+    .content { 
+      background: #f5f5f5; 
+      padding: 20px; 
+    }
+    .report-section { 
+      background: white; 
+      margin: 20px 0; 
+      padding: 20px; 
+      border-radius: 8px; 
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1); 
+    }
+    .report-title { 
+      color: #1890ff; 
+      font-size: 18px; 
+      margin-bottom: 15px; 
+      border-bottom: 2px solid #1890ff; 
+      padding-bottom: 10px; 
+    }
+    .metric { 
+      display: flex; 
+      justify-content: space-between; 
+      padding: 10px 0; 
+      border-bottom: 1px solid #e8e8e8; 
+    }
+    .metric:last-child { 
+      border-bottom: none; 
+    }
+    .metric-label { 
+      font-weight: 600; 
+      color: #666; 
+    }
+    .metric-value { 
+      color: #1890ff; 
+      font-weight: bold; 
+    }
+    .status-good { 
+      color: #52c41a; 
+    }
+    .status-warning { 
+      color: #faad14; 
+    }
+    .status-critical { 
+      color: #ff4d4f; 
+    }
+    .cta-button { 
+      display: inline-block; 
+      background: #1890ff; 
+      color: white !important; 
+      padding: 12px 30px; 
+      text-decoration: none; 
+      border-radius: 6px; 
+      margin: 20px 0; 
+      font-weight: 600; 
+    }
+    .footer { 
+      text-align: center; 
+      padding: 20px; 
+      color: #999; 
+      font-size: 12px; 
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📊 Weekly Water Quality Report</h1>
+    <p style="margin: 10px 0 0 0;">Hello, {{userName}}!</p>
+  </div>
+  
+  <div class="content">
+    <p>Here's your weekly summary for the water quality monitoring system.</p>
+    
+    {{waterQualitySection}}
+    
+    {{deviceStatusSection}}
+    
+    <div style="text-align: center;">
+      <a href="{{appUrl}}/admin/reports" class="cta-button">View Full Reports</a>
+    </div>
+    
+    <div class="report-section">
+      <p style="color: #666; font-size: 14px; margin: 0;">
+        💡 <strong>Tip:</strong> Log in to your dashboard to view detailed analytics, historical trends, and device-specific insights.
+      </p>
+    </div>
+  </div>
+  
+  <div class="footer">
+    <p>This is an automated report from your Water Quality Monitoring System.</p>
+    <p>To manage your notification preferences, visit your account settings.</p>
+    <p>&copy; {{currentYear}} Water Quality Monitor. All rights reserved.</p>
+  </div>
+</body>
+</html>

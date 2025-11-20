@@ -1,5 +1,10 @@
 const cron = require('node-cron');
 const { Device, SensorReading } = require('../devices/device.Model');
+const Report = require('../reports/report.Model');
+const User = require('../users/user.Model');
+const Alert = require('../alerts/alert.Model');
+const { v4: uuidv4 } = require('uuid');
+const { sendWeeklyReportEmail } = require('../utils/email.service');
 
 /**
  * Background Jobs Service
@@ -65,17 +70,97 @@ const cleanupOldReadings = cron.schedule('0 2 * * *', async () => {
 /**
  * Generate weekly summary reports
  * Runs every Monday at 8:00 AM
- * TODO: Implement automatic report generation and email distribution
+ * Automatically generates water quality and device status reports for the past week
  */
 const generateWeeklyReports = cron.schedule('0 8 * * 1', async () => {
   try {
     console.log('[Background Job] Generating weekly reports...');
     
-    // TODO: Implement automatic report generation
-    // This would call the report generation functions with last week's date range
-    // and email the reports to subscribed users
+    // Calculate last week's date range (Monday to Sunday)
+    const now = new Date();
+    const lastMonday = new Date(now);
+    lastMonday.setDate(now.getDate() - 7); // Go back 7 days to last Monday
+    lastMonday.setHours(0, 0, 0, 0);
     
-    console.log('[Background Job] Weekly reports generation - Not yet implemented');
+    const lastSunday = new Date(lastMonday);
+    lastSunday.setDate(lastMonday.getDate() + 6); // End on Sunday
+    lastSunday.setHours(23, 59, 59, 999);
+
+    console.log(`[Background Job] Report period: ${lastMonday.toISOString()} to ${lastSunday.toISOString()}`);
+
+    // Get system admin user for report generation
+    const systemAdmin = await User.findOne({ role: 'admin' }).sort({ createdAt: 1 });
+    
+    if (!systemAdmin) {
+      console.warn('[Background Job] No admin user found. Skipping weekly report generation.');
+      return;
+    }
+
+    // Get all registered devices
+    const devices = await Device.find({ registrationStatus: 'registered' });
+    const deviceIds = devices.map(d => d.deviceId);
+
+    if (deviceIds.length === 0) {
+      console.log('[Background Job] No registered devices found. Skipping report generation.');
+      return;
+    }
+
+    // Generate Water Quality Report
+    const waterQualityReport = await generateWaterQualityReportJob(
+      lastMonday,
+      lastSunday,
+      deviceIds,
+      systemAdmin._id
+    );
+
+    // Generate Device Status Report
+    const deviceStatusReport = await generateDeviceStatusReportJob(
+      lastMonday,
+      lastSunday,
+      deviceIds,
+      systemAdmin._id
+    );
+
+    console.log('[Background Job] Weekly reports generated successfully');
+    console.log(`  - Water Quality Report: ${waterQualityReport?.reportId || 'Failed'}`);
+    console.log(`  - Device Status Report: ${deviceStatusReport?.reportId || 'Failed'}`);
+
+    // Send email notifications to subscribed users
+    if (waterQualityReport && deviceStatusReport) {
+      try {
+        const subscribedUsers = await User.find({
+          'notificationPreferences.sendScheduledAlerts': true,
+          'notificationPreferences.emailNotifications': true,
+          status: 'active'
+        });
+
+        if (subscribedUsers.length > 0) {
+          console.log(`[Background Job] Sending weekly reports to ${subscribedUsers.length} subscribed users...`);
+          
+          let successCount = 0;
+          let failCount = 0;
+
+          for (const user of subscribedUsers) {
+            const success = await sendWeeklyReportEmail(user, [waterQualityReport, deviceStatusReport]);
+            if (success) {
+              successCount++;
+            } else {
+              failCount++;
+            }
+          }
+
+          console.log(`[Background Job] Email notifications completed: ${successCount} sent, ${failCount} failed`);
+        } else {
+          console.log('[Background Job] No subscribed users found for email notifications');
+        }
+      } catch (emailError) {
+        console.error('[Background Job] Error sending email notifications:', emailError.message);
+        // Don't throw - report generation succeeded even if emails failed
+      }
+    } else {
+      console.warn('[Background Job] Skipping email notifications - one or more reports failed to generate');
+    }
+
   } catch (error) {
     console.error('[Background Job] Error generating weekly reports:', error);
   }
@@ -83,6 +168,305 @@ const generateWeeklyReports = cron.schedule('0 8 * * 1', async () => {
   scheduled: false,
   timezone: 'UTC',
 });
+
+/**
+ * Helper function to generate water quality report
+ */
+async function generateWaterQualityReportJob(startDate, endDate, deviceIds, generatedBy) {
+  const startTime = Date.now();
+  const reportId = uuidv4();
+  
+  try {
+    const report = new Report({
+      reportId,
+      type: 'water-quality',
+      title: `Weekly Water Quality Report (${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()})`,
+      generatedBy,
+      startDate,
+      endDate,
+      status: 'generating',
+    });
+    await report.save();
+
+    // Aggregate sensor readings
+    const readingsAggregation = await SensorReading.aggregate([
+      {
+        $match: {
+          deviceId: { $in: deviceIds },
+          timestamp: { $gte: startDate, $lte: endDate },
+        },
+      },
+      {
+        $group: {
+          _id: '$deviceId',
+          count: { $sum: 1 },
+          avgPH: { $avg: '$pH' },
+          minPH: { $min: '$pH' },
+          maxPH: { $max: '$pH' },
+          avgTurbidity: { $avg: '$turbidity' },
+          minTurbidity: { $min: '$turbidity' },
+          maxTurbidity: { $max: '$turbidity' },
+          avgTDS: { $avg: '$tds' },
+          minTDS: { $min: '$tds' },
+          maxTDS: { $max: '$tds' },
+          avgTemperature: { $avg: '$temperature' },
+          minTemperature: { $min: '$temperature' },
+          maxTemperature: { $max: '$temperature' },
+        },
+      },
+    ]);
+
+    // Get alerts for the period
+    const alerts = await Alert.find({
+      deviceId: { $in: deviceIds },
+      timestamp: { $gte: startDate, $lte: endDate },
+    });
+
+    // Get devices
+    const devices = await Device.find({ deviceId: { $in: deviceIds } });
+
+    // WHO compliance metrics
+    const complianceMetrics = {
+      pH: { guideline: '6.5 - 8.5', minAcceptable: 6.5, maxAcceptable: 8.5 },
+      turbidity: { guideline: '< 5 NTU', maxAcceptable: 5 },
+      tds: { guideline: '< 500 ppm', maxAcceptable: 500 },
+    };
+
+    // Build device reports
+    const deviceReports = readingsAggregation.map(agg => {
+      const device = devices.find(d => d.deviceId === agg._id);
+      const deviceAlerts = alerts.filter(a => a.deviceId === agg._id);
+
+      const pHCompliant = agg.avgPH >= complianceMetrics.pH.minAcceptable && 
+                          agg.avgPH <= complianceMetrics.pH.maxAcceptable;
+      const turbidityCompliant = agg.avgTurbidity < complianceMetrics.turbidity.maxAcceptable;
+      const tdsCompliant = agg.avgTDS < complianceMetrics.tds.maxAcceptable;
+
+      return {
+        deviceId: agg._id,
+        deviceName: device?.location || agg._id,
+        readingCount: agg.count,
+        parameters: {
+          pH: {
+            avg: parseFloat(agg.avgPH.toFixed(2)),
+            min: parseFloat(agg.minPH.toFixed(2)),
+            max: parseFloat(agg.maxPH.toFixed(2)),
+            compliant: pHCompliant,
+          },
+          turbidity: {
+            avg: parseFloat(agg.avgTurbidity.toFixed(2)),
+            min: parseFloat(agg.minTurbidity.toFixed(2)),
+            max: parseFloat(agg.maxTurbidity.toFixed(2)),
+            compliant: turbidityCompliant,
+          },
+          tds: {
+            avg: parseFloat(agg.avgTDS.toFixed(2)),
+            min: parseFloat(agg.minTDS.toFixed(2)),
+            max: parseFloat(agg.maxTDS.toFixed(2)),
+            compliant: tdsCompliant,
+          },
+          temperature: {
+            avg: parseFloat(agg.avgTemperature.toFixed(2)),
+            min: parseFloat(agg.minTemperature.toFixed(2)),
+            max: parseFloat(agg.maxTemperature.toFixed(2)),
+          },
+        },
+        alerts: {
+          total: deviceAlerts.length,
+          critical: deviceAlerts.filter(a => a.severity === 'Critical').length,
+          warning: deviceAlerts.filter(a => a.severity === 'Warning').length,
+          advisory: deviceAlerts.filter(a => a.severity === 'Advisory').length,
+        },
+        overallCompliance: pHCompliant && turbidityCompliant && tdsCompliant,
+      };
+    });
+
+    const totalReadings = readingsAggregation.reduce((sum, agg) => sum + agg.count, 0);
+    const compliantDevices = deviceReports.filter(d => d.overallCompliance).length;
+    const complianceRate = devices.length > 0 
+      ? parseFloat(((compliantDevices / devices.length) * 100).toFixed(2))
+      : 0;
+
+    const summary = {
+      totalDevices: devices.length,
+      totalReadings,
+      totalAlerts: alerts.length,
+      criticalAlerts: alerts.filter(a => a.severity === 'Critical').length,
+      warningAlerts: alerts.filter(a => a.severity === 'Warning').length,
+      advisoryAlerts: alerts.filter(a => a.severity === 'Advisory').length,
+      compliantDevices,
+      complianceRate,
+    };
+
+    report.status = 'completed';
+    report.data = {
+      devices: deviceReports,
+      complianceGuidelines: complianceMetrics,
+    };
+    report.summary = summary;
+    report.metadata = {
+      deviceCount: devices.length,
+      alertCount: alerts.length,
+      readingCount: totalReadings,
+      processingTime: Date.now() - startTime,
+    };
+    await report.save();
+
+    return report;
+  } catch (error) {
+    console.error('[Background Job] Error generating water quality report:', error);
+    try {
+      await Report.findOneAndUpdate(
+        { reportId },
+        { status: 'failed', error: error.message }
+      );
+    } catch (updateError) {
+      console.error('[Background Job] Error updating failed report:', updateError);
+    }
+    return null;
+  }
+}
+
+/**
+ * Helper function to generate device status report
+ */
+async function generateDeviceStatusReportJob(startDate, endDate, deviceIds, generatedBy) {
+  const startTime = Date.now();
+  const reportId = uuidv4();
+  
+  try {
+    const report = new Report({
+      reportId,
+      type: 'device-status',
+      title: `Weekly Device Status Report (${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()})`,
+      generatedBy,
+      startDate,
+      endDate,
+      status: 'generating',
+    });
+    await report.save();
+
+    const devices = await Device.find({ deviceId: { $in: deviceIds } });
+
+    // Get reading counts
+    const readingCounts = await SensorReading.aggregate([
+      {
+        $match: {
+          deviceId: { $in: deviceIds },
+          timestamp: { $gte: startDate, $lte: endDate },
+        },
+      },
+      {
+        $group: {
+          _id: '$deviceId',
+          count: { $sum: 1 },
+          firstReading: { $min: '$timestamp' },
+          lastReading: { $max: '$timestamp' },
+        },
+      },
+    ]);
+
+    // Get alert counts
+    const alertCounts = await Alert.aggregate([
+      {
+        $match: {
+          deviceId: { $in: deviceIds },
+          timestamp: { $gte: startDate, $lte: endDate },
+        },
+      },
+      {
+        $group: {
+          _id: '$deviceId',
+          totalAlerts: { $sum: 1 },
+          criticalAlerts: {
+            $sum: { $cond: [{ $eq: ['$severity', 'Critical'] }, 1, 0] },
+          },
+        },
+      },
+    ]);
+
+    const deviceReports = devices.map(device => {
+      const readings = readingCounts.find(r => r._id === device.deviceId);
+      const alerts = alertCounts.find(a => a._id === device.deviceId);
+
+      const periodMs = endDate.getTime() - startDate.getTime();
+      const expectedReadings = periodMs / (60 * 1000);
+      const actualReadings = readings?.count || 0;
+      const uptimePercentage = readings 
+        ? parseFloat(Math.min((actualReadings / expectedReadings) * 100, 100).toFixed(2))
+        : 0;
+
+      const healthScore = calculateHealthScore(uptimePercentage, alerts?.criticalAlerts || 0);
+
+      return {
+        deviceId: device.deviceId,
+        location: device.location,
+        status: device.status,
+        registrationStatus: device.registrationStatus,
+        lastSeen: device.lastSeen,
+        metrics: {
+          totalReadings: actualReadings,
+          firstReading: readings?.firstReading || null,
+          lastReading: readings?.lastReading || null,
+          uptimePercentage,
+        },
+        alerts: {
+          total: alerts?.totalAlerts || 0,
+          critical: alerts?.criticalAlerts || 0,
+        },
+        healthScore,
+      };
+    });
+
+    const totalReadings = readingCounts.reduce((sum, r) => sum + r.count, 0);
+    const onlineDevices = devices.filter(d => d.status === 'online').length;
+    const avgUptime = deviceReports.length > 0
+      ? parseFloat((deviceReports.reduce((sum, d) => sum + d.metrics.uptimePercentage, 0) / deviceReports.length).toFixed(2))
+      : 0;
+
+    const summary = {
+      totalDevices: devices.length,
+      onlineDevices,
+      offlineDevices: devices.length - onlineDevices,
+      totalReadings,
+      avgUptimePercentage: avgUptime,
+      devicesWithCriticalAlerts: deviceReports.filter(d => d.alerts.critical > 0).length,
+    };
+
+    report.status = 'completed';
+    report.data = { devices: deviceReports };
+    report.summary = summary;
+    report.metadata = {
+      deviceCount: devices.length,
+      alertCount: alertCounts.reduce((sum, a) => sum + a.totalAlerts, 0),
+      readingCount: totalReadings,
+      processingTime: Date.now() - startTime,
+    };
+    await report.save();
+
+    return report;
+  } catch (error) {
+    console.error('[Background Job] Error generating device status report:', error);
+    try {
+      await Report.findOneAndUpdate(
+        { reportId },
+        { status: 'failed', error: error.message }
+      );
+    } catch (updateError) {
+      console.error('[Background Job] Error updating failed report:', updateError);
+    }
+    return null;
+  }
+}
+
+/**
+ * Calculate device health score
+ */
+function calculateHealthScore(uptimePercentage, criticalAlerts) {
+  let score = uptimePercentage;
+  score -= criticalAlerts * 5;
+  return Math.max(0, Math.min(100, parseFloat(score.toFixed(2))));
+}
 
 /**
  * Start all background jobs
