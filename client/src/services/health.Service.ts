@@ -11,8 +11,7 @@
  * @module services/health
  */
 
-import { apiClient } from '../config/api.config';
-import { getErrorMessage } from '../utils/authHelpers';
+import { apiClient, getErrorMessage } from '../config/api.config';
 
 // ============================================================================
 // TYPE DEFINITIONS
