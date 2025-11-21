@@ -12,7 +12,7 @@
  */
 
 import { useMemo } from 'react';
-import type { Device } from '../../../../schemas';
+import type { DeviceWithReadings } from '../../../../schemas';
 import type { WaterQualityAlert } from '../../../../schemas';
 import type { SystemHealth } from '../../../../services/health.Service';
 import { calculateSystemHealth } from '../../AdminDashboard/utils';
@@ -95,7 +95,7 @@ export interface SystemHealthSummary {
 /**
  * Calculate device statistics
  */
-const calculateDeviceStats = (devices: Device[]): DeviceStats => {
+const calculateDeviceStats = (devices: DeviceWithReadings[]): DeviceStats => {
   return {
     total: devices.length,
     online: devices.filter((d) => d.status === 'online').length,
@@ -126,7 +126,7 @@ const calculateAlertStats = (alerts: WaterQualityAlert[]): AlertStats => {
 /**
  * Calculate water quality metrics from device readings
  */
-const calculateWaterQualityMetrics = (devices: Device[]): WaterQualityMetrics => {
+const calculateWaterQualityMetrics = (devices: DeviceWithReadings[]): WaterQualityMetrics => {
   const phReadings: number[] = [];
   const tdsReadings: number[] = [];
   const turbidityReadings: number[] = [];
@@ -176,7 +176,7 @@ const calculateWaterQualityMetrics = (devices: Device[]): WaterQualityMetrics =>
  * Calculate system health from Express server, devices, and alerts
  */
 const calculateSystemHealthSummary = (
-  devices: Device[],
+  devices: DeviceWithReadings[],
   alerts: WaterQualityAlert[],
   systemHealthData: SystemHealth | null
 ): SystemHealthSummary => {
@@ -268,7 +268,7 @@ const calculateComplianceStatus = (metrics: WaterQualityMetrics) => {
 /**
  * Calculate device performance metrics
  */
-const calculateDevicePerformance = (devices: Device[], alerts: WaterQualityAlert[]) => {
+const calculateDevicePerformance = (devices: DeviceWithReadings[], alerts: WaterQualityAlert[]) => {
   return devices.map(device => {
     const deviceAlerts = alerts.filter(a => a.deviceId === device.deviceId);
     
@@ -314,7 +314,7 @@ const calculateDevicePerformance = (devices: Device[], alerts: WaterQualityAlert
 
     return {
       deviceId: device.deviceId,
-      deviceName: device.deviceName || `Device ${device.deviceId}`,
+      deviceName: device.name || `Device ${device.deviceId}`,
       location,
       uptimePercentage,
       totalReadings: 1, // Would need historical data
@@ -331,7 +331,7 @@ const calculateDevicePerformance = (devices: Device[], alerts: WaterQualityAlert
 /**
  * Calculate aggregated metrics for historical trends
  */
-const calculateAggregatedMetrics = (devices: Device[]) => {
+const calculateAggregatedMetrics = (devices: DeviceWithReadings[]) => {
   // For now, create a simple aggregation from current readings
   // In a real scenario, this would aggregate historical data by time periods
   if (devices.length === 0) return [];
@@ -360,7 +360,7 @@ const calculateAggregatedMetrics = (devices: Device[]) => {
  * Pure calculation hook - no side effects or data fetching.
  * Memoized for performance.
  * 
- * @param devices - Array of devices with sensor data
+ * @param devices - Array of devices with sensor data (enriched with readings)
  * @param alerts - Array of water quality alerts
  * @param systemHealthData - Express server health data from /health endpoint
  * @returns Object containing all analytics statistics
@@ -379,7 +379,7 @@ const calculateAggregatedMetrics = (devices: Device[]) => {
  * ```
  */
 export const useAnalyticsStats = (
-  devices: Device[],
+  devices: DeviceWithReadings[],
   alerts: WaterQualityAlert[],
   systemHealthData: SystemHealth | null
 ) => {

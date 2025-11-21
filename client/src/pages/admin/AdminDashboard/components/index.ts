@@ -1,9 +1,7 @@
-export { HealthOverview } from './HealthOverview';
-export { MetricsGrid } from './MetricsGrid';
-export { MemoryMonitor } from './MemoryMonitor';
-export { CpuMonitor } from './CpuMonitor';
-export { BufferMonitor } from './BufferMonitor';
-export { SystemInfo } from './SystemInfo';
+/**
+ * Admin Dashboard Components
+ * Only exports actively used components
+ */
 export { DashboardSummary } from './DashboardSummary';
 export { LiveMetricIndicator } from './LiveMetricIndicator';
 export { RecentAlertsList } from './RecentAlertsList';

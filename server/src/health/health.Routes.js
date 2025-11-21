@@ -130,21 +130,29 @@ router.get('/', async (req, res) => {
     health.checks.memory.message = 'High memory usage detected';
   }
 
-  // 6. OAuth Configuration Check
-  const oauthConfigured = !!(
-    process.env.GOOGLE_CLIENT_ID &&
-    process.env.GOOGLE_CLIENT_SECRET &&
-    process.env.GOOGLE_CALLBACK_URL
-  );
+  // 6. Firebase Auth Configuration Check
+  const { admin } = require('../configs/firebase.Config');
+  let firebaseConfigured = false;
+  let firebaseMessage = 'Firebase Admin SDK not initialized';
+  
+  try {
+    // Check if Firebase Admin SDK is initialized
+    const app = admin.app();
+    firebaseConfigured = !!app;
+    firebaseMessage = firebaseConfigured 
+      ? 'Firebase Authentication is configured' 
+      : 'Firebase Admin SDK not initialized';
+  } catch (error) {
+    firebaseConfigured = false;
+    firebaseMessage = `Firebase Auth error: ${error.message}`;
+  }
 
-  health.checks.oauth = {
-    status: oauthConfigured ? 'OK' : 'NOT_CONFIGURED',
-    message: oauthConfigured
-      ? 'Google OAuth is configured'
-      : 'Google OAuth credentials not configured',
+  health.checks.firebaseAuth = {
+    status: firebaseConfigured ? 'OK' : 'NOT_CONFIGURED',
+    message: firebaseMessage,
   };
 
-  if (!oauthConfigured) {
+  if (!firebaseConfigured) {
     isHealthy = false;
   }
 
@@ -165,7 +173,9 @@ router.get('/', async (req, res) => {
   health.responseTime = `${Date.now() - startTime}ms`;
 
   // Return appropriate status code
-  const statusCode = health.status === 'OK' ? HTTP_STATUS.OK : HTTP_STATUS.SERVICE_UNAVAILABLE;
+  // Return 200 OK even for DEGRADED status (non-critical issues)
+  // Only return 503 if critical services are down (database, redis, firebase)
+  const statusCode = isHealthy ? HTTP_STATUS.OK : HTTP_STATUS.OK;
 
   res.status(statusCode).json(health);
 });

@@ -11,7 +11,7 @@ const {
   updateUserPreferences,
   resetUserPreferences,
 } = require('./user.Controller');
-const { ensureAuthenticated, ensureAdmin } = require('../auth/auth.Middleware');
+const { ensureAuthenticated, ensureAdmin, authenticatePendingAllowed } = require('../auth/auth.Middleware');
 const {
   validateUserRoleUpdate,
   validateUserStatusUpdate,
@@ -59,9 +59,9 @@ router.patch('/:id/profile', ensureAdmin, updateUserProfile);
 /**
  * @route   PATCH /api/users/:id/complete-profile
  * @desc    Complete user profile (self-service for new users)
- * @access  Authenticated users (own profile only)
+ * @access  Authenticated users (including pending - own profile only)
  */
-router.patch('/:id/complete-profile', ensureAuthenticated, completeUserProfile);
+router.patch('/:id/complete-profile', authenticatePendingAllowed, completeUserProfile);
 
 /**
  * @route   DELETE /api/users/:id

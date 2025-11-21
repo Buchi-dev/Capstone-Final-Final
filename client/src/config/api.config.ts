@@ -1,8 +1,9 @@
 /**
  * Axios API Client Configuration
- * Centralized HTTP client for Express REST API with session-based authentication
+ * Centralized HTTP client for Express REST API with Firebase authentication
  */
 import axios, { type AxiosInstance } from 'axios';
+import { auth } from './firebase.config';
 
 // API Base URL from environment variables
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
@@ -23,10 +24,28 @@ export const apiClient: AxiosInstance = axios.create({
 
 /**
  * Request interceptor
- * Add any custom headers or request modifications here
+ * Add Firebase ID token to Authorization header for authenticated requests
  */
 apiClient.interceptors.request.use(
-  (config) => {
+  async (config) => {
+    // Add Firebase ID token if user is authenticated
+    try {
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const idToken = await currentUser.getIdToken();
+        config.headers.Authorization = `Bearer ${idToken}`;
+        if (import.meta.env.DEV) {
+          console.log(`[API] Added token for user:`, currentUser.email);
+        }
+      } else {
+        if (import.meta.env.DEV) {
+          console.warn('[API] No currentUser available for request');
+        }
+      }
+    } catch (error) {
+      console.warn('[API] Failed to get Firebase token:', error);
+    }
+    
     // Add timestamp for debugging
     if (import.meta.env.DEV) {
       console.log(`[API Request] ${config.method?.toUpperCase()} ${config.url}`);

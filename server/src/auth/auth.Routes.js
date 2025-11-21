@@ -32,13 +32,39 @@ router.post('/verify-token', async (req, res) => {
     let user = await User.findOne({ firebaseUid: decodedToken.uid });
 
     if (!user) {
+      // Parse name components
+      const fullName = decodedToken.name || firebaseUser.displayName || 'User';
+      const nameParts = fullName.trim().split(/\s+/); // Split by whitespace
+      
+      let firstName = '';
+      let middleName = '';
+      let lastName = '';
+      
+      if (nameParts.length === 1) {
+        firstName = nameParts[0];
+      } else if (nameParts.length >= 2) {
+        // Last part is always the last name
+        lastName = nameParts[nameParts.length - 1];
+        
+        // Check if second-to-last part is a middle initial (contains period)
+        if (nameParts.length >= 3 && nameParts[nameParts.length - 2].includes('.')) {
+          middleName = nameParts[nameParts.length - 2];
+          // Everything before middle name is first name
+          firstName = nameParts.slice(0, nameParts.length - 2).join(' ');
+        } else {
+          // No middle initial, everything before last name is first name
+          firstName = nameParts.slice(0, nameParts.length - 1).join(' ');
+        }
+      }
+      
       // Create new user
       user = new User({
         firebaseUid: decodedToken.uid,
         email: decodedToken.email || firebaseUser.email,
-        displayName: decodedToken.name || firebaseUser.displayName || 'User',
-        firstName: decodedToken.name?.split(' ')[0] || '',
-        lastName: decodedToken.name?.split(' ').slice(1).join(' ') || '',
+        displayName: fullName,
+        firstName,
+        middleName,
+        lastName,
         profilePicture: decodedToken.picture || firebaseUser.photoURL || '',
         provider: 'firebase',
         role: 'staff', // Default role

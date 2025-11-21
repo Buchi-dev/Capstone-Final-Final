@@ -13,7 +13,7 @@ import type { WaterQualityAlert } from '../../../../schemas';
 import {
   calculateServerHealthScore,
   HEALTH_COLORS,
-} from '../config';
+} from '../config/healthThresholds';
 import { calculateSystemHealth, getSystemHealthColor, getSystemHealthDescription } from '../utils';
 
 const { Text, Title } = Typography;

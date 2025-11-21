@@ -122,7 +122,9 @@ const optionalAuth = async (req, res, next) => {
     const decodedToken = await verifyIdToken(idToken);
     const user = await User.findOne({ firebaseUid: decodedToken.uid });
 
-    if (user && user.status === 'active') {
+    // Attach user regardless of status for status checks
+    // This allows frontend to handle pending/suspended states properly
+    if (user) {
       req.user = user;
       req.firebaseUser = decodedToken;
     }
@@ -144,6 +146,64 @@ const ensureAdmin = ensureRole('admin');
  */
 const ensureStaff = ensureRole('admin', 'staff');
 
+/**
+ * Authentication middleware that allows pending users
+ * Used for endpoints like profile completion where pending users need access
+ */
+const authenticatePendingAllowed = async (req, res, next) => {
+  try {
+    // Get token from Authorization header
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({
+        success: false,
+        message: 'No token provided',
+      });
+    }
+
+    const idToken = authHeader.split('Bearer ')[1];
+
+    // Verify Firebase token
+    const decodedToken = await verifyIdToken(idToken);
+    
+    // Get user from database using Firebase UID
+    const user = await User.findOne({ firebaseUid: decodedToken.uid });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Check user status - only block suspended users
+    if (user.status === 'suspended') {
+      return res.status(403).json({
+        success: false,
+        message: 'Account suspended',
+      });
+    }
+
+    // Allow pending users through (they need to complete their profile)
+    // Attach user and Firebase token to request
+    req.user = user;
+    req.firebaseUser = decodedToken;
+    
+    next();
+  } catch (error) {
+    logger.error('[Auth Middleware] Authentication failed', {
+      error: error.message,
+      path: req.path,
+    });
+
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid or expired token',
+    });
+  }
+};
+
 module.exports = {
   authenticateFirebase,
   ensureAuthenticated,
@@ -151,4 +211,5 @@ module.exports = {
   ensureAdmin,
   ensureStaff,
   optionalAuth,
+  authenticatePendingAllowed,
 };

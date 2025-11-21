@@ -7,6 +7,8 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import type { ReactNode } from "react";
 import { authService, type AuthUser } from "../services/auth.Service";
+import { auth } from "../config/firebase.config";
+import { onAuthStateChanged } from "firebase/auth";
 
 // User status types (mapped from MongoDB model)
 export type UserStatus = "active" | "pending" | "suspended";
@@ -36,6 +38,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [firebaseReady, setFirebaseReady] = useState(false);
 
   /**
    * Fetch current user from backend
@@ -50,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
       }
     } catch (error) {
-      console.error("Error fetching user:", error);
+      console.error("[AuthContext] Error fetching user:", error);
       setUser(null);
     } finally {
       setLoading(false);
@@ -64,18 +67,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchUser();
   }, [fetchUser]);
 
+  // Listen to Firebase auth state changes
   useEffect(() => {
-    // Initial auth check
-    fetchUser();
+    console.log('[AuthContext] Setting up Firebase auth listener...');
+    
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      console.log('[AuthContext] Firebase auth state changed:', firebaseUser?.email || 'No user');
+      
+      if (firebaseUser) {
+        // User is signed in with Firebase
+        setFirebaseReady(true);
+        // Fetch user data from backend
+        fetchUser();
+      } else {
+        // User is signed out
+        setFirebaseReady(true);
+        setUser(null);
+        setLoading(false);
+      }
+    });
 
-    // Set up periodic auth check (every 5 minutes)
-    // This ensures session expiry is detected
+    return () => unsubscribe();
+  }, [fetchUser]);
+
+  // Set up periodic auth check (every 5 minutes)
+  useEffect(() => {
+    if (!firebaseReady) return;
+
     const interval = setInterval(() => {
-      fetchUser();
+      if (auth.currentUser) {
+        console.log('[AuthContext] Periodic auth check...');
+        fetchUser();
+      }
     }, 5 * 60 * 1000); // 5 minutes
 
     return () => clearInterval(interval);
-  }, [fetchUser]);
+  }, [firebaseReady, fetchUser]);
 
   // Computed values
   const isAuthenticated = !!user;

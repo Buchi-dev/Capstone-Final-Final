@@ -11,6 +11,8 @@
  * @module services/auth.Service
  */
 
+import { signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth';
+import { auth, googleProvider } from '../config/firebase.config';
 import { apiClient, getErrorMessage } from '../config/api.config';
 import { AUTH_ENDPOINTS } from '../config/endpoints';
 
@@ -80,7 +82,14 @@ export class AuthService {
     try {
       const response = await apiClient.post<VerifyTokenResponse>(
         AUTH_ENDPOINTS.VERIFY_TOKEN,
-        { idToken }
+        { idToken },
+        {
+          // Explicitly set the Authorization header with the fresh token
+          // This bypasses the interceptor which might use a cached/old token
+          headers: {
+            'Authorization': `Bearer ${idToken}`
+          }
+        }
       );
       return response.data;
     } catch (error: any) {
@@ -133,19 +142,63 @@ export class AuthService {
   }
 
   /**
+   * Check authentication status (alias for checkStatus)
+   * Used by AuthContext for compatibility
+   * 
+   * @returns Promise with authentication status
+   * @example
+   * const { authenticated, user } = await authService.checkAuthStatus();
+   */
+  async checkAuthStatus(): Promise<AuthStatusResponse> {
+    return this.checkStatus();
+  }
+
+  /**
+   * Initiate Google OAuth login
+   * Uses Firebase Google Sign-In popup
+   * 
+   * @returns Promise with user data after successful login
+   * @throws {Error} If login fails
+   * @example
+   * const user = await authService.loginWithGoogle();
+   */
+  async loginWithGoogle(): Promise<VerifyTokenResponse> {
+    try {
+      // Sign in with Google via Firebase
+      const result = await signInWithPopup(auth, googleProvider);
+      
+      // Get ID token from Firebase
+      const idToken = await result.user.getIdToken();
+      
+      // Verify token with backend and sync user to database
+      const response = await this.verifyToken(idToken);
+      
+      return response;
+    } catch (error: any) {
+      const message = getErrorMessage(error);
+      console.error('[AuthService] Google login error:', message);
+      throw new Error(message);
+    }
+  }
+
+  /**
    * Logout user
-   * Client should also sign out from Firebase after calling this
+   * Signs out from both Firebase and backend
    * 
    * @returns Promise that resolves when logout is complete
    * @example
    * await authService.logout();
-   * await signOut(auth); // Firebase client-side logout
    */
   async logout(): Promise<LogoutResponse> {
     try {
+      // Sign out from Firebase first
+      await firebaseSignOut(auth);
+      
+      // Notify backend
       const response = await apiClient.post<LogoutResponse>(
         AUTH_ENDPOINTS.LOGOUT
       );
+      
       return response.data;
     } catch (error: any) {
       const message = getErrorMessage(error);

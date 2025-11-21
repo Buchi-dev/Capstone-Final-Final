@@ -34,6 +34,17 @@ export const AuthAccountCompletion = () => {
     }
   }, [mutationError]);
 
+  // Pre-fill form with user data
+  useEffect(() => {
+    if (user) {
+      form.setFieldsValue({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        middleName: user.middleName || '',
+      });
+    }
+  }, [user, form]);
+
   useEffect(() => {
     if (authLoading) return;
 
@@ -240,16 +251,22 @@ export const AuthAccountCompletion = () => {
               rules={[
                 { required: true, message: "Please enter your phone number" },
                 {
-                  pattern: /^\+?\d{10,15}$/,
-                  message: "Please enter a valid phone number (10-15 digits)",
+                  pattern: /^09\d{9}$/,
+                  message: "Please enter a valid 11-digit Philippine phone number (e.g., 09123456789)",
                 },
               ]}
             >
               <Input
                 size="large"
                 prefix={<PhoneOutlined />}
-                placeholder="+1234567890"
-                maxLength={15}
+                placeholder="09123456789"
+                maxLength={11}
+                onKeyPress={(e) => {
+                  // Only allow numbers
+                  if (!/[0-9]/.test(e.key)) {
+                    e.preventDefault();
+                  }
+                }}
               />
             </Form.Item>
 

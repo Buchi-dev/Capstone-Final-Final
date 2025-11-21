@@ -105,6 +105,16 @@ export interface SystemHealth {
     memory: MemoryCheck;
     oauth: OAuthCheck;
     apiKey: ApiKeyCheck;
+    // Optional monitoring features (not currently implemented in server)
+    buffers?: Record<string, {
+      messages: number;
+      utilization: number;
+    }>;
+    cpu?: {
+      current: number;
+      average: number;
+      peak: number;
+    };
   };
   responseTime: string;
 }
@@ -240,12 +250,15 @@ export class HealthService {
     let healthyChecks = 0;
     
     checks.forEach(check => {
-      if (check.status === 'OK') {
-        healthyChecks += 1;
-      } else if (check.status === 'WARNING') {
-        healthyChecks += 0.5;
+      // Skip optional monitoring checks (buffers, cpu) that don't have status
+      if (typeof check === 'object' && 'status' in check) {
+        if (check.status === 'OK') {
+          healthyChecks += 1;
+        } else if (check.status === 'WARNING') {
+          healthyChecks += 0.5;
+        }
+        // FAILED and NOT_CONFIGURED count as 0
       }
-      // FAILED and NOT_CONFIGURED count as 0
     });
     
     return Math.round((healthyChecks / totalChecks) * 100);
@@ -271,8 +284,11 @@ export class HealthService {
     const failed: string[] = [];
     
     Object.entries(health.checks).forEach(([key, check]) => {
-      if (check.status === 'FAILED' || check.status === 'ERROR') {
-        failed.push(key);
+      // Skip optional monitoring checks (buffers, cpu) that don't have status
+      if (typeof check === 'object' && 'status' in check) {
+        if (check.status === 'FAILED' || check.status === 'ERROR') {
+          failed.push(key);
+        }
       }
     });
     
