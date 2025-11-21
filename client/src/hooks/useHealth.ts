@@ -19,6 +19,7 @@ import {
   type LivenessResponse,
   type ReadinessResponse,
 } from '../services/health.Service';
+import { useVisibilityPolling } from './useVisibilityPolling';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -77,9 +78,12 @@ export function useSystemHealth(
   options: UseSystemHealthOptions = {}
 ): UseSystemHealthReturn {
   const {
-    pollInterval = 15000, // Default 15 seconds
+    pollInterval = 60000, // Changed from 15000 to 60000
     enabled = true,
   } = options;
+
+  // Add visibility detection to pause polling when tab is hidden
+  const adjustedPollInterval = useVisibilityPolling(pollInterval);
 
   const cacheKey = enabled ? ['health', 'system'] : null;
 
@@ -94,7 +98,7 @@ export function useSystemHealth(
       return await healthService.getSystemHealth();
     },
     {
-      refreshInterval: pollInterval,
+      refreshInterval: adjustedPollInterval, // Use adjusted interval
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
       dedupingInterval: 3000,

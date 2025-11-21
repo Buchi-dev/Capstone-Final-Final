@@ -1,18 +1,33 @@
 const rateLimit = require('express-rate-limit');
+const logger = require('../utils/logger');
 
 /**
  * General API rate limiter
- * 100 requests per 15 minutes per IP
+ * Increased from 100 to 300 requests per 15 minutes
+ * Temporary measure while transitioning to WebSocket architecture
  */
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: 300, // Changed from 100
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.',
   },
   standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
   legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  handler: (req, res) => {
+    logger.warn('[Rate Limit] API rate limit exceeded', {
+      ip: req.ip,
+      path: req.path,
+      method: req.method,
+      correlationId: req.correlationId,
+    });
+    
+    res.status(429).json({
+      success: false,
+      message: 'Too many requests from this IP, please try again later.',
+    });
+  },
 });
 
 /**

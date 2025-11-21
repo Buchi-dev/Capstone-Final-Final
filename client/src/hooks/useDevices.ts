@@ -18,7 +18,7 @@
  */
 
 import useSWR from 'swr';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   devicesService,
   type DeviceFilters,
@@ -27,6 +27,8 @@ import {
   type UpdateDevicePayload,
 } from '../services/devices.Service';
 import type { Device, SensorReading } from '../schemas';
+import { useVisibilityPolling } from './useVisibilityPolling';
+import { getSocket, subscribe, unsubscribe } from '../utils/socket';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -36,6 +38,7 @@ export interface UseDevicesOptions {
   filters?: DeviceFilters;
   pollInterval?: number;
   enabled?: boolean;
+  realtime?: boolean; // Enable WebSocket real-time updates
 }
 
 export interface UseDevicesReturn {
@@ -90,9 +93,13 @@ export interface UseDeviceMutationsReturn {
 export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
   const {
     filters = {},
-    pollInterval = 15000, // Default 15 seconds (devices don't change as frequently)
+    pollInterval = 30000, // Changed from 15000 to 30000
     enabled = true,
+    realtime = true, // Enable WebSocket by default
   } = options;
+
+  // Add visibility detection to pause polling when tab is hidden
+  const adjustedPollInterval = useVisibilityPolling(pollInterval);
 
   // Generate cache key from filters
   const cacheKey = enabled
@@ -112,12 +119,57 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
       return response.data;
     },
     {
-      refreshInterval: pollInterval,
+      refreshInterval: realtime ? 0 : adjustedPollInterval, // Disable polling if realtime
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
-      dedupingInterval: 3000,
+      dedupingInterval: 2000,
     }
   );
+
+  // WebSocket subscription for real-time updates
+  useEffect(() => {
+    if (!enabled || !realtime) return;
+
+    const socket = getSocket();
+    if (!socket?.connected) {
+      console.warn('[useDevices] Socket not connected, using polling fallback');
+      return;
+    }
+
+    // Subscribe to devices room
+    subscribe('devices');
+    console.log('[useDevices] Subscribed to real-time devices');
+
+    // Handle device updates
+    const handleDeviceUpdated = (data: any) => {
+      console.log('[useDevices] Device updated:', data.deviceId);
+      mutate(); // Revalidate cache
+    };
+
+    // Handle new readings
+    const handleNewReading = (data: any) => {
+      console.log('[useDevices] New reading:', data.reading?.deviceId);
+      mutate(); // Revalidate cache to update latest reading
+    };
+
+    // Handle new devices
+    const handleNewDevice = (data: any) => {
+      console.log('[useDevices] New device registered:', data.device?.deviceId);
+      mutate(); // Revalidate cache
+    };
+
+    socket.on('device:updated', handleDeviceUpdated);
+    socket.on('device:new', handleNewDevice);
+    socket.on('reading:new', handleNewReading);
+
+    return () => {
+      socket.off('device:updated', handleDeviceUpdated);
+      socket.off('device:new', handleNewDevice);
+      socket.off('reading:new', handleNewReading);
+      unsubscribe('devices');
+      console.log('[useDevices] Unsubscribed from real-time devices');
+    };
+  }, [enabled, realtime, mutate]);
 
   // Fetch device stats
   const {

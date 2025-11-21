@@ -32,6 +32,7 @@ import {
   type UserPreferences,
 } from '../services/user.Service';
 import type { UserListData } from '../schemas';
+import { useVisibilityPolling } from './useVisibilityPolling';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -108,9 +109,12 @@ export interface UseUserMutationsReturn {
 export function useUsers(options: UseUsersOptions = {}): UseUsersReturn {
   const {
     filters = {},
-    pollInterval = 0, // No polling by default for user lists
+    pollInterval = 30000, // Changed from 0 to 30000 for periodic updates
     enabled = true,
   } = options;
+
+  // Add visibility detection to pause polling when tab is hidden
+  const adjustedPollInterval = useVisibilityPolling(pollInterval);
 
   const cacheKey = enabled
     ? ['users', 'list', JSON.stringify(filters)]
@@ -131,7 +135,7 @@ export function useUsers(options: UseUsersOptions = {}): UseUsersReturn {
       };
     },
     {
-      refreshInterval: pollInterval,
+      refreshInterval: adjustedPollInterval, // Use adjusted interval
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
       dedupingInterval: 5000,

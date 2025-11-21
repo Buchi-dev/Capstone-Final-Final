@@ -21,6 +21,7 @@ import {
   type TrendsQueryParams,
   type ParameterQueryParams,
 } from '../services/analytics.service';
+import { useVisibilityPolling } from './useVisibilityPolling';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -79,9 +80,12 @@ export function useAnalyticsSummary(
   options: UseAnalyticsSummaryOptions = {}
 ): UseAnalyticsSummaryReturn {
   const {
-    pollInterval = 30000, // Default 30 seconds
+    pollInterval = 60000, // Changed from 30000 to 60000
     enabled = true,
   } = options;
+
+  // Add visibility detection to pause polling when tab is hidden
+  const adjustedPollInterval = useVisibilityPolling(pollInterval);
 
   const cacheKey = enabled ? ['analytics', 'summary'] : null;
 
@@ -97,7 +101,7 @@ export function useAnalyticsSummary(
       return response.data;
     },
     {
-      refreshInterval: pollInterval,
+      refreshInterval: adjustedPollInterval, // Use adjusted interval
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
       dedupingInterval: 5000,

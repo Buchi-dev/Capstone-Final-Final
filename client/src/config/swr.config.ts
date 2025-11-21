@@ -37,22 +37,23 @@ export const swrConfig: SWRConfiguration = {
 /**
  * Real-time polling configuration
  * For critical data that needs frequent updates (alerts, sensor readings)
- * Poll every 5 seconds
+ * Optimized from 5 seconds to 15 seconds
  */
 export const swrRealtimeConfig: SWRConfiguration = {
   ...swrConfig,
-  refreshInterval: 5000, // Poll every 5 seconds
-  dedupingInterval: 1000, // Reduce deduping for real-time data
+  refreshInterval: 15000, // Changed from 5000 to 15000
+  dedupingInterval: 1000,
 };
 
 /**
  * Important data polling configuration
  * For important but less critical data (device list, analytics)
- * Poll every 15 seconds
+ * Optimized from 10 seconds to 30 seconds
  */
 export const swrImportantConfig: SWRConfiguration = {
   ...swrConfig,
-  refreshInterval: 15000, // Poll every 15 seconds
+  refreshInterval: 30000, // Changed from 10000 to 30000
+  dedupingInterval: 2000,
 };
 
 /**

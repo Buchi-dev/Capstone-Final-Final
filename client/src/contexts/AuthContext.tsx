@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { authService, type AuthUser } from "../services/auth.Service";
 import { auth } from "../config/firebase.config";
 import { onAuthStateChanged } from "firebase/auth";
+import { initializeSocket, disconnectSocket } from "../utils/socket";
 
 // User status types (mapped from MongoDB model)
 export type UserStatus = "active" | "pending" | "suspended";
@@ -71,16 +72,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     console.log('[AuthContext] Setting up Firebase auth listener...');
     
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log('[AuthContext] Firebase auth state changed:', firebaseUser?.email || 'No user');
       
       if (firebaseUser) {
         // User is signed in with Firebase
         setFirebaseReady(true);
+        
+        // Initialize Socket.IO connection
+        console.log('[AuthContext] User authenticated, connecting to Socket.IO...');
+        try {
+          await initializeSocket();
+          console.log('[AuthContext] Socket.IO connected successfully');
+        } catch (socketError) {
+          console.error('[AuthContext] Failed to connect to Socket.IO:', socketError);
+          // Non-fatal error, app can still work with HTTP polling
+        }
+        
         // Fetch user data from backend
         fetchUser();
       } else {
         // User is signed out
+        console.log('[AuthContext] User logged out, disconnecting Socket.IO...');
+        disconnectSocket();
+        
         setFirebaseReady(true);
         setUser(null);
         setLoading(false);

@@ -8,6 +8,7 @@
  * Service Layer → Global Hooks → UI Components
  * 
  * Hook Categories:
+ * - Optimization: useVisibilityPolling (Phase 1 optimization)
  * - Authentication: useAuth
  * - Alerts: useAlerts, useAlertMutations
  * - Devices: useDevices, useDeviceReadings, useDeviceMutations
@@ -18,6 +19,15 @@
  * 
  * @module hooks/index
  */
+
+// ============================================================================
+// OPTIMIZATION HOOKS
+// ============================================================================
+
+export {
+  useVisibilityPolling,
+  useVisibilityPollingWithState,
+} from './useVisibilityPolling';
 
 // ============================================================================
 // AUTHENTICATION HOOKS

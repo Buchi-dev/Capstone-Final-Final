@@ -6,6 +6,7 @@ validateEnv();
 validateEnvironmentSettings();
 
 const express = require('express');
+const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
@@ -20,6 +21,8 @@ const { setupSwagger } = require('./configs/swagger.config');
 const logger = require('./utils/logger');
 const { initializeEmailQueue, closeEmailQueue } = require('./utils/email.queue');
 const { API_VERSION, SESSION } = require('./utils/constants');
+const { setupSocketIO } = require('./utils/socketConfig');
+const { initializeChangeStreams, closeChangeStreams } = require('./utils/changeStreams');
 
 // Import middleware
 const { addCorrelationId, addUserContext } = require('./middleware/correlation.middleware');
@@ -175,15 +178,23 @@ async function initializeApp() {
 }
 
 // ============================================
-// SERVER STARTUP
+// SERVER STARTUP WITH SOCKET.IO
 // ============================================
 
 const PORT = process.env.PORT || 5000;
 let server;
+let io;
 
 // Initialize app asynchronously then start server
 initializeApp().then(() => {
-  server = app.listen(PORT, () => {
+  // Create HTTP server
+  server = http.createServer(app);
+  
+  // Setup Socket.IO
+  io = setupSocketIO(server);
+  
+  // Start server
+  server.listen(PORT, () => {
     const envSummary = getEnvironmentSummary();
     
     logger.info('\n[STARTUP] ========================================');
@@ -200,6 +211,7 @@ initializeApp().then(() => {
     logger.info(`   SMTP:        ${envSummary.smtpConfigured ? '[OK]' : '[WARN] Not configured'}`);
     logger.info(`   Firebase:    ${envSummary.firebaseConfigured ? '[OK]' : '[FAIL]'}`);
     logger.info(`   API Key:     ${envSummary.apiKeyConfigured ? '[OK]' : '[FAIL]'}`);
+    logger.info(`   Socket.IO:   [OK]`);
     logger.info('');
     logger.info('[DOCS] Documentation: http://localhost:' + PORT + '/api-docs');
     logger.info('[HEALTH] Health Check:  http://localhost:' + PORT + '/health');
@@ -207,6 +219,11 @@ initializeApp().then(() => {
     
     // Start background jobs
     startBackgroundJobs();
+    
+    // Initialize MongoDB Change Streams
+    initializeChangeStreams().catch(err => {
+      logger.error('[Startup] Failed to initialize change streams:', { error: err.message });
+    });
   });
 }).catch((error) => {
   logger.error('Failed to initialize application:', { error: error.message });
@@ -228,6 +245,16 @@ const gracefulShutdown = async (signal) => {
 
     // Stop background jobs
     stopBackgroundJobs();
+
+    // Close change streams
+    await closeChangeStreams();
+
+    // Disconnect all Socket.IO clients
+    if (io) {
+      io.close(() => {
+        logger.info('Socket.IO server closed');
+      });
+    }
 
     // Close email queue
     await closeEmailQueue();
