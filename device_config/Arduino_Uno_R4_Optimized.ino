@@ -91,7 +91,7 @@
 
 // Timing Configuration - Real-time Monitoring (Optimized)
 #define SENSOR_READ_INTERVAL 2000    // Read sensors every 2 seconds (real-time)
-#define MQTT_PUBLISH_INTERVAL 2000   // Publish every 2 seconds (real-time)
+#define HTTP_PUBLISH_INTERVAL 2000   // Publish every 2 seconds (real-time)
 
 // ===========================
 // GLOBAL OBJECTS
