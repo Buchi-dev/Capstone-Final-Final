@@ -27,7 +27,6 @@ export type { RouteContext } from './useRouteContext';
 
 export { useRealtime_Alerts } from './reads/useRealtime_Alerts';
 export { useRealtime_Devices } from './reads/useRealtime_Devices';
-export { useRealtime_MQTTMetrics } from './reads/useRealtime_MQTTMetrics';
 export { useRealtime_Users } from './reads/useRealtime_Users';
 export { useRealtime_AnalyticsData } from './reads/useRealtime_AnalyticsData';
 

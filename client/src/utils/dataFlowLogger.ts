@@ -25,7 +25,7 @@ const isLoggingEnabled = (): boolean => {
   return process.env.NODE_ENV === 'development';
 };
 
-export type DataSource = 'Firestore' | 'RTDB' | 'HTTP_API' | 'MQTT_Bridge';
+export type DataSource = 'Firestore' | 'RTDB' | 'HTTP_API';
 export type FlowLayer = 'Service' | 'Hook' | 'Component';
 
 // Constants for convenience
@@ -33,7 +33,6 @@ export const DataSource = {
   FIRESTORE: 'Firestore' as DataSource,
   RTDB: 'RTDB' as DataSource,
   HTTP_API: 'HTTP_API' as DataSource,
-  MQTT_BRIDGE: 'MQTT_Bridge' as DataSource,
 };
 
 export const FlowLayer = {

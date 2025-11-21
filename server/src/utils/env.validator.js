@@ -24,9 +24,6 @@ const optionalEnvVars = [
   'SMTP_FROM_NAME',
   'SMTP_SECURE',
   'REDIS_URL',
-  'MQTT_BROKER_URL',
-  'MQTT_USERNAME',
-  'MQTT_PASSWORD',
 ];
 
 /**
@@ -162,7 +159,6 @@ const getEnvironmentSummary = () => {
     mongoConfigured: !!process.env.MONGO_URI,
     redisConfigured: !!process.env.REDIS_URL,
     smtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
-    mqttConfigured: !!process.env.MQTT_BROKER_URL,
     oauthConfigured: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
     apiKeyConfigured: !!process.env.DEVICE_API_KEY,
   };
