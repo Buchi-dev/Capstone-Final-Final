@@ -19,9 +19,15 @@ const logger = require('./logger');
  * @returns {Server} Socket.IO server instance
  */
 function setupSocketIO(httpServer) {
+  const allowedOrigins = [
+    'https://smupuretrack.web.app',
+    'https://smupuretrack.firebaseapp.com',
+    process.env.CLIENT_URL || 'http://localhost:5173'
+  ].filter(Boolean);
+
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:5173',
+      origin: allowedOrigins,
       credentials: true,
       methods: ['GET', 'POST'],
     },

@@ -70,9 +70,24 @@ app.use(compression());
 app.use(addCorrelationId);
 
 // CORS configuration
+const allowedOrigins = [
+  'https://smupuretrack.web.app',
+  'https://smupuretrack.firebaseapp.com',
+  process.env.CLIENT_URL || 'http://localhost:5173'
+].filter(Boolean);
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true, // Allow cookies to be sent
   })
 );
