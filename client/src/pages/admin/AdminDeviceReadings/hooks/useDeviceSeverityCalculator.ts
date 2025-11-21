@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import type { Device, SensorReading, DeviceWithReadings } from '../../../../schemas/deviceManagement.schema';
 import type { WaterQualityAlert } from '../../../../schemas/alerts.schema';
-import type { DeviceWithSensorData } from '../../../../hooks/reads/useRealtime_Devices';
+import type { DeviceWithSensorData } from '../../../../hooks_old/reads/useRealtime_Devices';
 
 /**
  * UI-specific hook for device severity calculation and sorting

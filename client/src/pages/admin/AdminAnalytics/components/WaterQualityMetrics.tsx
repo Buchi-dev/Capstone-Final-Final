@@ -12,7 +12,7 @@ import {
 import { memo } from 'react';
 import { useThemeToken } from '../../../../theme';
 import type { WaterQualityMetrics as Metrics } from '../hooks';
-import type { DeviceWithSensorData } from '../../../../hooks';
+import type { DeviceWithSensorData } from '../../../../hooks_old';
 
 const { Text } = Typography;
 

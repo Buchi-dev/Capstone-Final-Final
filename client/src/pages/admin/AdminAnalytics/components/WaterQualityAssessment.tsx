@@ -6,7 +6,7 @@
 import { Card, Row, Col, Space, Typography, Tag } from 'antd';
 import { memo } from 'react';
 import type { WaterQualityMetrics } from '../hooks';
-import type { DeviceWithSensorData } from '../../../../hooks';
+import type { DeviceWithSensorData } from '../../../../hooks_old';
 import type { WaterQualityAlert } from '../../../../schemas';
 
 const { Text } = Typography;

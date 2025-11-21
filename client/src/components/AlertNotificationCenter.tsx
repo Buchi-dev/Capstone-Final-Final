@@ -22,7 +22,7 @@ import {
   EyeOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { useRealtime_Alerts } from '../hooks/reads/useRealtime_Alerts';
+import { useRealtime_Alerts } from '../hooks_old/reads/useRealtime_Alerts';
 import { getSeverityColor } from '../schemas';
 
 const { Text } = Typography;

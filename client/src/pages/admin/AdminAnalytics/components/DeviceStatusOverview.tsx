@@ -20,7 +20,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useThemeToken } from '../../../../theme';
-import type { DeviceWithSensorData } from '../../../../hooks';
+import type { DeviceWithSensorData } from '../../../../hooks_old';
 import type { DeviceStats } from '../hooks';
 
 const { Text } = Typography;

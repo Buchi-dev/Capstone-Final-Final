@@ -27,7 +27,7 @@ import {
   useRealtime_Devices, 
   useRealtime_Alerts,
   useRealtime_MQTTMetrics 
-} from '../../../hooks';
+} from '../../../hooks_old';
 import { useAnalyticsProcessing, useAnalyticsStats } from './hooks';
 import {
   KeyMetrics,

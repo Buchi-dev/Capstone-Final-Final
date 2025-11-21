@@ -23,7 +23,7 @@ import {
 } from '@ant-design/icons';
 import { AdminLayout } from '../../../components/layouts';
 import { PageHeader } from '../../../components/PageHeader';
-import { useRealtime_Devices, useRealtime_Alerts } from '../../../hooks';
+import { useRealtime_Devices, useRealtime_Alerts } from '../../../hooks_old';
 import { useDeviceSeverityCalculator } from './hooks/useDeviceSeverityCalculator';
 import { StatsOverview, DeviceCard, DeviceListItem, FilterControls } from './components';
 

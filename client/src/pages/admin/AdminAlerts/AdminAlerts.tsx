@@ -20,7 +20,7 @@ import { BellOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { WaterQualityAlert } from '../../../schemas';
 import { AdminLayout } from '../../../components/layouts/AdminLayout';
 import { PageHeader } from '../../../components/PageHeader';
-import { useRealtime_Alerts, useCall_Alerts } from '../../../hooks';
+import { useRealtime_Alerts, useCall_Alerts } from '../../../hooks_old';
 import { useAlertStats, useAlertFilters } from './hooks';
 import {
   AlertStatistics,

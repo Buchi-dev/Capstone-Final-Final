@@ -31,7 +31,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
-import { useRealtime_Devices, useRouteContext } from '@/hooks';
+import { useRealtime_Devices, useRouteContext } from '@/hooks_old';
 import { calculateDeviceStatus } from '../../../utils/waterQualityUtils';
 import type { ColumnsType } from 'antd/es/table';
 

@@ -7,7 +7,7 @@
  * @module pages/admin/AdminAnalytics/hooks
  */
 import { useMemo } from 'react';
-import type { DeviceWithSensorData } from '../../../../hooks';
+import type { DeviceWithSensorData } from '../../../../hooks_old';
 
 interface TimeSeriesDataPoint {
   time: string;

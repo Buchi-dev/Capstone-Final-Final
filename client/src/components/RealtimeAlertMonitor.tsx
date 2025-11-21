@@ -20,7 +20,7 @@ import {
   RiseOutlined,
   EnvironmentOutlined,
 } from '@ant-design/icons';
-import { useRealtime_Alerts } from '../hooks/reads/useRealtime_Alerts';
+import { useRealtime_Alerts } from '../hooks_old/reads/useRealtime_Alerts';
 import { useThemeToken } from '../theme';
 
 const { Text } = Typography;

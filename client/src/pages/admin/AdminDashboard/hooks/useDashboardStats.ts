@@ -12,7 +12,7 @@
  */
 
 import { useMemo } from 'react';
-import type { DeviceWithSensorData } from '../../../../hooks';
+import type { DeviceWithSensorData } from '../../../../hooks_old';
 import type { WaterQualityAlert } from '../../../../schemas';
 
 /**

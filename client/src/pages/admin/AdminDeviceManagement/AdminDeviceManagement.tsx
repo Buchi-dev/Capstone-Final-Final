@@ -10,7 +10,7 @@ import {
   RegisterDeviceModal,
 } from './components';
 import { useDeviceFilter } from './hooks';
-import { useRealtime_Devices, useCall_Devices } from '../../../hooks';
+import { useRealtime_Devices, useCall_Devices } from '../../../hooks_old';
 import type { Device } from '../../../schemas';
 import './DeviceManagement.css';
 
