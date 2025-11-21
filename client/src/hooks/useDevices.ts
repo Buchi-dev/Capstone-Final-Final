@@ -133,29 +133,39 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
 
     const socket = getSocket();
     if (!socket?.connected) {
-      console.warn('[useDevices] Socket not connected, using polling fallback');
+      if (import.meta.env.DEV) {
+        console.warn('[useDevices] Socket not connected, using polling fallback');
+      }
       return;
     }
 
     // Only subscribe once - subscription is shared across all components
     subscribe('devices');
-    console.log('[useDevices] Subscribed to real-time devices');
+    if (import.meta.env.DEV) {
+      console.log('[useDevices] Subscribed to real-time devices');
+    }
 
     // Handle device updates
     const handleDeviceUpdated = (data: any) => {
-      console.log('[useDevices] Device updated:', data.deviceId);
+      if (import.meta.env.DEV) {
+        console.log('[useDevices] Device updated:', data.deviceId);
+      }
       mutate(); // Revalidate cache
     };
 
     // Handle new readings
     const handleNewReading = (data: any) => {
-      console.log('[useDevices] New reading:', data.reading?.deviceId);
+      if (import.meta.env.DEV) {
+        console.log('[useDevices] New reading:', data.reading?.deviceId);
+      }
       mutate(); // Revalidate cache to update latest reading
     };
 
     // Handle new devices
     const handleNewDevice = (data: any) => {
-      console.log('[useDevices] New device registered:', data.device?.deviceId);
+      if (import.meta.env.DEV) {
+        console.log('[useDevices] New device registered:', data.device?.deviceId);
+      }
       mutate(); // Revalidate cache
     };
 
@@ -169,7 +179,9 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
       socket.off('device:updated', handleDeviceUpdated);
       socket.off('device:new', handleNewDevice);
       socket.off('reading:new', handleNewReading);
-      console.log('[useDevices] Cleaned up event listeners (subscription remains active)');
+      if (import.meta.env.DEV) {
+        console.log('[useDevices] Cleaned up event listeners (subscription remains active)');
+      }
     };
   }, [enabled, realtime, mutate]);
 

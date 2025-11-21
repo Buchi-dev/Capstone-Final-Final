@@ -54,13 +54,17 @@ export type SocketRoom =
 export async function initializeSocket(): Promise<Socket> {
   // Return existing connection if already connected
   if (socket?.connected) {
-    console.log('[Socket.IO] Already connected, reusing existing connection');
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] Already connected, reusing existing connection');
+    }
     return socket;
   }
 
   // Prevent multiple simultaneous connection attempts
   if (isConnecting) {
-    console.log('[Socket.IO] Connection already in progress, waiting...');
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] Connection already in progress, waiting...');
+    }
     return new Promise((resolve, reject) => {
       const checkInterval = setInterval(() => {
         if (socket?.connected) {
@@ -97,7 +101,9 @@ export async function initializeSocket(): Promise<Socket> {
     // Determine server URL
     const serverUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
-    console.log('[Socket.IO] Initializing connection to:', serverUrl);
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] Initializing connection to:', serverUrl);
+    }
 
     // Create Socket.IO connection
     socket = io(serverUrl, {
@@ -116,7 +122,9 @@ export async function initializeSocket(): Promise<Socket> {
     // Wait for connection
     await waitForConnection(socket);
 
-    console.log('[Socket.IO] Connection established successfully');
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] Connection established successfully');
+    }
     isConnecting = false;
     return socket;
 
@@ -134,18 +142,24 @@ export async function initializeSocket(): Promise<Socket> {
  */
 function setupEventListeners(socketInstance: Socket): void {
   socketInstance.on('connect', () => {
-    console.log('[Socket.IO] ✅ Connected successfully', {
-      id: socketInstance.id,
-      transport: socketInstance.io.engine.transport.name,
-    });
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] ✅ Connected successfully', {
+        id: socketInstance.id,
+        transport: socketInstance.io.engine.transport.name,
+      });
+    }
   });
 
   socketInstance.on('disconnect', (reason) => {
-    console.log('[Socket.IO] ❌ Disconnected:', reason);
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] ❌ Disconnected:', reason);
+    }
     
     if (reason === 'io server disconnect') {
       // Server disconnected the client, reconnect manually
-      console.log('[Socket.IO] Server disconnected, attempting manual reconnect...');
+      if (import.meta.env.DEV) {
+        console.log('[Socket.IO] Server disconnected, attempting manual reconnect...');
+      }
       socketInstance.connect();
     }
   });
@@ -155,11 +169,15 @@ function setupEventListeners(socketInstance: Socket): void {
   });
 
   socketInstance.io.on('reconnect_attempt', (attemptNumber) => {
-    console.log(`[Socket.IO] 🔄 Reconnection attempt #${attemptNumber}`);
+    if (import.meta.env.DEV) {
+      console.log(`[Socket.IO] 🔄 Reconnection attempt #${attemptNumber}`);
+    }
   });
 
   socketInstance.io.on('reconnect', (attemptNumber) => {
-    console.log(`[Socket.IO] ✅ Reconnected after ${attemptNumber} attempts`);
+    if (import.meta.env.DEV) {
+      console.log(`[Socket.IO] ✅ Reconnected after ${attemptNumber} attempts`);
+    }
   });
 
   socketInstance.io.on('reconnect_failed', () => {
@@ -168,7 +186,9 @@ function setupEventListeners(socketInstance: Socket): void {
 
   // Handle subscription confirmations
   socketInstance.on('subscription:confirmed', (data) => {
-    console.log('[Socket.IO] ✅ Subscription confirmed:', data);
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] ✅ Subscription confirmed:', data);
+    }
   });
 
   // Handle errors
@@ -178,7 +198,9 @@ function setupEventListeners(socketInstance: Socket): void {
 
   // Ping/pong for connection monitoring
   socketInstance.on('pong', (data) => {
-    console.log('[Socket.IO] 🏓 Pong received:', data);
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] 🏓 Pong received:', data);
+    }
   });
 }
 
@@ -232,11 +254,15 @@ export async function subscribe(room: SocketRoom): Promise<void> {
   
   // Check if already subscribed
   if (activeSubscriptions.has(room)) {
-    console.log(`[Socket.IO] Already subscribed to room: ${room}, skipping`);
+    if (import.meta.env.DEV) {
+      console.log(`[Socket.IO] Already subscribed to room: ${room}, skipping duplicate`);
+    }
     return;
   }
   
-  console.log(`[Socket.IO] Subscribing to room: ${room}`);
+  if (import.meta.env.DEV) {
+    console.log(`[Socket.IO] Subscribing to room: ${room}`);
+  }
   socketInstance.emit(`subscribe:${room.split(':')[0]}`, room.includes(':') ? room.split(':')[1] : undefined);
   activeSubscriptions.add(room);
 }
@@ -248,17 +274,23 @@ export async function subscribe(room: SocketRoom): Promise<void> {
  */
 export function unsubscribe(room: SocketRoom): void {
   if (!socket?.connected) {
-    console.warn('[Socket.IO] Cannot unsubscribe: not connected');
+    if (import.meta.env.DEV) {
+      console.warn('[Socket.IO] Cannot unsubscribe: not connected');
+    }
     return;
   }
 
   // Check if actually subscribed
   if (!activeSubscriptions.has(room)) {
-    console.log(`[Socket.IO] Not subscribed to room: ${room}, skipping unsubscribe`);
+    if (import.meta.env.DEV) {
+      console.log(`[Socket.IO] Not subscribed to room: ${room}, skipping unsubscribe`);
+    }
     return;
   }
 
-  console.log(`[Socket.IO] Unsubscribing from room: ${room}`);
+  if (import.meta.env.DEV) {
+    console.log(`[Socket.IO] Unsubscribing from room: ${room}`);
+  }
   socket.emit(`unsubscribe:${room.split(':')[0]}`, room.includes(':') ? room.split(':')[1] : undefined);
   activeSubscriptions.delete(room);
 }
@@ -302,10 +334,13 @@ export function off(event: SocketEvent, handler: (...args: any[]) => void): void
  */
 export function disconnectSocket(): void {
   if (socket) {
-    console.log('[Socket.IO] Disconnecting...');
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] Disconnecting and cleaning up...');
+    }
     socket.disconnect();
     socket = null;
     activeSubscriptions.clear(); // Clear subscription tracking
+    isConnecting = false; // Reset connection state
   }
 }
 
@@ -323,16 +358,22 @@ export function isConnected(): boolean {
  */
 export async function reconnect(): Promise<void> {
   if (socket?.connected) {
-    console.log('[Socket.IO] Already connected');
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] Already connected');
+    }
     return;
   }
 
   if (socket && !socket.connected) {
-    console.log('[Socket.IO] Attempting to reconnect...');
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] Attempting to reconnect...');
+    }
     socket.connect();
     await waitForConnection(socket);
   } else {
-    console.log('[Socket.IO] No existing socket, creating new connection...');
+    if (import.meta.env.DEV) {
+      console.log('[Socket.IO] No existing socket, creating new connection...');
+    }
     await initializeSocket();
   }
 }
@@ -359,10 +400,14 @@ export function getConnectionStats(): {
  */
 export function ping(): void {
   if (!socket?.connected) {
-    console.warn('[Socket.IO] Cannot ping: not connected');
+    if (import.meta.env.DEV) {
+      console.warn('[Socket.IO] Cannot ping: not connected');
+    }
     return;
   }
 
-  console.log('[Socket.IO] 🏓 Sending ping...');
+  if (import.meta.env.DEV) {
+    console.log('[Socket.IO] 🏓 Sending ping...');
+  }
   socket.emit('ping');
 }

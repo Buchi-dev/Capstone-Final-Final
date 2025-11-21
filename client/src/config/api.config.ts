@@ -51,7 +51,9 @@ apiClient.interceptors.request.use(
         const idToken = await currentUser.getIdToken(forceRefresh);
         config.headers.Authorization = `Bearer ${idToken}`;
         if (import.meta.env.DEV) {
-          console.log(`[API] Added token for user:`, currentUser.email);
+          // SECURITY: Never log the full token - only show masked version
+          const maskedToken = idToken.substring(0, 10) + '...' + idToken.substring(idToken.length - 10);
+          console.log(`[API] Added token for user:`, currentUser.email, `(token: ${maskedToken})`);
           if (forceRefresh) {
             console.log('[API] Token was refreshed');
           }
@@ -74,7 +76,10 @@ apiClient.interceptors.request.use(
           if (retryUser) {
             const idToken = await retryUser.getIdToken();
             config.headers.Authorization = `Bearer ${idToken}`;
-            console.log('[API] Token added after retry for:', retryUser.email);
+            if (import.meta.env.DEV) {
+              const maskedToken = idToken.substring(0, 10) + '...' + idToken.substring(idToken.length - 10);
+              console.log('[API] Token added after retry for:', retryUser.email, `(token: ${maskedToken})`);
+            }
           } else {
             console.error('[API] Still no user after retry - request will likely fail');
           }
@@ -181,7 +186,12 @@ apiClient.interceptors.response.use(
           try {
             console.log('[API] Attempting to refresh token...');
             const newToken = await currentUser.getIdToken(true); // force refresh
-            console.log('[API] Token refreshed successfully, retrying request once');
+            if (import.meta.env.DEV) {
+              const maskedToken = newToken.substring(0, 10) + '...' + newToken.substring(newToken.length - 10);
+              console.log('[API] Token refreshed successfully, retrying request once (token:', maskedToken + ')');
+            } else {
+              console.log('[API] Token refreshed successfully, retrying request once');
+            }
             
             // Mark this request as retried to prevent infinite loops
             config._retry = true;

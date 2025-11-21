@@ -359,8 +359,8 @@ export const AdminUserManagement: React.FC = () => {
 
             {/* Users Table */}
             <Card
-              bordered={false}
-              bodyStyle={{ padding: 24 }}
+              variant="borderless"
+              styles={{ body: { padding: 24 } }}
               title={
                 <Space>
                   <UserOutlined />

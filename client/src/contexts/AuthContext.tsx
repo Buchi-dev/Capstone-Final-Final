@@ -4,7 +4,7 @@
  * Uses Express/Passport.js session-based authentication
  */
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import type { ReactNode } from "react";
 import { authService, type AuthUser } from "../services/auth.Service";
 import { auth } from "../config/firebase.config";
@@ -40,6 +40,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [firebaseReady, setFirebaseReady] = useState(false);
+  
+  // Track if listener has been initialized to prevent duplicates
+  const listenerInitialized = useRef(false);
+  const socketInitialized = useRef(false);
 
   /**
    * Fetch current user from backend
@@ -68,33 +72,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fetchUser();
   }, [fetchUser]);
 
-  // Listen to Firebase auth state changes
+  // Listen to Firebase auth state changes (SINGLE INITIALIZATION)
   useEffect(() => {
-    console.log('[AuthContext] Setting up Firebase auth listener...');
+    // Prevent duplicate listener setup
+    if (listenerInitialized.current) {
+      if (import.meta.env.DEV) {
+        console.warn('[AuthContext] Listener already initialized, skipping duplicate setup');
+      }
+      return;
+    }
+
+    listenerInitialized.current = true;
+    
+    if (import.meta.env.DEV) {
+      console.log('[AuthContext] Setting up Firebase auth listener (once)...');
+    }
     
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('[AuthContext] Firebase auth state changed:', firebaseUser?.email || 'No user');
+      if (import.meta.env.DEV) {
+        console.log('[AuthContext] Firebase auth state changed:', firebaseUser?.email || 'No user');
+      }
       
       if (firebaseUser) {
         // User is signed in with Firebase
         setFirebaseReady(true);
         
-        // Initialize Socket.IO connection
-        console.log('[AuthContext] User authenticated, connecting to Socket.IO...');
-        try {
-          await initializeSocket();
-          console.log('[AuthContext] Socket.IO connected successfully');
-        } catch (socketError) {
-          console.error('[AuthContext] Failed to connect to Socket.IO:', socketError);
-          // Non-fatal error, app can still work with HTTP polling
+        // Initialize Socket.IO connection once
+        if (!socketInitialized.current) {
+          socketInitialized.current = true;
+          if (import.meta.env.DEV) {
+            console.log('[AuthContext] User authenticated, connecting to Socket.IO...');
+          }
+          try {
+            await initializeSocket();
+            if (import.meta.env.DEV) {
+              console.log('[AuthContext] Socket.IO connected successfully');
+            }
+          } catch (socketError) {
+            console.error('[AuthContext] Failed to connect to Socket.IO:', socketError);
+            socketInitialized.current = false; // Allow retry on error
+            // Non-fatal error, app can still work with HTTP polling
+          }
         }
         
         // Fetch user data from backend
         fetchUser();
       } else {
         // User is signed out
-        console.log('[AuthContext] User logged out, disconnecting Socket.IO...');
+        if (import.meta.env.DEV) {
+          console.log('[AuthContext] User logged out, disconnecting Socket.IO...');
+        }
         disconnectSocket();
+        socketInitialized.current = false;
         
         setFirebaseReady(true);
         setUser(null);
@@ -102,21 +131,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    return () => unsubscribe();
-  }, [fetchUser]);
+    return () => {
+      unsubscribe();
+      listenerInitialized.current = false;
+    };
+  }, []); // Empty dependency array - initialize ONCE
 
   // Set up periodic auth check (every 5 minutes)
   useEffect(() => {
     if (!firebaseReady) return;
 
+    if (import.meta.env.DEV) {
+      console.log('[AuthContext] Setting up periodic auth check (5 min interval)');
+    }
+
     const interval = setInterval(() => {
       if (auth.currentUser) {
-        console.log('[AuthContext] Periodic auth check...');
+        if (import.meta.env.DEV) {
+          console.log('[AuthContext] Periodic auth check...');
+        }
         fetchUser();
       }
     }, 5 * 60 * 1000); // 5 minutes
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (import.meta.env.DEV) {
+        console.log('[AuthContext] Cleaning up periodic auth check');
+      }
+    };
   }, [firebaseReady, fetchUser]);
 
   // Computed values
