@@ -11,7 +11,7 @@
  * @module pages/admin/AdminUserManagement
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Layout,
   Typography,
@@ -24,51 +24,52 @@ import {
   Breadcrumb,
   theme,
   message,
-  Modal,
 } from "antd";
 import {
   UserOutlined,
   ReloadOutlined,
   PlusOutlined,
   HomeOutlined,
-  LogoutOutlined,
+  BugOutlined,
 } from "@ant-design/icons";
-import { useNavigate } from "react-router-dom";
-import { signOut } from "firebase/auth";
-import { auth } from "../../../config/firebase";
-import { useRealtime_Users, useCall_Users } from "../../../hooks";
+import { useUsers, useUserMutations } from "../../../hooks";
 import { UsersTable } from "./components/UsersTable";
 import { UserActionsDrawer } from "./components/UserActionsDrawer";
 import { UsersStatistics } from "./components/UsersStatistics";
 import type { UserListData, UserRole, UserStatus } from "../../../schemas";
+
 import { AdminLayout } from "../../../components/layouts/AdminLayout";
-import { useAuth } from "../../../contexts/AuthContext";
+import { useAuth } from "../../../contexts";
+import { diagnoseAndPrint } from "../../../utils/authDiagnostics";
+import { getErrorMessage } from "../../../utils/errorHelpers";
 
 const { Title, Text } = Typography;
 const { Content } = Layout;
 
 export const AdminUserManagement: React.FC = () => {
   const { token } = theme.useToken();
-  const { userProfile } = useAuth();
-  const navigate = useNavigate();
+  const { user: userProfile, refetchUser, loading: authLoading } = useAuth();
   
   // Global READ hook - Real-time user data
   const { 
     users, 
     isLoading: loading, 
-    error: realtimeError 
-  } = useRealtime_Users();
+    error: realtimeError,
+    refetch 
+  } = useUsers({ 
+    pollInterval: 15000,
+    enabled: !authLoading && !!userProfile, // Only fetch when auth is ready
+  });
 
   // Global WRITE hook - User operations
   const {
-    updateUser,
+    updateUserRole,
     updateUserStatus,
     updateUserProfile,
     deleteUser,
     isLoading: refreshing,
     error: writeError,
-    updateResult,
-  } = useCall_Users();
+  } = useUserMutations();
 
   // Combine errors
   const error = realtimeError?.message || writeError?.message || null;
@@ -78,55 +79,9 @@ export const AdminUserManagement: React.FC = () => {
 
   /**
    * Auto-logout handler when user changes their own role/status
-   * Triggers when backend returns requiresLogout: true
+   * (No longer needed - updateResult removed from useUserMutations)
    */
-  useEffect(() => {
-    // Type guard: check if updateResult has requiresLogout property
-    const requiresLogout = updateResult && 'requiresLogout' in updateResult 
-      ? updateResult.requiresLogout 
-      : false;
-
-    if (requiresLogout) {
-      // Show logout notification
-      Modal.success({
-        title: 'Account Updated Successfully',
-        content: (
-          <div>
-            <p>Your account has been updated successfully.</p>
-            <p style={{ marginTop: 12 }}>
-              <strong>You will be logged out in 3 seconds</strong> to apply the changes.
-            </p>
-          </div>
-        ),
-        icon: <LogoutOutlined style={{ color: '#1890ff' }} />,
-        okText: 'Logout Now',
-        onOk: async () => {
-          try {
-            await signOut(auth);
-            message.info('Logged out successfully. Please log in again.');
-            navigate('/auth/login');
-          } catch (error) {
-            console.error('Logout error:', error);
-            message.error('Failed to logout. Please refresh the page.');
-          }
-        },
-      });
-
-      // Auto-logout after 3 seconds
-      const timer = setTimeout(async () => {
-        try {
-          await signOut(auth);
-          message.info('Logged out successfully. Please log in again.');
-          navigate('/auth/login');
-        } catch (error) {
-          console.error('Auto-logout error:', error);
-          message.error('Failed to logout. Please refresh the page.');
-        }
-      }, 3000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [updateResult, navigate]);
+  // Removed auto-logout effect - handled by backend responses
 
   // Handle view user (opens drawer)
   const handleViewUser = (user: UserListData) => {
@@ -144,16 +99,16 @@ export const AdminUserManagement: React.FC = () => {
   const handleSaveUser = async (
     userId: string,
     profileData: {
-      firstname: string;
-      middlename: string;
-      lastname: string;
+      firstName: string;
+      middleName: string;
+      lastName: string;
       department: string;
       phoneNumber: string;
     }
   ) => {
     try {
-      const result = await updateUserProfile(userId, profileData);
-      message.success(result.message || 'User profile updated successfully');
+      await updateUserProfile(userId, profileData);
+      message.success('User profile updated successfully');
       // Update selected user with new data
       if (selectedUser) {
         setSelectedUser({
@@ -161,8 +116,11 @@ export const AdminUserManagement: React.FC = () => {
           ...profileData,
         });
       }
-    } catch (error: any) {
-      message.error(error.message || 'Failed to update user profile');
+      await refetch();
+    } catch (error) {
+      const errorMsg = getErrorMessage(error);
+      message.error(errorMsg);
+      console.error('[AdminUserManagement] Update profile error:', errorMsg);
       throw error; // Re-throw to prevent drawer from closing
     }
   };
@@ -173,20 +131,42 @@ export const AdminUserManagement: React.FC = () => {
     status: UserStatus
   ) => {
     try {
-      await updateUserStatus(userId, status);
+      await updateUserStatus(userId, { status });
       message.success(`User status updated to ${status}`);
-    } catch (error: any) {
-      message.error(error.message || 'Failed to update user status');
+      
+      // If admin changed their own status, sync auth state
+      if (userId === userProfile?.id) {
+        console.log('[AdminUserManagement] Admin changed own status, syncing auth...');
+        await refetchUser();
+      }
+      
+      await refetch();
+    } catch (error) {
+      const errorMsg = getErrorMessage(error);
+      message.error(errorMsg);
+      console.error('[AdminUserManagement] Update status error:', errorMsg);
+      throw error; // Re-throw for drawer to handle
     }
   };
 
   // Handle quick role change
   const handleQuickRoleChange = async (userId: string, role: UserRole) => {
     try {
-      await updateUser(userId, undefined, role);
+      await updateUserRole(userId, { role });
       message.success(`User role updated to ${role}`);
-    } catch (error: any) {
-      message.error(error.message || 'Failed to update user role');
+      
+      // If admin changed their own role, sync auth state
+      if (userId === userProfile?.id) {
+        console.log('[AdminUserManagement] Admin changed own role, syncing auth...');
+        await refetchUser();
+      }
+      
+      await refetch();
+    } catch (error) {
+      const errorMsg = getErrorMessage(error);
+      message.error(errorMsg);
+      console.error('[AdminUserManagement] Update role error:', errorMsg);
+      throw error; // Re-throw for drawer to handle
     }
   };
 
@@ -195,10 +175,43 @@ export const AdminUserManagement: React.FC = () => {
     try {
       await deleteUser(userId);
       message.success(`User "${userName}" deleted successfully`);
-    } catch (error: any) {
-      message.error(error.message || 'Failed to delete user');
+      await refetch(); // Refetch to update the list
+    } catch (error) {
+      const errorMsg = getErrorMessage(error);
+      message.error(errorMsg);
+      console.error('[AdminUserManagement] Delete user error:', errorMsg);
+      throw error; // Re-throw for drawer to handle
     }
   };
+
+  // Handle diagnostic check
+  const handleRunDiagnostics = async () => {
+    message.info('Running authentication diagnostics... Check browser console for results.');
+    const result = await diagnoseAndPrint();
+    
+    if (result.success) {
+      message.success('Authentication is working correctly!');
+    } else {
+      message.error(`Authentication issues found: ${result.diagnostics.summary.issues} issue(s)`);
+    }
+  };
+
+  // Show loading screen while auth is initializing
+  if (authLoading) {
+    return (
+      <AdminLayout>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          minHeight: '100vh',
+          background: token.colorBgLayout
+        }}>
+          <Spin size="large" tip="Initializing authentication..." />
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
@@ -252,9 +265,18 @@ export const AdminUserManagement: React.FC = () => {
                     </Text>
                   </div>
                   <Space size="middle">
+                    {import.meta.env.DEV && (
+                      <Button
+                        icon={<BugOutlined />}
+                        onClick={handleRunDiagnostics}
+                        title="Run authentication diagnostics"
+                      >
+                        Debug Auth
+                      </Button>
+                    )}
                     <Button
                       icon={<ReloadOutlined spin={refreshing} />}
-                      onClick={() => window.location.reload()}
+                      onClick={() => refetch()}
                       disabled={loading || refreshing}
                     >
                       Refresh
@@ -275,8 +297,57 @@ export const AdminUserManagement: React.FC = () => {
             {/* Error Alert */}
             {error && (
               <Alert
-                message="Error Loading Users"
-                description={error}
+                message={
+                  error.includes('Authentication') || error.includes('401') || error.includes('Unauthorized')
+                    ? "🔐 Session Expired"
+                    : "Error Loading Users"
+                }
+                description={
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Text>{error}</Text>
+                    {(error.includes('Authentication') || error.includes('401') || error.includes('Unauthorized')) && (
+                      <>
+                        <Text type="secondary">
+                          Your authentication token has expired. Firebase tokens expire after 1 hour for security.
+                        </Text>
+                        <Text strong style={{ color: '#1890ff' }}>
+                          Please refresh your session by clicking the button below:
+                        </Text>
+                        <Space>
+                          <Button 
+                            size="small" 
+                            type="primary"
+                            onClick={async () => {
+                              message.loading('Refreshing your session...', 0.5);
+                              await refetchUser();
+                              await refetch();
+                              message.success('Authentication refreshed');
+                            }}
+                          >
+                            Refresh Authentication
+                          </Button>
+                          <Button 
+                            size="small"
+                            onClick={() => {
+                              window.location.reload();
+                            }}
+                          >
+                            Reload Page
+                          </Button>
+                          {import.meta.env.DEV && (
+                            <Button 
+                              size="small"
+                              icon={<BugOutlined />}
+                              onClick={handleRunDiagnostics}
+                            >
+                              Debug
+                            </Button>
+                          )}
+                        </Space>
+                      </>
+                    )}
+                  </Space>
+                }
                 type="error"
                 showIcon
                 closable
@@ -288,8 +359,8 @@ export const AdminUserManagement: React.FC = () => {
 
             {/* Users Table */}
             <Card
-              bordered={false}
-              bodyStyle={{ padding: 24 }}
+              variant="borderless"
+              styles={{ body: { padding: 24 } }}
               title={
                 <Space>
                   <UserOutlined />
@@ -320,7 +391,7 @@ export const AdminUserManagement: React.FC = () => {
           <UserActionsDrawer
             open={drawerVisible}
             user={selectedUser}
-            currentUserId={userProfile?.uuid || ''}
+            currentUserId={userProfile?.id || ''}
             onClose={handleCloseDrawer}
             onSaveProfile={handleSaveUser}
             onQuickStatusChange={handleQuickStatusChange}

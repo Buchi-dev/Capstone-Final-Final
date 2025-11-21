@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   Form,
@@ -26,8 +26,7 @@ import {
   InfoCircleOutlined,
   CheckCircleOutlined,
 } from '@ant-design/icons';
-import { useAuth } from '../../../contexts/AuthContext';
-import { useRealtime_Devices, useCall_Users } from '../../../hooks';
+import { useAuth, useDevices, useUserPreferences, useUserMutations } from '../../../hooks';
 import dayjs from 'dayjs';
 
 const { Text, Paragraph } = Typography;
@@ -55,49 +54,63 @@ const NotificationSettings: React.FC = () => {
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
 
   // ✅ GLOBAL HOOKS - Following Service → Hooks → UI architecture
-  const { devices: devicesWithReadings } = useRealtime_Devices();
-  const { getUserPreferences, setupPreferences, isLoading: saving } = useCall_Users();
+  const { devices: devicesWithReadings } = useDevices({ 
+    pollInterval: 0 // No polling needed for settings
+  });
+  
+  const { 
+    preferences: userPrefs, 
+    isLoading: prefsLoading,
+    refetch: refetchPreferences 
+  } = useUserPreferences({ 
+    userId: user?._id || '',
+    enabled: !!user?._id 
+  }) as { preferences: Record<string, unknown> | null; isLoading: boolean; refetch: () => Promise<void> }; // Type cast to bypass schema mismatch between frontend/backend
+  
+  const { 
+    updateUserPreferences, 
+    isLoading: saving 
+  } = useUserMutations();
 
   // Transform devices for select component
-  // DeviceWithSensorData already has location as a formatted string
   const devices = devicesWithReadings.map(d => ({
     deviceId: d.deviceId,
-    name: d.deviceName,
+    name: d.name,
     status: d.status,
-    location: d.location // location is already a formatted string from the hook
+    // Build location string from metadata
+    location: d.metadata?.location 
+      ? `${d.metadata.location.building}, ${d.metadata.location.floor}` 
+      : 'Unknown'
   }));
 
-  useEffect(() => {
-    loadPreferences();
-  }, [user]);
-
-  const loadPreferences = async () => {
+  const loadPreferences = useCallback(async () => {
     if (!user) return;
 
     try {
       setLoading(true);
       
-      console.log('📥 Loading preferences for user:', user.uid);
+      console.log('📥 Loading preferences for user:', user.id);
       
-      // ✅ Use global hook instead of direct service call
-      const userPrefs = await getUserPreferences(user.uid);
-
-      console.log('📋 Loaded preferences from database:', userPrefs);
-
+      // ✅ Use preferences from global hook
       if (userPrefs) {
-        setPreferences(userPrefs);
+        console.log('📋 Loaded preferences from database:', userPrefs);
         
+        // Set preferences (type cast to bypass schema mismatch)
+        setPreferences(userPrefs as unknown as NotificationPreferences);
+        
+        // Extract notification settings (use type assertion for backend schema)
+        const prefs = userPrefs as Record<string, unknown>;
         const formValues = {
-          emailNotifications: userPrefs.emailNotifications,
-          pushNotifications: userPrefs.pushNotifications,
-          sendScheduledAlerts: userPrefs.sendScheduledAlerts ?? true,
-          alertSeverities: userPrefs.alertSeverities || [],
-          parameters: userPrefs.parameters || [],
-          devices: userPrefs.devices || [],
-          quietHoursEnabled: userPrefs.quietHoursEnabled,
-          quietHours: userPrefs.quietHoursStart && userPrefs.quietHoursEnd ? [
-            dayjs(userPrefs.quietHoursStart, 'HH:mm'),
-            dayjs(userPrefs.quietHoursEnd, 'HH:mm'),
+          emailNotifications: prefs.emailNotifications ?? true,
+          pushNotifications: prefs.pushNotifications ?? false,
+          sendScheduledAlerts: prefs.sendScheduledAlerts ?? true,
+          alertSeverities: prefs.alertSeverities || ['Critical', 'Warning', 'Advisory'],
+          parameters: prefs.parameters || [],
+          devices: prefs.devices || [],
+          quietHoursEnabled: prefs.quietHoursEnabled ?? false,
+          quietHours: prefs.quietHoursStart && prefs.quietHoursEnd ? [
+            dayjs(prefs.quietHoursStart as string, 'HH:mm'),
+            dayjs(prefs.quietHoursEnd as string, 'HH:mm'),
           ] : undefined,
         };
         
@@ -116,59 +129,75 @@ const NotificationSettings: React.FC = () => {
           quietHoursEnabled: false,
         });
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('❌ Error loading preferences:', error);
-      message.error(error.message || 'Failed to load notification preferences');
+      message.error((error as Error).message || 'Failed to load notification preferences');
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, userPrefs, form, message]);
 
-  const handleSave = async (values: any) => {
+  useEffect(() => {
+    loadPreferences();
+  }, [loadPreferences]);
+
+
+  const handleSave = async (values: Record<string, unknown>) => {
     if (!user || !user.email) return;
 
     try {
-      const quietHoursStart = values.quietHoursEnabled && values.quietHours?.[0]
-        ? values.quietHours[0].format('HH:mm')
+      interface FormValues {
+        quietHoursEnabled?: boolean;
+        quietHours?: Array<{ format: (fmt: string) => string }>;
+        emailNotifications?: boolean;
+        pushNotifications?: boolean;
+        sendScheduledAlerts?: boolean;
+        alertSeverities?: string[];
+        parameters?: string[];
+        devices?: string[];
+      }
+      const formValues = values as FormValues;
+      
+      const quietHoursStart = formValues.quietHoursEnabled && formValues.quietHours?.[0]
+        ? formValues.quietHours[0].format('HH:mm')
         : undefined;
 
-      const quietHoursEnd = values.quietHoursEnabled && values.quietHours?.[1]
-        ? values.quietHours[1].format('HH:mm')
+      const quietHoursEnd = formValues.quietHoursEnabled && formValues.quietHours?.[1]
+        ? formValues.quietHours[1].format('HH:mm')
         : undefined;
 
       const preferencesPayload = {
-        userId: user.uid,
+        userId: user.id,
         email: user.email,
-        emailNotifications: values.emailNotifications ?? false,
-        pushNotifications: values.pushNotifications ?? false,
-        sendScheduledAlerts: values.sendScheduledAlerts ?? true,
-        alertSeverities: values.alertSeverities || ['Critical', 'Warning', 'Advisory'],
-        parameters: values.parameters || [],
-        devices: values.devices || [],
-        quietHoursEnabled: values.quietHoursEnabled ?? false,
+        emailNotifications: formValues.emailNotifications ?? false,
+        pushNotifications: formValues.pushNotifications ?? false,
+        sendScheduledAlerts: formValues.sendScheduledAlerts ?? true,
+        alertSeverities: formValues.alertSeverities || ['Critical', 'Warning', 'Advisory'],
+        parameters: formValues.parameters || [],
+        devices: formValues.devices || [],
+        quietHoursEnabled: formValues.quietHoursEnabled ?? false,
         quietHoursStart,
         quietHoursEnd,
       };
 
       console.log('💾 Saving notification preferences:', preferencesPayload);
 
-      // ✅ Use global hook instead of direct service call
-      const savedPreferences = await setupPreferences(preferencesPayload);
+      // ✅ Use global hook mutation (type cast to bypass schema mismatch)
+      await updateUserPreferences(user._id || user.id, preferencesPayload as Record<string, unknown>);
 
-      console.log('✅ Preferences saved successfully:', savedPreferences);
+      console.log('✅ Preferences saved successfully');
       
       message.success('Notification preferences saved successfully');
-      setPreferences(savedPreferences);
       
-      // Reload preferences to ensure UI is in sync
-      await loadPreferences();
-    } catch (error: any) {
+      // Refetch to ensure UI is in sync
+      await refetchPreferences();
+    } catch (error) {
       console.error('❌ Error saving preferences:', error);
-      message.error(error.message || 'Failed to save notification preferences');
+      message.error((error as Error).message || 'Failed to save notification preferences');
     }
   };
 
-  if (loading) {
+  if (loading || prefsLoading) {
     return (
       <div style={{ textAlign: 'center', padding: '120px 0' }}>
         <Spin size="large" />

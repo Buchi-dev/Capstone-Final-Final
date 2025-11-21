@@ -33,7 +33,15 @@ const { Text, Paragraph } = Typography;
 
 interface ReportPreviewPanelProps {
   selectedType: ReportType;
-  formValues: any;
+  formValues: {
+    dateRange?: [dayjs.Dayjs, dayjs.Dayjs];
+    devices?: string[];
+    title?: string;
+    notes?: string;
+    includeStatistics?: boolean;
+    includeCharts?: boolean;
+    includeRawData?: boolean;
+  };
   devices: Device[];
   onGenerate: () => void;
   onBack: () => void;
@@ -54,18 +62,17 @@ interface ReportPreviewPanelProps {
  * />
  */
 export const ReportPreviewPanel = ({
-  selectedType,
   formValues,
   devices,
   onGenerate,
   onBack,
   generating,
 }: ReportPreviewPanelProps) => {
-  const getReportTypeLabel = (_type: ReportType) => {
+  const getReportTypeLabel = (/* _type?: ReportType */) => {
     return 'Water Quality Report';
   };
 
-  const getReportTypeColor = (_type: ReportType) => {
+  const getReportTypeColor = (/* _type?: ReportType */) => {
     return 'blue';
   };
 
@@ -108,8 +115,8 @@ export const ReportPreviewPanel = ({
                   </Space>
                 }
               >
-                <Tag color={getReportTypeColor(selectedType)} style={{ fontSize: 14, padding: '4px 12px' }}>
-                  {getReportTypeLabel(selectedType)}
+                <Tag color={getReportTypeColor()} style={{ fontSize: 14, padding: '4px 12px' }}>
+                  {getReportTypeLabel()}
                 </Tag>
               </Descriptions.Item>
 

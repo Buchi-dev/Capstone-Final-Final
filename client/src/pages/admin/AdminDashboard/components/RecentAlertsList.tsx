@@ -75,11 +75,11 @@ export const RecentAlertsList = memo<RecentAlertsListProps>(({
   };
 
   // Format timestamp
-  const formatTimestamp = (timestamp: any) => {
+  const formatTimestamp = (timestamp: { toDate?: () => Date } | string | Date | null | undefined) => {
     if (!timestamp) return 'Unknown time';
     
     try {
-      const date = timestamp?.toDate?.() || new Date(timestamp);
+      const date = typeof timestamp === 'object' && 'toDate' in timestamp && timestamp.toDate ? timestamp.toDate() : new Date(timestamp as string | Date);
       const now = new Date();
       const diffMs = now.getTime() - date.getTime();
       const diffMins = Math.floor(diffMs / 60000);

@@ -25,7 +25,7 @@ const isLoggingEnabled = (): boolean => {
   return process.env.NODE_ENV === 'development';
 };
 
-export type DataSource = 'Firestore' | 'RTDB' | 'HTTP_API' | 'MQTT_Bridge';
+export type DataSource = 'Firestore' | 'RTDB' | 'HTTP_API';
 export type FlowLayer = 'Service' | 'Hook' | 'Component';
 
 // Constants for convenience
@@ -33,7 +33,6 @@ export const DataSource = {
   FIRESTORE: 'Firestore' as DataSource,
   RTDB: 'RTDB' as DataSource,
   HTTP_API: 'HTTP_API' as DataSource,
-  MQTT_BRIDGE: 'MQTT_Bridge' as DataSource,
 };
 
 export const FlowLayer = {
@@ -47,7 +46,7 @@ interface DataFlowEvent {
   source: DataSource;
   layer: FlowLayer;
   operation: string;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
 }
 
 class DataFlowLogger {
@@ -71,7 +70,7 @@ class DataFlowLogger {
     source: DataSource,
     layer: FlowLayer,
     operation: string,
-    metadata: Record<string, any> = {}
+    metadata: Record<string, unknown> = {}
   ): void {
     if (!isLoggingEnabled()) return;
 
@@ -111,7 +110,7 @@ class DataFlowLogger {
     source: DataSource,
     layer: FlowLayer,
     issue: string,
-    data: any
+    data: unknown
   ): void {
     if (!isLoggingEnabled()) return;
 
@@ -131,7 +130,7 @@ class DataFlowLogger {
     source: DataSource,
     layer: FlowLayer,
     reason: string,
-    cachedData: any
+    cachedData: unknown
   ): void {
     if (!isLoggingEnabled()) return;
 
@@ -151,8 +150,8 @@ class DataFlowLogger {
     source: DataSource,
     layer: FlowLayer,
     reason: string,
-    rejectedData: any,
-    maintainedData: any
+    rejectedData: unknown,
+    maintainedData: unknown
   ): void {
     if (!isLoggingEnabled()) return;
 
@@ -207,7 +206,10 @@ export const dataFlowLogger = DataFlowLogger.getInstance();
 
 // Expose to window for DevTools access
 if (typeof window !== 'undefined') {
-  (window as any).dataFlowLogger = dataFlowLogger;
+  interface WindowWithDataFlowLogger extends Window {
+    dataFlowLogger?: DataFlowLogger;
+  }
+  (window as WindowWithDataFlowLogger).dataFlowLogger = dataFlowLogger;
   console.log(
     `%c${LOG_PREFIX} Logger initialized. Access via window.dataFlowLogger`,
     'color: #2196F3; font-weight: bold'

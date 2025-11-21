@@ -1,154 +1,127 @@
 /**
  * Account Completion Component
- * Collects additional user information (department, phone number) after first sign-in
- * Compact design following theme configuration
+ * Allows new users to complete their profile by adding department and phone number
+ * After completion, redirects to pending approval page
+ * 
+ * Architecture: Uses global hooks for authentication and user mutations
  */
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Form, Input, Button, Card, Typography, Space, Alert, message, Divider, theme } from "antd";
-import { PhoneOutlined, BankOutlined, UserOutlined } from "@ant-design/icons";
-import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "../../../config/firebase";
+import { Card, Typography, Space, Button, Form, Input, Select, Alert, theme, Divider, message } from "antd";
+import { 
+  UserOutlined, 
+  PhoneOutlined, 
+  BankOutlined,
+  CheckCircleOutlined 
+} from "@ant-design/icons";
+import { useAuth } from "../../../hooks";
+import { useUserMutations } from "../../../hooks";
 
 const { Title, Text } = Typography;
 
-interface ProfileFormData {
-  firstname: string;
-  lastname: string;
-  middlename?: string;
-  department: string;
-  phoneNumber: string;
-}
-
 export const AuthAccountCompletion = () => {
-  const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
+  const { user, loading: authLoading, isAuthenticated, refetchUser } = useAuth();
+  const { completeUserProfile, isLoading, error: mutationError } = useUserMutations();
   const navigate = useNavigate();
   const { token } = theme.useToken();
+  const [form] = Form.useForm();
+
+  // Display mutation errors
+  useEffect(() => {
+    if (mutationError) {
+      message.error(mutationError.message || 'Failed to complete profile');
+    }
+  }, [mutationError]);
+
+  // Pre-fill form with user data
+  useEffect(() => {
+    if (user) {
+      form.setFieldsValue({
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        middleName: user.middleName || '',
+      });
+    }
+  }, [user, form]);
 
   useEffect(() => {
-    // Check if user is authenticated
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        // Not logged in - redirect to login
-        navigate("/auth/login");
-        return;
-      }
+    if (authLoading) return;
 
-      setUserId(user.uid);
-
-      try {
-        // Get user profile from Firestore
-        const userDocRef = doc(db, "users", user.uid);
-        const userDoc = await getDoc(userDocRef);
-
-        if (!userDoc.exists()) {
-          setError("User profile not found. Please contact administrator.");
-          setChecking(false);
-          return;
-        }
-
-        const userData = userDoc.data();
-
-        // Pre-fill form with existing data
-        form.setFieldsValue({
-          firstname: userData.firstname || "",
-          lastname: userData.lastname || "",
-          middlename: userData.middlename || "",
-          department: userData.department || "",
-          phoneNumber: userData.phoneNumber || "",
-        });
-
-        // Check if profile is already complete
-        if (userData.department && userData.phoneNumber) {
-          // Profile complete, redirect based on status
-          if (userData.status === "Approved") {
-            const role = userData.role;
-            navigate(role === "Admin" ? "/admin/dashboard" : "/staff/dashboard");
-            return;
-          } else if (userData.status === "Suspended") {
-            navigate("/auth/account-inactive");
-            return;
-          } else if (userData.status === "Pending") {
-            navigate("/auth/pending-approval");
-            return;
-          }
-        }
-
-        setChecking(false);
-      } catch (err) {
-        console.error("Error loading user profile:", err);
-        setError("Failed to load profile. Please try again.");
-        setChecking(false);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [navigate, form]);
-
-  const handleSubmit = async (values: ProfileFormData) => {
-    if (!userId) {
-      message.error("User not authenticated");
+    if (!isAuthenticated) {
+      navigate("/auth/login");
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    if (user) {
+      // If user already has department and phone, skip to appropriate page
+      if (user.department && user.phoneNumber) {
+        // Profile already complete, redirect based on status
+        if (user.status === "active") {
+          if (user.role === "admin") {
+            navigate("/admin/dashboard");
+          } else if (user.role === "staff") {
+            navigate("/staff/dashboard");
+          } else {
+            navigate("/dashboard");
+          }
+        } else if (user.status === "suspended") {
+          navigate("/auth/account-suspended");
+        } else if (user.status === "pending") {
+          navigate("/auth/pending-approval");
+        }
+      }
+      // If user is already active (not a new user), redirect to dashboard
+      else if (user.status === "active") {
+        if (user.role === "admin") {
+          navigate("/admin/dashboard");
+        } else if (user.role === "staff") {
+          navigate("/staff/dashboard");
+        } else {
+          navigate("/dashboard");
+        }
+      }
+      // If suspended, redirect to suspended page
+      else if (user.status === "suspended") {
+        navigate("/auth/account-suspended");
+      }
+      // Otherwise, stay on this page to complete profile (pending new user)
+    }
+  }, [authLoading, isAuthenticated, user, navigate]);
+
+  const handleSubmit = async (values: {
+    firstName: string;
+    lastName: string;
+    middleName?: string;
+    department: string;
+    phoneNumber: string;
+  }) => {
+    if (!user) return;
 
     try {
-      // Update user profile in Firestore
-      const userDocRef = doc(db, "users", userId);
-      
-      await updateDoc(userDocRef, {
-        firstname: values.firstname,
-        lastname: values.lastname,
-        middlename: values.middlename || "",
+      await completeUserProfile(user._id, {
+        firstName: values.firstName,
+        lastName: values.lastName,
+        middleName: values.middleName,
         department: values.department,
         phoneNumber: values.phoneNumber,
-        updatedAt: serverTimestamp(),
       });
 
-      message.success("Profile completed successfully!");
-      console.log("✓ Profile updated for user:", userId);
+      message.success('Profile completed successfully!');
 
-      // Redirect to pending approval page
+      // Refresh user data
+      await refetchUser();
+
+      // Navigate to pending approval
       navigate("/auth/pending-approval");
-
     } catch (err) {
-      console.error("Error updating profile:", err);
-      setError("Failed to update profile. Please try again.");
-      message.error("Failed to update profile");
-    } finally {
-      setLoading(false);
+      // Error is already handled by useUserMutations hook
+      console.error("Error completing profile:", err);
     }
   };
 
-  if (checking) {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundImage: `linear-gradient(rgba(240, 242, 245, 0.65), rgba(240, 242, 245, 0.65)), url('/4pillars.jpg')`,
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-          backgroundRepeat: "no-repeat",
-        }}
-      >
-        <Card>
-          <Space>
-            <div>Loading...</div>
-          </Space>
-        </Card>
-      </div>
-    );
+  if (authLoading) {
+    return null;
   }
 
   return (
@@ -158,7 +131,7 @@ export const AuthAccountCompletion = () => {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        backgroundImage: `linear-gradient(rgba(240, 242, 245, 0.65), rgba(240, 242, 245, 0.65)), url('/4pillars.jpg')`,
+        backgroundImage: `linear-gradient(rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.75)), url('/smu-building.jpg')`,
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
@@ -167,158 +140,165 @@ export const AuthAccountCompletion = () => {
     >
       <Card
         style={{
-          maxWidth: 600,
+          maxWidth: 500,
           width: "100%",
-          boxShadow: token.boxShadow,
+          boxShadow: token.boxShadowTertiary,
         }}
-        bordered={false}
       >
-        <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+        <Space direction="vertical" size="large" style={{ width: "100%" }}>
           {/* Header */}
           <div style={{ textAlign: "center" }}>
-            <UserOutlined 
-              style={{ 
-                fontSize: 56, 
+            <div
+              style={{
+                fontSize: 48,
                 color: token.colorPrimary,
-                marginBottom: token.marginSM,
-              }} 
-            />
-            <Title level={3} style={{ margin: 0, marginBottom: token.marginXS }}>
+                marginBottom: 16,
+              }}
+            >
+              <UserOutlined />
+            </div>
+            <Title level={3} style={{ marginBottom: 8 }}>
               Complete Your Profile
             </Title>
             <Text type="secondary">
-              Please provide additional information
+              Welcome! Please provide your department and phone number to continue.
             </Text>
           </div>
 
-          {/* Error Alert */}
-          {error && (
-            <Alert
-              message="Error"
-              description={error}
-              type="error"
-              showIcon
-              closable
-              onClose={() => setError(null)}
-            />
-          )}
+          <Divider style={{ margin: "8px 0" }} />
 
-          <Divider style={{ margin: `${token.marginXS}px 0` }} />
+          {/* Info Alert */}
+          <Alert
+            message="Account Setup"
+            description="After submitting your information, your account will be sent for admin approval. You'll be notified once approved."
+            type="info"
+            showIcon
+          />
 
-          {/* Profile Form - Two Column Layout */}
+          {/* Form */}
           <Form
             form={form}
             layout="vertical"
             onFinish={handleSubmit}
-            autoComplete="off"
             requiredMark="optional"
           >
-            {/* Name Fields Row */}
-            <Space.Compact style={{ width: "100%", display: "flex", gap: token.marginSM }}>
-              <Form.Item
-                label="First Name"
-                name="firstname"
-                rules={[
-                  { required: true, message: "Required" },
-                  { min: 2, message: "Min 2 characters" },
-                ]}
-                style={{ flex: 1, marginBottom: token.marginSM }}
-              >
-                <Input
-                  prefix={<UserOutlined />}
-                  placeholder="First name"
-                />
-              </Form.Item>
-
-              <Form.Item
-                label="Last Name"
-                name="lastname"
-                rules={[
-                  { required: true, message: "Required" },
-                  { min: 2, message: "Min 2 characters" },
-                ]}
-                style={{ flex: 1, marginBottom: token.marginSM }}
-              >
-                <Input
-                  prefix={<UserOutlined />}
-                  placeholder="Last name"
-                />
-              </Form.Item>
-            </Space.Compact>
-
-            {/* Middle Name - Full Width */}
             <Form.Item
-              label="Middle Name (Optional)"
-              name="middlename"
-              style={{ marginBottom: token.marginSM }}
+              name="firstName"
+              label="First Name"
+              rules={[
+                { required: true, message: "Please enter your first name" },
+              ]}
             >
               <Input
+                size="large"
                 prefix={<UserOutlined />}
-                placeholder="Enter your middle name"
+                placeholder="John"
               />
             </Form.Item>
 
-            {/* Department and Phone Row */}
-            <Space.Compact style={{ width: "100%", display: "flex", gap: token.marginSM }}>
-              <Form.Item
-                label="Department"
-                name="department"
-                rules={[
-                  { required: true, message: "Required" },
-                  { min: 2, message: "Min 2 characters" },
-                ]}
-                style={{ flex: 1, marginBottom: token.marginSM }}
-              >
-                <Input
-                  prefix={<BankOutlined />}
-                  placeholder="e.g., Engineering"
-                />
-              </Form.Item>
+            <Form.Item
+              name="lastName"
+              label="Last Name"
+              rules={[
+                { required: true, message: "Please enter your last name" },
+              ]}
+            >
+              <Input
+                size="large"
+                prefix={<UserOutlined />}
+                placeholder="Doe"
+              />
+            </Form.Item>
 
-              <Form.Item
-                label="Phone Number"
-                name="phoneNumber"
-                rules={[
-                  { required: true, message: "Required" },
-                  {
-                    pattern: /^[\d\s\-+()]+$/,
-                    message: "Invalid format",
-                  },
-                  { min: 10, message: "Min 10 digits" },
-                ]}
-                style={{ flex: 1, marginBottom: token.marginSM }}
-              >
-                <Input
-                  prefix={<PhoneOutlined />}
-                  placeholder="+1 (555) 123-4567"
-                />
-              </Form.Item>
-            </Space.Compact>
+            <Form.Item
+              name="middleName"
+              label="Middle Name (Optional)"
+            >
+              <Input
+                size="large"
+                prefix={<UserOutlined />}
+                placeholder="Middle name"
+              />
+            </Form.Item>
 
-            <Form.Item style={{ marginBottom: 0, marginTop: token.marginSM }}>
+            <Form.Item
+              name="department"
+              label="Department"
+              rules={[
+                { required: true, message: "Please select your department" },
+              ]}
+            >
+              <Select
+                size="large"
+                placeholder="Select your department"
+                prefix={<BankOutlined />}
+                options={[
+                  { value: "Engineering", label: "Engineering" },
+                  { value: "Operations", label: "Operations" },
+                  { value: "Maintenance", label: "Maintenance" },
+                  { value: "Quality Control", label: "Quality Control" },
+                  { value: "Research", label: "Research" },
+                  { value: "Administration", label: "Administration" },
+                  { value: "IT", label: "IT" },
+                  { value: "Other", label: "Other" },
+                ]}
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="phoneNumber"
+              label="Phone Number"
+              rules={[
+                { required: true, message: "Please enter your phone number" },
+                {
+                  pattern: /^09\d{9}$/,
+                  message: "Please enter a valid 11-digit Philippine phone number (e.g., 09123456789)",
+                },
+              ]}
+            >
+              <Input
+                size="large"
+                prefix={<PhoneOutlined />}
+                placeholder="09123456789"
+                maxLength={11}
+                onKeyPress={(e) => {
+                  // Only allow numbers
+                  if (!/[0-9]/.test(e.key)) {
+                    e.preventDefault();
+                  }
+                }}
+              />
+            </Form.Item>
+
+            <Form.Item style={{ marginBottom: 0 }}>
               <Button
                 type="primary"
-                htmlType="submit"
-                loading={loading}
-                block
                 size="large"
+                htmlType="submit"
+                loading={isLoading}
+                icon={<CheckCircleOutlined />}
+                block
+                style={{
+                  height: 48,
+                  fontSize: 16,
+                  fontWeight: 500,
+                }}
               >
-                {loading ? "Saving..." : "Complete Profile"}
+                Complete Profile
               </Button>
             </Form.Item>
           </Form>
 
-          <Divider style={{ margin: `${token.marginXS}px 0` }} />
-
-          {/* Info Section */}
-          <Alert
-            message="What happens next?"
-            description="After completing your profile, an administrator will review and approve your account."
-            type="info"
-            showIcon
-          />
+          {/* User Info */}
+          {user && (
+            <div style={{ textAlign: "center", marginTop: 8 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Logged in as: {user.email}
+              </Text>
+            </div>
+          )}
         </Space>
       </Card>
     </div>
   );
-}
+};

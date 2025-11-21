@@ -43,7 +43,14 @@ interface ReportConfigFormProps {
   devices: Device[];
   loading: boolean;
   generating: boolean;
-  onFinish: (values: any) => void;
+  onFinish: (values: {
+    dateRange?: [dayjs.Dayjs, dayjs.Dayjs];
+    devices?: string[];
+    title?: string;
+    notes?: string;
+    includeStatistics?: boolean;
+    includeCharts?: boolean;
+  }) => void;
   selectedType?: ReportType;
   onBack?: () => void;
 }
@@ -67,7 +74,6 @@ export const ReportConfigForm = ({
   loading,
   generating,
   onFinish,
-  selectedType: _selectedType,
   onBack,
 }: ReportConfigFormProps) => {
   const getReportTypeInfo = () => {

@@ -5,7 +5,7 @@
  * Refactored to follow Service Layer → Global Hooks → UI architecture.
  * 
  * Architecture:
- * - Uses global hooks: useRealtime_Devices(), useRealtime_Alerts()
+ * - Uses global hooks: useDevices(), useAlerts()
  * - Thin component - only orchestration and composition
  * - All sub-components extracted to components/ folder
  */
@@ -15,10 +15,9 @@ import { Row, Col, Space, Alert, Button, Skeleton } from 'antd';
 import { EyeOutlined, AlertOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
-import { useAuth } from '../../../contexts/AuthContext';
+import { useAuth, useDevices, useAlerts } from '../../../hooks';
 import { useThemeToken } from '../../../theme';
-import { useRealtime_Devices, useRealtime_Alerts, type DeviceWithSensorData } from '@/hooks';
-import type { WaterQualityAlert } from '@/schemas';
+import type { WaterQualityAlert } from '../../../schemas';
 import { RealtimeAlertMonitor } from '../../../components/RealtimeAlertMonitor';
 import { calculateDeviceStatus } from '../../../utils/waterQualityUtils';
 import {
@@ -37,16 +36,36 @@ import {
  */
 export const StaffDashboard = () => {
   const navigate = useNavigate();
-  const { userProfile } = useAuth();
+  const { user } = useAuth();
   const token = useThemeToken();
   
-  // Global hooks for real-time data
-  const { devices, isLoading: devicesLoading, refetch: refetchDevices } = useRealtime_Devices();
-  const { alerts, isLoading: alertsLoading, refetch: refetchAlerts } = useRealtime_Alerts({ maxAlerts: 20 });
+  // ✅ GLOBAL HOOKS - Real-time data from service layer
+  const { 
+    devices, 
+    isLoading: devicesLoading, 
+    error: devicesError,
+    refetch: refetchDevices 
+  } = useDevices({ pollInterval: 10000 }); // Poll every 10 seconds
+  
+  const { 
+    alerts, 
+    isLoading: alertsLoading, 
+    error: alertsError,
+    refetch: refetchAlerts 
+  } = useAlerts({ 
+    filters: { limit: 20 }, 
+    pollInterval: 5000 // Poll every 5 seconds for alerts
+  });
   
   // Local UI state
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+
+  // Show errors via console (could also use message.error)
+  useEffect(() => {
+    if (devicesError) console.error('Devices error:', devicesError);
+    if (alertsError) console.error('Alerts error:', alertsError);
+  }, [devicesError, alertsError]);
 
   // Update last updated time when data changes
   useEffect(() => {
@@ -56,31 +75,31 @@ export const StaffDashboard = () => {
   }, [devices, alerts, devicesLoading, alertsLoading]);
 
   // Refresh handler using hooks' refetch functions
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setRefreshing(true);
-    refetchDevices();
-    refetchAlerts();
+    await Promise.all([refetchDevices(), refetchAlerts()]);
     setTimeout(() => setRefreshing(false), 1000);
   };
 
   // Calculate device statistics using utility function
   const deviceStats = useMemo(() => {
-    const devicesWithReadings = devices.map((device: DeviceWithSensorData) => {
-      const status = calculateDeviceStatus(device.status, device.latestReading);
+    const devicesWithStatus = devices.map((device) => {
+      const reading = device.latestReading;
+      const status = calculateDeviceStatus(device.status, reading);
       return { ...device, computedStatus: status };
     });
 
     return {
       total: devices.length,
-      online: devicesWithReadings.filter((d: typeof devicesWithReadings[0]) => d.computedStatus === 'online').length,
-      offline: devicesWithReadings.filter((d: typeof devicesWithReadings[0]) => d.computedStatus === 'offline').length,
-      warnings: devicesWithReadings.filter((d: typeof devicesWithReadings[0]) => d.computedStatus === 'warning').length,
+      online: devicesWithStatus.filter((d) => d.computedStatus === 'online').length,
+      offline: devicesWithStatus.filter((d) => d.computedStatus === 'offline').length,
+      warnings: devicesWithStatus.filter((d) => d.computedStatus === 'warning').length,
     };
   }, [devices]);
 
   // Transform devices for table display using utility function
   const deviceStatusData: DeviceStatus[] = useMemo(() => {
-    return devices.map((device: DeviceWithSensorData) => {
+    return devices.map((device) => {
       const reading = device.latestReading;
       const status = calculateDeviceStatus(device.status, reading);
 
@@ -88,10 +107,21 @@ export const StaffDashboard = () => {
         ? new Date(reading.timestamp).toLocaleString()
         : 'No data';
 
+      // Format location as string
+      let locationStr = 'Unknown';
+      if (device.metadata?.location) {
+        const loc = device.metadata.location;
+        if (typeof loc === 'string') {
+          locationStr = loc;
+        } else if (loc.building) {
+          locationStr = `${loc.building}${loc.floor ? ', ' + loc.floor : ''}`;
+        }
+      }
+
       return {
         id: device.deviceId,
-        name: device.deviceName || device.deviceId,
-        location: device.location || 'Unknown',
+        name: device.name || device.deviceId,
+        location: locationStr,
         status,
         lastUpdate,
         ph: reading?.ph || 0,
@@ -104,18 +134,20 @@ export const StaffDashboard = () => {
   // Transform alerts for table display
   const recentAlertsData: RecentAlert[] = useMemo(() => {
     return alerts
-      .filter((alert: WaterQualityAlert) => alert.status === 'Active' || alert.status === 'Acknowledged')
+      .filter((alert: WaterQualityAlert) => 
+        alert.status === 'Active' || alert.status === 'Acknowledged'
+      )
       .slice(0, 5)
       .map((alert: WaterQualityAlert) => ({
-        key: alert.alertId,
+        key: alert.alertId || Math.random().toString(),
         device: alert.deviceName || alert.deviceId || 'Unknown Device',
         parameter: alert.parameter || 'Unknown',
         value: alert.currentValue || 0,
         threshold: alert.thresholdValue || 0,
         time: alert.createdAt 
-          ? new Date(alert.createdAt.seconds * 1000).toLocaleString() 
+          ? new Date(alert.createdAt).toLocaleString() 
           : 'Unknown',
-        severity: (alert.severity === 'Critical' ? 'high' : alert.severity === 'Warning' ? 'medium' : 'low'),
+        severity: (alert.severity === 'Critical' ? 'high' : alert.severity === 'Warning' ? 'medium' : 'low') as 'high' | 'medium' | 'low',
       }));
   }, [alerts]);
 
@@ -156,9 +188,29 @@ export const StaffDashboard = () => {
     <StaffLayout>
       <div style={{ maxWidth: '1600px', margin: '0 auto' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
+          {/* Error Alerts */}
+          {devicesError && (
+            <Alert
+              message="Device Monitoring Error"
+              description={devicesError.message}
+              type="error"
+              showIcon
+              closable
+            />
+          )}
+          {alertsError && (
+            <Alert
+              message="Alerts Monitoring Error"
+              description={alertsError.message}
+              type="error"
+              showIcon
+              closable
+            />
+          )}
+
           {/* Dashboard Header */}
           <DashboardHeader
-            userName={userProfile?.firstname}
+            userName={user?.firstName || user?.displayName}
             lastUpdated={lastUpdated}
             onRefresh={handleRefresh}
             refreshing={refreshing}

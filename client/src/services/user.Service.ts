@@ -1,640 +1,243 @@
 /**
  * Users Service
  * 
- * Manages user accounts, roles, permissions, and notification preferences.
+ * Manages user accounts, roles, permissions via Express REST API.
  * 
- * Write Operations: Cloud Functions (UserCalls)
- * Read Operations: Firestore real-time listeners
- * 
- * Features:
- * - User CRUD operations
- * - Role and status management
- * - Notification preferences
- * - Real-time user list subscriptions
+ * Server Endpoints:
+ * - GET    /api/v1/users              - Get all users (admin only, with pagination)
+ * - GET    /api/v1/users/:id          - Get user by ID (authenticated)
+ * - PATCH  /api/v1/users/:id/role     - Update user role (admin only)
+ * - PATCH  /api/v1/users/:id/status   - Update user status (admin only)
+ * - PATCH  /api/v1/users/:id/profile  - Update user profile (admin only)
+ * - PATCH  /api/v1/users/:id/complete-profile - Complete profile (self-service)
+ * - DELETE /api/v1/users/:id          - Delete user (admin only)
+ * - GET    /api/v1/users/:id/preferences - Get notification preferences
+ * - PUT    /api/v1/users/:id/preferences - Update notification preferences
+ * - DELETE /api/v1/users/:id/preferences - Reset notification preferences
  * 
  * @module services/users
  */
 
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { collection, query, orderBy, onSnapshot, doc, getDocs } from 'firebase/firestore';
-import type { Unsubscribe } from 'firebase/firestore';
+import { apiClient, getErrorMessage } from '../config/api.config';
+import { USER_ENDPOINTS, buildUsersUrl } from '../config/endpoints';
 import type { UserStatus, UserRole, UserListData } from '../schemas';
-import { refreshUserToken } from '../utils/authHelpers';
-import { db } from '../config/firebase';
-import { dataFlowLogger, DataSource, FlowLayer } from '../utils/dataFlowLogger';
 
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================
 
+export interface UpdateUserRoleRequest {
+  role: UserRole;
+}
+
 export interface UpdateUserStatusRequest {
-  userId: string;
   status: UserStatus;
 }
 
-export interface UpdateUserRequest {
-  userId: string;
-  status?: UserStatus;
+export interface UpdateUserProfileRequest {
+  displayName?: string;
+  firstName?: string;
+  lastName?: string;
+  middleName?: string;
+  department?: string;
+  phoneNumber?: string;
+}
+
+export interface CompleteUserProfileRequest {
+  firstName: string;
+  lastName: string;
+  middleName?: string;
+  department?: string;
+  phoneNumber?: string;
+}
+
+export interface UserFilters {
   role?: UserRole;
+  status?: UserStatus;
+  search?: string;
+  page?: number;
+  limit?: number;
 }
 
-export interface UpdateStatusResponse {
+export interface UserResponse {
   success: boolean;
-  message: string;
-  userId: string;
-  status: UserStatus;
-  /** Indicates whether the user should be logged out after this operation */
-  requiresLogout?: boolean;
-}
-
-export interface UpdateUserResponse {
-  success: boolean;
-  message: string;
-  userId: string;
-  updates: {
-    status?: UserStatus;
-    role?: UserRole;
-  };
-  /** Indicates whether the user should be logged out after this operation */
-  requiresLogout?: boolean;
-}
-
-export interface ListUsersResponse {
-  success: boolean;
-  users: UserListData[];
-  count: number;
-}
-
-export interface NotificationPreferences {
-  userId: string;
-  email: string;
-  emailNotifications: boolean;
-  pushNotifications: boolean;
-  sendScheduledAlerts: boolean;
-  alertSeverities: string[];
-  parameters: string[];
-  devices: string[];
-  quietHoursEnabled: boolean;
-  quietHoursStart?: string;
-  quietHoursEnd?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
-}
-
-export interface PreferencesData {
-  userId: string;
-  email: string;
-  emailNotifications: boolean;
-  pushNotifications: boolean;
-  sendScheduledAlerts: boolean;
-  alertSeverities: string[];
-  parameters: string[];
-  devices: string[];
-  quietHoursEnabled: boolean;
-  quietHoursStart?: string;
-  quietHoursEnd?: string;
-}
-
-export interface SetupPreferencesRequest extends PreferencesData {
-  action: 'setupPreferences';
-}
-
-export interface GetUserPreferencesRequest {
-  action: 'getUserPreferences';
-  userId: string;
-}
-
-export interface ListAllPreferencesRequest {
-  action: 'listAllPreferences';
-}
-
-export interface DeletePreferencesRequest {
-  action: 'deletePreferences';
-  userId: string;
-}
-
-export interface PreferencesResponse {
-  success: boolean;
+  data: UserListData;
   message?: string;
-  data?: NotificationPreferences;
-  error?: string;
+  requiresLogout?: boolean;
 }
 
-export interface ListPreferencesResponse {
+export interface UserListResponse {
   success: boolean;
-  data?: NotificationPreferences[];
-  error?: string;
-}
-
-export interface ErrorResponse {
-  code: string;
-  message: string;
-  details?: any;
-}
-
-// ============================================================================
-// SERVICE CLASS
-// ============================================================================
-
-export class UsersService {
-  // ==========================================================================
-  // PROPERTIES
-  // ==========================================================================
-  
-  private readonly functions = getFunctions();
-  private readonly functionName = 'UserCalls';
-
-  // ==========================================================================
-  // ERROR MESSAGES
-  // ==========================================================================
-  
-  private static readonly ERROR_MESSAGES: Record<string, string> = {
-    'functions/unauthenticated': 'Please log in to perform this action',
-    'functions/permission-denied': 'You do not have permission to perform this action',
-    'functions/not-found': 'User not found',
-    'functions/invalid-argument': 'Invalid request parameters',
-    'functions/failed-precondition': '', // Use backend message
-    'functions/internal': 'An internal error occurred. Please try again',
-    'functions/unavailable': 'Service temporarily unavailable',
-    'functions/deadline-exceeded': 'Request timeout. Please try again',
+  data: UserListData[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
   };
+}
 
-  // ==========================================================================
-  // READ OPERATIONS (Firestore Subscriptions)
-  // ==========================================================================
+export interface DeleteUserResponse {
+  success: boolean;
+  message: string;
+  userId: string;
+}
 
-  /**
-   * Subscribe to real-time user list updates
-   * 
-   * Implements defensive caching to prevent:
-   * - Null snapshot propagation
-   * - Empty state regression during active sessions
-   * - UI flicker from Firestore listener stalls
-   * 
-   * @param onUpdate - Callback invoked with updated user list
-   * @param onError - Callback invoked on subscription errors
-   * @returns Unsubscribe function
-   */
-  subscribeToUsers(
-    onUpdate: (users: UserListData[]) => void,
-    onError: (error: Error) => void
-  ): Unsubscribe {
-    const usersQuery = query(
-      collection(db, 'users'),
-      orderBy('createdAt', 'desc')
-    );
+export interface UserPreferences {
+  email: {
+    alerts: boolean;
+    reports: boolean;
+    systemUpdates: boolean;
+  };
+  alertThresholds?: {
+    ph?: { min: number; max: number };
+    turbidity?: number;
+    tds?: number;
+  };
+}
 
-    // Cache to prevent propagating invalid snapshots
-    let lastValidSnapshot: UserListData[] | null = null;
-    let isFirstSnapshot = true;
+export interface UserPreferencesResponse {
+  success: boolean;
+  data: UserPreferences;
+}
 
-    return onSnapshot(
-      usersQuery,
-      (snapshot) => {
-        // DEFENSIVE: Validate snapshot before propagating to UI
-        if (!snapshot) {
-          dataFlowLogger.logValidationIssue(
-            DataSource.FIRESTORE,
-            FlowLayer.SERVICE,
-            'Received null snapshot',
-            null
-          );
-          console.warn('[UsersService] Received null snapshot, maintaining cached state');
-          return;
-        }
+// ============================================================================
+// USER MANAGEMENT SERVICE
+// ============================================================================
 
-        // Parse users from snapshot
-        const users = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            uuid: data.uuid || '',
-            firstname: data.firstname || '',
-            lastname: data.lastname || '',
-            middlename: data.middlename || '',
-            department: data.department || '',
-            phoneNumber: data.phoneNumber || '',
-            email: data.email || '',
-            role: data.role as UserRole,
-            status: data.status as UserStatus,
-            createdAt: data.createdAt?.toDate() || new Date(),
-            updatedAt: data.updatedAt?.toDate(),
-            lastLogin: data.lastLogin?.toDate(),
-          } as UserListData;
-        });
-
-        dataFlowLogger.log(
-          DataSource.FIRESTORE,
-          FlowLayer.SERVICE,
-          'User snapshot received',
-          { userCount: users.length, isFirstSnapshot }
-        );
-
-        // DEFENSIVE: Prevent empty state regression during active session
-        if (!isFirstSnapshot && users.length === 0 && lastValidSnapshot && lastValidSnapshot.length > 0) {
-          dataFlowLogger.logStateRejection(
-            DataSource.FIRESTORE,
-            FlowLayer.SERVICE,
-            'Empty snapshot during active session - likely Firestore listener stall',
-            users,
-            lastValidSnapshot
-          );
-          console.warn('[UsersService] Rejecting empty snapshot - likely Firestore listener stall');
-          console.warn('[UsersService] Maintaining cached state with', lastValidSnapshot.length, 'users');
-          return;
-        }
-
-        // Valid data - cache and propagate
-        lastValidSnapshot = users;
-        isFirstSnapshot = false;
-        
-        dataFlowLogger.log(
-          DataSource.FIRESTORE,
-          FlowLayer.SERVICE,
-          'Propagating valid user data',
-          { userCount: users.length }
-        );
-        
-        onUpdate(users);
-      },
-      (error) => {
-        dataFlowLogger.log(
-          DataSource.FIRESTORE,
-          FlowLayer.SERVICE,
-          'Snapshot error',
-          { error: error.message }
-        );
-        console.error('[UsersService] Snapshot error:', error);
-        onError(new Error(error.message || 'Failed to subscribe to users'));
-      }
-    );
-  }
-
-  // ==========================================================================
-  // WRITE OPERATIONS (Cloud Functions)
-  // ==========================================================================
-
-  /**
-   * Generic Cloud Function caller with type safety
-   * 
-   * @template T - Request payload type
-   * @template R - Response type
-   * @param action - Cloud Function action name
-   * @param data - Request data (without action field)
-   * @returns Typed response data
-   * @throws {ErrorResponse} Transformed error with user-friendly message
-   */
-  private async callFunction<T, R = any>(
-    action: string,
-    data?: Omit<T, 'action'>
-  ): Promise<R> {
+export class UserService {
+  async getAllUsers(filters?: UserFilters): Promise<UserListResponse> {
     try {
-      const callable = httpsCallable<T, R>(this.functions, this.functionName);
-      const payload = data ? { action, ...data } : { action };
-      const result = await callable(payload as T);
-      
-      return result.data;
-    } catch (error: any) {
-      // If permission denied, try refreshing token and retry once
-      if (error.code === 'functions/permission-denied') {
-        try {
-          await refreshUserToken();
-          const callable = httpsCallable<T, R>(this.functions, this.functionName);
-          const payload = data ? { action, ...data } : { action };
-          const retryResult = await callable(payload as T);
-          return retryResult.data;
-        } catch (retryError: any) {
-          throw this.handleError(retryError, `Failed to ${action}`);
-        }
-      }
-      throw this.handleError(error, `Failed to ${action}`);
+      const url = buildUsersUrl(filters);
+      const response = await apiClient.get<UserListResponse>(url);
+      const users = response.data.data.map((user) => ({
+        ...user,
+        createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
+        updatedAt: user.updatedAt ? new Date(user.updatedAt) : undefined,
+        lastLogin: user.lastLogin ? new Date(user.lastLogin) : undefined,
+      }));
+      return { ...response.data, data: users };
+    } catch (error) {
+      const message = getErrorMessage(error);
+      console.error('[UserService] Get all users error:', message);
+      throw new Error(message);
     }
   }
 
-  /**
-   * List all users
-   * 
-   * @returns Promise with user list and count
-   * @throws {ErrorResponse} If list operation fails
-   */
-  async listUsers(): Promise<ListUsersResponse> {
-    const result = await this.callFunction<{ action: string }, ListUsersResponse>('listUsers');
-
-    // Convert ISO string dates back to Date objects
-    const users = result.users.map((user) => ({
-      ...user,
-      createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
-      updatedAt: user.updatedAt ? new Date(user.updatedAt) : undefined,
-      lastLogin: user.lastLogin ? new Date(user.lastLogin) : undefined,
-    }));
-
-    return {
-      ...result,
-      users,
-    };
-  }
-
-  async updateUserStatus(
-    userId: string,
-    status: UserStatus
-  ): Promise<UpdateStatusResponse> {
-    return this.callFunction<
-      { action: string; userId: string; status: UserStatus },
-      UpdateStatusResponse
-    >('updateStatus', { userId, status });
-  }
-
-  async updateUser(
-    userId: string,
-    status?: UserStatus,
-    role?: UserRole
-  ): Promise<UpdateUserResponse> {
-    return this.callFunction<
-      { action: string; userId: string; status?: UserStatus; role?: UserRole },
-      UpdateUserResponse
-    >('updateUser', { userId, status, role });
-  }
-
-  async approveUser(userId: string): Promise<UpdateStatusResponse> {
-    return this.updateUserStatus(userId, 'Approved');
-  }
-
-  async suspendUser(userId: string): Promise<UpdateStatusResponse> {
-    return this.updateUserStatus(userId, 'Suspended');
-  }
-
-  async reactivateUser(userId: string): Promise<UpdateStatusResponse> {
-    return this.updateUserStatus(userId, 'Approved');
-  }
-
-  async promoteToAdmin(userId: string): Promise<UpdateUserResponse> {
-    return this.updateUser(userId, undefined, 'Admin');
-  }
-
-  async demoteToStaff(userId: string): Promise<UpdateUserResponse> {
-    return this.updateUser(userId, undefined, 'Staff');
-  }
-
-  /**
-   * Update user profile information (name, department, phone)
-   * 
-   * @param userId - User document ID
-   * @param profileData - Profile fields to update
-   * @returns Promise with update response
-   * @throws {ErrorResponse} If update operation fails
-   * @example
-   * await usersService.updateUserProfile('user-123', {
-   *   firstname: 'John',
-   *   lastname: 'Doe',
-   *   department: 'Engineering',
-   *   phoneNumber: '+1234567890'
-   * });
-   */
-  async updateUserProfile(
-    userId: string,
-    profileData: {
-      firstname?: string;
-      middlename?: string;
-      lastname?: string;
-      department?: string;
-      phoneNumber?: string;
-    }
-  ): Promise<UpdateUserResponse> {
-    return this.callFunction<
-      { 
-        action: string; 
-        userId: string; 
-        firstname?: string;
-        middlename?: string;
-        lastname?: string;
-        department?: string;
-        phoneNumber?: string;
-      },
-      UpdateUserResponse
-    >('updateUserProfile', { userId, ...profileData });
-  }
-
-  /**
-   * Delete user account (both Firebase Auth and Firestore)
-   * 
-   * @param userId - User document ID to delete
-   * @returns Promise with deletion response
-   * @throws {ErrorResponse} If delete operation fails
-   * @example
-   * await usersService.deleteUser('user-123');
-   */
-  async deleteUser(userId: string): Promise<{
-    success: boolean;
-    message: string;
-    userId: string;
-    deletedFromAuth: boolean;
-    deletedFromFirestore: boolean;
-  }> {
-    return this.callFunction<
-      { action: string; userId: string },
-      {
-        success: boolean;
-        message: string;
-        userId: string;
-        deletedFromAuth: boolean;
-        deletedFromFirestore: boolean;
-      }
-    >('deleteUser', { userId });
-  }
-
-  /**
-   * Get user notification preferences from Firestore subcollection
-   * @param userId - The user ID to get preferences for
-   * @returns Notification preferences or null if not found
-   * @throws {Error} If retrieval fails
-   */
-  async getUserPreferences(userId: string): Promise<NotificationPreferences | null> {
+  async getUserById(userId: string): Promise<UserResponse> {
     try {
-      // Read preferences from subcollection: users/{userId}/notificationPreferences
-      const userRef = doc(db, 'users', userId);
-      const prefsCollectionRef = collection(userRef, 'notificationPreferences');
-      const querySnapshot = await getDocs(prefsCollectionRef);
-
-      if (querySnapshot.empty) {
-        console.log(`[UsersService] No preferences found for user: ${userId}`);
-        return null;
-      }
-
-      // Get the first (and should be only) preference document
-      const prefsDoc = querySnapshot.docs[0];
-      const data = prefsDoc.data();
-      
+      const response = await apiClient.get<UserResponse>(USER_ENDPOINTS.BY_ID(userId));
+      const user = response.data.data;
       return {
-        userId: data.userId,
-        email: data.email,
-        emailNotifications: data.emailNotifications ?? false,
-        pushNotifications: data.pushNotifications ?? false,
-        sendScheduledAlerts: data.sendScheduledAlerts ?? true,
-        alertSeverities: data.alertSeverities || ["Critical", "Warning", "Advisory"],
-        parameters: data.parameters || [],
-        devices: data.devices || [],
-        quietHoursEnabled: data.quietHoursEnabled || false,
-        quietHoursStart: data.quietHoursStart,
-        quietHoursEnd: data.quietHoursEnd,
-        createdAt: data.createdAt?.toDate?.(),
-        updatedAt: data.updatedAt?.toDate?.(),
+        ...response.data,
+        data: {
+          ...user,
+          createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
+          updatedAt: user.updatedAt ? new Date(user.updatedAt) : undefined,
+          lastLogin: user.lastLogin ? new Date(user.lastLogin) : undefined,
+        },
       };
     } catch (error) {
-      console.error('[UsersService] Error getting user preferences:', error);
-      throw new Error('Failed to get user preferences');
+      const message = getErrorMessage(error);
+      console.error('[UserService] Get user error:', message);
+      throw new Error(message);
     }
   }
 
-  /**
-   * List all user notification preferences (Admin only)
-   * Note: This queries all users' subcollections, which can be expensive.
-   * Consider using Cloud Function for production use.
-   * @returns Array of all notification preferences
-   * @throws {Error} If retrieval fails
-   */
-  async listAllPreferences(): Promise<NotificationPreferences[]> {
+  async getUserPreferences(userId: string): Promise<UserPreferencesResponse> {
     try {
-      // Read all users first
-      const usersRef = collection(db, 'users');
-      const usersSnapshot = await getDocs(usersRef);
-
-      const preferences: NotificationPreferences[] = [];
-
-      // For each user, query their notificationPreferences subcollection
-      for (const userDoc of usersSnapshot.docs) {
-        const userRef = doc(db, 'users', userDoc.id);
-        const prefsCollectionRef = collection(userRef, 'notificationPreferences');
-        const prefsSnapshot = await getDocs(prefsCollectionRef);
-
-        prefsSnapshot.forEach((prefsDoc) => {
-          const data = prefsDoc.data();
-          preferences.push({
-            userId: data.userId,
-            email: data.email,
-            emailNotifications: data.emailNotifications ?? false,
-            pushNotifications: data.pushNotifications ?? false,
-            sendScheduledAlerts: data.sendScheduledAlerts ?? true,
-            alertSeverities: data.alertSeverities || ["Critical", "Warning", "Advisory"],
-            parameters: data.parameters || [],
-            devices: data.devices || [],
-            quietHoursEnabled: data.quietHoursEnabled || false,
-            quietHoursStart: data.quietHoursStart,
-            quietHoursEnd: data.quietHoursEnd,
-            createdAt: data.createdAt?.toDate?.(),
-            updatedAt: data.updatedAt?.toDate?.(),
-          });
-        });
-      }
-
-      return preferences;
+      const response = await apiClient.get<UserPreferencesResponse>(USER_ENDPOINTS.PREFERENCES(userId));
+      return response.data;
     } catch (error) {
-      console.error('[UsersService] Error listing preferences:', error);
-      throw new Error('Failed to list all preferences');
+      const message = getErrorMessage(error);
+      console.error('[UserService] Get preferences error:', message);
+      throw new Error(message);
     }
   }
 
-  async setupPreferences(
-    preferencesData: PreferencesData
-  ): Promise<NotificationPreferences> {
-    const result = await this.callFunction<
-      SetupPreferencesRequest,
-      PreferencesResponse
-    >('setupPreferences', preferencesData);
-
-    if (!result.success || !result.data) {
-      throw new Error(result.error || 'Failed to setup notification preferences');
-    }
-
-    return result.data;
-  }
-
-  async deletePreferences(userId: string): Promise<void> {
-    const result = await this.callFunction<
-      DeletePreferencesRequest,
-      PreferencesResponse
-    >('deletePreferences', { userId });
-
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to delete notification preferences');
+  async updateUserRole(userId: string, role: UserRole): Promise<UserResponse> {
+    try {
+      const response = await apiClient.patch<UserResponse>(USER_ENDPOINTS.UPDATE_ROLE(userId), { role });
+      console.log('[UserService] User role updated:', { userId, role });
+      return response.data;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      console.error('[UserService] Update role error:', message);
+      throw new Error(message);
     }
   }
 
-  async enableEmailNotifications(
-    userId: string,
-    email: string
-  ): Promise<NotificationPreferences> {
-    const currentPrefs = await this.getUserPreferences(userId);
-    
-    return this.setupPreferences({
-      userId,
-      email,
-      emailNotifications: true,
-      pushNotifications: currentPrefs?.pushNotifications || false,
-      sendScheduledAlerts: currentPrefs?.sendScheduledAlerts ?? true,
-      alertSeverities: currentPrefs?.alertSeverities || ["Critical", "Warning", "Advisory"],
-      parameters: currentPrefs?.parameters || [],
-      devices: currentPrefs?.devices || [],
-      quietHoursEnabled: currentPrefs?.quietHoursEnabled || false,
-      quietHoursStart: currentPrefs?.quietHoursStart,
-      quietHoursEnd: currentPrefs?.quietHoursEnd,
-    });
+  async updateUserStatus(userId: string, status: UserStatus): Promise<UserResponse> {
+    try {
+      const response = await apiClient.patch<UserResponse>(USER_ENDPOINTS.UPDATE_STATUS(userId), { status });
+      console.log('[UserService] User status updated:', { userId, status });
+      return response.data;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      console.error('[UserService] Update status error:', message);
+      throw new Error(message);
+    }
   }
 
-  async disableEmailNotifications(
-    userId: string,
-    email: string
-  ): Promise<NotificationPreferences> {
-    const currentPrefs = await this.getUserPreferences(userId);
-    
-    return this.setupPreferences({
-      userId,
-      email,
-      emailNotifications: false,
-      pushNotifications: currentPrefs?.pushNotifications || false,
-      sendScheduledAlerts: currentPrefs?.sendScheduledAlerts ?? true,
-      alertSeverities: currentPrefs?.alertSeverities || ["Critical", "Warning", "Advisory"],
-      parameters: currentPrefs?.parameters || [],
-      devices: currentPrefs?.devices || [],
-      quietHoursEnabled: currentPrefs?.quietHoursEnabled || false,
-      quietHoursStart: currentPrefs?.quietHoursStart,
-      quietHoursEnd: currentPrefs?.quietHoursEnd,
-    });
+  async updateUserProfile(userId: string, data: UpdateUserProfileRequest): Promise<UserResponse> {
+    try {
+      const response = await apiClient.patch<UserResponse>(USER_ENDPOINTS.UPDATE_PROFILE(userId), data);
+      console.log('[UserService] User profile updated:', { userId });
+      return response.data;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      console.error('[UserService] Update profile error:', message);
+      throw new Error(message);
+    }
   }
 
-  // ==========================================================================
-  // ERROR HANDLING
-  // ==========================================================================
+  async completeUserProfile(userId: string, data: CompleteUserProfileRequest): Promise<UserResponse> {
+    try {
+      const response = await apiClient.patch<UserResponse>(USER_ENDPOINTS.COMPLETE_PROFILE(userId), data);
+      console.log('[UserService] Profile completed:', { userId });
+      return response.data;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      console.error('[UserService] Complete profile error:', message);
+      throw new Error(message);
+    }
+  }
 
-  /**
-   * Transform errors into user-friendly messages
-   * 
-   * @param error - Raw error from Firebase or application
-   * @param defaultMessage - Fallback message if error unmapped
-   * @returns Standardized error response
-   */
-  private handleError(error: any, defaultMessage: string): ErrorResponse {
-    console.error('[UsersService] Error:', error);
+  async updateUserPreferences(userId: string, preferences: Partial<UserPreferences>): Promise<UserPreferencesResponse> {
+    try {
+      const response = await apiClient.put<UserPreferencesResponse>(USER_ENDPOINTS.PREFERENCES(userId), preferences);
+      console.log('[UserService] Preferences updated:', { userId });
+      return response.data;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      console.error('[UserService] Update preferences error:', message);
+      throw new Error(message);
+    }
+  }
 
-    // Extract error details from Firebase Functions error
-    const code = error.code || 'unknown';
-    const message = error.message || defaultMessage;
-    const details = error.details || undefined;
+  async resetUserPreferences(userId: string): Promise<UserPreferencesResponse> {
+    try {
+      const response = await apiClient.delete<UserPreferencesResponse>(USER_ENDPOINTS.PREFERENCES(userId));
+      console.log('[UserService] Preferences reset:', { userId });
+      return response.data;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      console.error('[UserService] Reset preferences error:', message);
+      throw new Error(message);
+    }
+  }
 
-    const friendlyMessage = code === 'functions/failed-precondition'
-      ? message 
-      : UsersService.ERROR_MESSAGES[code] || message;
-
-    return {
-      code,
-      message: friendlyMessage,
-      details,
-    };
+  async deleteUser(userId: string): Promise<DeleteUserResponse> {
+    try {
+      const response = await apiClient.delete<DeleteUserResponse>(USER_ENDPOINTS.DELETE(userId));
+      console.log('[UserService] User deleted:', { userId });
+      return response.data;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      console.error('[UserService] Delete user error:', message);
+      throw new Error(message);
+    }
   }
 }
 
-// ============================================================================
-// EXPORT SINGLETON INSTANCE
-// ============================================================================
-
-export const usersService = new UsersService();
-export default usersService;
+export const userService = new UserService();

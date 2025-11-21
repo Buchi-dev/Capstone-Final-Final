@@ -5,7 +5,7 @@
  * with compliance assessment.
  * 
  * Architecture:
- * - Global hooks: useRealtime_Devices (device data), useCall_Reports (report generation)
+ * - Global hooks: useDevices (device data), useReportMutations (report generation)
  * - Local hook: useReportHistory (localStorage UI state)
  * 
  * @module pages/admin/AdminReports
@@ -53,7 +53,7 @@ import type { Device } from '../../../schemas';
 import { useThemeToken } from '../../../theme';
 
 // Global Hooks
-import { useRealtime_Devices, useCall_Reports } from '../../../hooks';
+import { useDevices, useReportMutations } from '../../../hooks';
 
 // Local UI Hooks
 import { useReportHistory } from './hooks';
@@ -75,31 +75,30 @@ export const AdminReports = () => {
   const [form] = Form.useForm();
 
   // Global hooks
-  const { devices: devicesWithReadings, isLoading: devicesLoading } = useRealtime_Devices();
+  const { devices: devicesWithReadings, isLoading: devicesLoading } = useDevices({ pollInterval: 0 });
   const { 
     generateWaterQualityReport: fetchWaterQualityData,
     isLoading: generating,
-    reset: resetReportState
-  } = useCall_Reports();
+  } = useReportMutations();
 
   // Local UI hooks
   const { reportHistory, addReportToHistory } = useReportHistory();
 
-  // Transform DeviceWithSensorData to Device for component compatibility
+  // Transform devices to Device type for component compatibility
   const devices: Device[] = useMemo(() => {
     return devicesWithReadings.map((d) => ({
       id: d.deviceId,
       deviceId: d.deviceId,
-      name: d.deviceName,
-      type: d.metadata?.type || 'ESP32',
-      firmwareVersion: d.metadata?.firmwareVersion || '1.0.0',
-      macAddress: d.metadata?.macAddress || 'N/A',
-      ipAddress: d.metadata?.ipAddress || 'N/A',
-      sensors: d.metadata?.sensors || ['tds', 'ph', 'turbidity'],
+      name: d.name,
+      type: d.type || 'ESP32',
+      firmwareVersion: d.firmwareVersion || '1.0.0',
+      macAddress: d.macAddress || 'N/A',
+      ipAddress: d.ipAddress || 'N/A',
+      sensors: d.sensors || ['tds', 'ph', 'turbidity'],
       status: d.status,
-      registeredAt: d.metadata?.registeredAt,
-      lastSeen: d.metadata?.lastSeen,
-      metadata: d.metadata?.metadata
+      registeredAt: d.registeredAt,
+      lastSeen: d.lastSeen,
+      metadata: d.metadata
     }));
   }, [devicesWithReadings]);
 
@@ -112,18 +111,29 @@ export const AdminReports = () => {
     });
   }, [form]);
 
-  const handleGenerateReport = async (values: any) => {
+  interface ReportFormValues {
+    dateRange?: [dayjs.Dayjs, dayjs.Dayjs];
+    devices?: string[];
+    title?: string;
+    notes?: string;
+    includeStatistics?: boolean;
+    includeCharts?: boolean;
+  }
+
+  const handleGenerateReport = async (values: ReportFormValues) => {
     try {
-      resetReportState();
-      
       const { dateRange, devices: deviceIds, title, notes, includeStatistics, includeCharts } = values;
-      const startDate = dateRange?.[0]?.valueOf();
-      const endDate = dateRange?.[1]?.valueOf();
+      const startDate = dateRange?.[0]?.format('YYYY-MM-DD') || '';
+      const endDate = dateRange?.[1]?.format('YYYY-MM-DD') || '';
 
       message.loading({ content: 'Generating report...', key: 'report', duration: 0 });
 
       // Fetch water quality data with compliance information
-      const reportData = await fetchWaterQualityData(deviceIds, startDate, endDate);
+      const reportData = await fetchWaterQualityData({
+        startDate,
+        endDate,
+        deviceIds: deviceIds || [],
+      });
 
       if (reportData) {
         // Create report configuration

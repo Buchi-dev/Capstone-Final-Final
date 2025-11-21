@@ -141,7 +141,7 @@ export interface DeviceWithReadings extends Device {
   /** Latest sensor reading from RTDB */
   latestReading: SensorReading | null;
   /** Active alerts associated with this device (WaterQualityAlert type) */
-  activeAlerts: any[]; // Using any[] to avoid circular dependency with alerts.schema
+  activeAlerts: Array<Record<string, unknown>>; // Using generic type to avoid circular dependency with alerts.schema
   /** Calculated severity score (higher = more critical) */
   severityScore: number;
   /** Severity level based on score and alerts */

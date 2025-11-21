@@ -12,7 +12,7 @@ import {
 import { memo } from 'react';
 import { useThemeToken } from '../../../../theme';
 import type { WaterQualityMetrics as Metrics } from '../hooks';
-import type { DeviceWithSensorData } from '../../../../hooks';
+import type { Device } from '../../../../schemas';
 
 const { Text } = Typography;
 
@@ -34,7 +34,7 @@ const WATER_QUALITY_THRESHOLDS = {
 
 interface WaterQualityMetricsProps {
   metrics: Metrics;
-  devices: DeviceWithSensorData[];
+  devices: Device[];
 }
 
 export const WaterQualityMetrics = memo<WaterQualityMetricsProps>(({ metrics, devices }) => {

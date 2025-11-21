@@ -1,7 +1,7 @@
 /**
  * useAnalyticsStats - Local UI Hook
  * 
- * Calculates analytics statistics from real-time device, alert, and MQTT data.
+ * Calculates analytics statistics from real-time device, alert, and system health data.
  * Pure UI logic - does NOT fetch data or call services.
  * 
  * ✅ LOCAL HOOK - UI-specific calculations only
@@ -12,13 +12,13 @@
  */
 
 import { useMemo } from 'react';
-import type { DeviceWithSensorData } from '../../../../hooks';
+import type { DeviceWithReadings } from '../../../../schemas';
 import type { WaterQualityAlert } from '../../../../schemas';
-import type { MqttBridgeHealth } from '../../../../services/mqtt.service';
-import { calculateSystemHealth } from '../../AdminDashboard/utils';
+import type { SystemHealth } from '../../../../services/health.Service';
+import { calculateSystemHealth, type AlertScoreBreakdown } from '../../AdminDashboard/utils';
 import { 
   HEALTH_COLORS,
-  calculateMqttBridgeHealthScore 
+  calculateServerHealthScore 
 } from '../../AdminDashboard/config';
 
 /**
@@ -64,14 +64,14 @@ export interface WaterQualityMetrics {
 }
 
 /**
- * System health summary
+ * System health summary for analytics
  */
-export interface SystemHealth {
+export interface SystemHealthSummary {
   overallScore: number;
   status: 'Healthy' | 'Degraded' | 'Unhealthy';
   color: string;
   components: {
-    mqttBridge: {
+    expressServer: {
       score: number;
       weight: number;
       contribution: number;
@@ -87,7 +87,7 @@ export interface SystemHealth {
       score: number;
       weight: number;
       contribution: number;
-      breakdown: any;
+      breakdown: AlertScoreBreakdown;
     };
   };
 }
@@ -95,7 +95,7 @@ export interface SystemHealth {
 /**
  * Calculate device statistics
  */
-const calculateDeviceStats = (devices: DeviceWithSensorData[]): DeviceStats => {
+const calculateDeviceStats = (devices: DeviceWithReadings[]): DeviceStats => {
   return {
     total: devices.length,
     online: devices.filter((d) => d.status === 'online').length,
@@ -126,7 +126,7 @@ const calculateAlertStats = (alerts: WaterQualityAlert[]): AlertStats => {
 /**
  * Calculate water quality metrics from device readings
  */
-const calculateWaterQualityMetrics = (devices: DeviceWithSensorData[]): WaterQualityMetrics => {
+const calculateWaterQualityMetrics = (devices: DeviceWithReadings[]): WaterQualityMetrics => {
   const phReadings: number[] = [];
   const tdsReadings: number[] = [];
   const turbidityReadings: number[] = [];
@@ -173,28 +173,27 @@ const calculateWaterQualityMetrics = (devices: DeviceWithSensorData[]): WaterQua
 };
 
 /**
- * Calculate system health from MQTT, devices, and alerts
+ * Calculate system health from Express server, devices, and alerts
  */
 const calculateSystemHealthSummary = (
-  devices: DeviceWithSensorData[],
+  devices: DeviceWithReadings[],
   alerts: WaterQualityAlert[],
-  mqttHealth: MqttBridgeHealth | null,
-  mqttMemory: { rss: number; heapTotal: number; heapUsed: number } | null
-): SystemHealth => {
-  // Calculate MQTT Bridge health score
-  const mqttScore = mqttHealth && mqttMemory
-    ? calculateMqttBridgeHealthScore(
-        mqttMemory.rss,
-        mqttHealth.checks?.cpu?.current || 0,
-        mqttHealth.checks?.mqtt?.connected || false,
-        mqttHealth.status
+  systemHealthData: SystemHealth | null
+): SystemHealthSummary => {
+  // Calculate Express server health score
+  const serverScore = systemHealthData
+    ? calculateServerHealthScore(
+        systemHealthData.checks?.memory?.usage?.rss ? systemHealthData.checks.memory.usage.rss * 1024 * 1024 : 0,
+        0, // CPU not available from health endpoint
+        systemHealthData.checks?.database?.status === 'OK',
+        systemHealthData.status === 'OK' ? 'healthy' : systemHealthData.status === 'DEGRADED' ? 'degraded' : 'unhealthy'
       )
     : 0;
 
   // Calculate system health
   const deviceStats = calculateDeviceStats(devices);
   const healthResult = calculateSystemHealth(
-    mqttScore,
+    serverScore,
     deviceStats.online,
     deviceStats.total,
     alerts
@@ -269,7 +268,7 @@ const calculateComplianceStatus = (metrics: WaterQualityMetrics) => {
 /**
  * Calculate device performance metrics
  */
-const calculateDevicePerformance = (devices: DeviceWithSensorData[], alerts: WaterQualityAlert[]) => {
+const calculateDevicePerformance = (devices: DeviceWithReadings[], alerts: WaterQualityAlert[]) => {
   return devices.map(device => {
     const deviceAlerts = alerts.filter(a => a.deviceId === device.deviceId);
     
@@ -308,14 +307,14 @@ const calculateDevicePerformance = (devices: DeviceWithSensorData[], alerts: Wat
     const uptimePercentage = device.status === 'online' ? 95 : 20; // Simplified for now
     
     // Get location string - metadata is a flexible record type
-    const metadata = device.metadata as any;
+    const metadata = device.metadata as Record<string, { building?: string; floor?: string | number }> | undefined;
     const location = metadata?.location 
       ? `${metadata.location.building} - Floor ${metadata.location.floor}`
       : undefined;
 
     return {
       deviceId: device.deviceId,
-      deviceName: device.deviceName || `Device ${device.deviceId}`,
+      deviceName: device.name || `Device ${device.deviceId}`,
       location,
       uptimePercentage,
       totalReadings: 1, // Would need historical data
@@ -332,7 +331,7 @@ const calculateDevicePerformance = (devices: DeviceWithSensorData[], alerts: Wat
 /**
  * Calculate aggregated metrics for historical trends
  */
-const calculateAggregatedMetrics = (devices: DeviceWithSensorData[]) => {
+const calculateAggregatedMetrics = (devices: DeviceWithReadings[]) => {
   // For now, create a simple aggregation from current readings
   // In a real scenario, this would aggregate historical data by time periods
   if (devices.length === 0) return [];
@@ -361,10 +360,9 @@ const calculateAggregatedMetrics = (devices: DeviceWithSensorData[]) => {
  * Pure calculation hook - no side effects or data fetching.
  * Memoized for performance.
  * 
- * @param devices - Array of devices with sensor data
+ * @param devices - Array of devices with sensor data (enriched with readings)
  * @param alerts - Array of water quality alerts
- * @param mqttHealth - MQTT Bridge health data
- * @param mqttStatus - MQTT Bridge status data
+ * @param systemHealthData - Express server health data from /health endpoint
  * @returns Object containing all analytics statistics
  * 
  * @example
@@ -377,21 +375,20 @@ const calculateAggregatedMetrics = (devices: DeviceWithSensorData[]) => {
  *   complianceStatus,
  *   devicePerformance,
  *   aggregatedMetrics,
- * } = useAnalyticsStats(devices, alerts, mqttHealth, mqttStatus);
+ * } = useAnalyticsStats(devices, alerts, systemHealthData);
  * ```
  */
 export const useAnalyticsStats = (
-  devices: DeviceWithSensorData[],
+  devices: DeviceWithReadings[],
   alerts: WaterQualityAlert[],
-  mqttHealth: MqttBridgeHealth | null,
-  mqttStatus: any | null
+  systemHealthData: SystemHealth | null
 ) => {
   const deviceStats = useMemo(() => calculateDeviceStats(devices), [devices]);
   const alertStats = useMemo(() => calculateAlertStats(alerts), [alerts]);
   const waterQualityMetrics = useMemo(() => calculateWaterQualityMetrics(devices), [devices]);
   const systemHealth = useMemo(
-    () => calculateSystemHealthSummary(devices, alerts, mqttHealth, mqttStatus?.memory || null),
-    [devices, alerts, mqttHealth, mqttStatus]
+    () => calculateSystemHealthSummary(devices, alerts, systemHealthData),
+    [devices, alerts, systemHealthData]
   );
   const complianceStatus = useMemo(() => calculateComplianceStatus(waterQualityMetrics), [waterQualityMetrics]);
   const devicePerformance = useMemo(() => calculateDevicePerformance(devices, alerts), [devices, alerts]);

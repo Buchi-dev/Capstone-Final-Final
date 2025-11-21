@@ -37,6 +37,8 @@ import {
 } from '@ant-design/icons';
 import type { UserListData, UserRole, UserStatus } from '../../../../schemas';
 import dayjs from 'dayjs';
+import { getErrorMessage } from '../../../../utils/errorHelpers';
+import { message as antMessage } from 'antd';
 
 const { Title, Text } = Typography;
 
@@ -48,23 +50,23 @@ interface UserActionsDrawerProps {
   onSaveProfile: (
     userId: string,
     profileData: {
-      firstname: string;
-      middlename: string;
-      lastname: string;
+      firstName: string;
+      middleName: string;
+      lastName: string;
       department: string;
       phoneNumber: string;
     }
   ) => Promise<void>;
-  onQuickStatusChange: (userId: string, status: UserStatus) => void;
-  onQuickRoleChange: (userId: string, role: UserRole) => void;
-  onDelete: (userId: string, userName: string) => void;
+  onQuickStatusChange: (userId: string, status: UserStatus) => Promise<void>;
+  onQuickRoleChange: (userId: string, role: UserRole) => Promise<void>;
+  onDelete: (userId: string, userName: string) => Promise<void>;
   loading?: boolean;
 }
 
 interface FormValues {
-  firstname: string;
-  middlename: string;
-  lastname: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
   department: string;
   phoneNumber: string;
 }
@@ -74,9 +76,9 @@ interface FormValues {
  */
 const getStatusColor = (status: UserStatus): string => {
   const colors: Record<UserStatus, string> = {
-    Approved: 'success',
-    Pending: 'warning',
-    Suspended: 'error',
+    active: 'success',
+    pending: 'warning',
+    suspended: 'error',
   };
   return colors[status] || 'default';
 };
@@ -86,9 +88,9 @@ const getStatusColor = (status: UserStatus): string => {
  */
 const getStatusIcon = (status: UserStatus) => {
   const icons: Record<UserStatus, React.ReactNode> = {
-    Approved: <CheckCircleOutlined />,
-    Pending: <ExclamationCircleOutlined />,
-    Suspended: <StopOutlined />,
+    active: <CheckCircleOutlined />,
+    pending: <ExclamationCircleOutlined />,
+    suspended: <StopOutlined />,
   };
   return icons[status] || null;
 };
@@ -98,8 +100,8 @@ const getStatusIcon = (status: UserStatus) => {
  */
 const getRoleColor = (role: UserRole): string => {
   const colors: Record<UserRole, string> = {
-    Admin: 'red',
-    Staff: 'blue',
+    admin: 'red',
+    staff: 'blue',
   };
   return colors[role] || 'default';
 };
@@ -117,6 +119,9 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
 }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [form] = Form.useForm<FormValues>();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isChangingStatus, setIsChangingStatus] = useState(false);
+  const [isChangingRole, setIsChangingRole] = useState(false);
   
   // Local state to track current user data for instant updates
   const [currentUser, setCurrentUser] = useState<UserListData | null>(user);
@@ -135,6 +140,9 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
   useEffect(() => {
     if (!open) {
       setIsEditMode(false);
+      setIsDeleting(false);
+      setIsChangingStatus(false);
+      setIsChangingRole(false);
       form.resetFields();
     }
   }, [open, form]);
@@ -143,10 +151,10 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
   useEffect(() => {
     if (currentUser) {
       form.setFieldsValue({
-        firstname: currentUser.firstname,
-        middlename: currentUser.middlename,
-        lastname: currentUser.lastname,
-        department: currentUser.department,
+        firstName: currentUser.firstName || '',
+        middleName: currentUser.middleName || '',
+        lastName: currentUser.lastName || '',
+        department: currentUser.department || '',
         phoneNumber: currentUser.phoneNumber || '',
       });
     }
@@ -154,7 +162,10 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
 
   if (!currentUser) return null;
 
-  const userName = `${currentUser.firstname} ${currentUser.lastname}`;
+  // Join name parts conditionally to avoid extra whitespace
+  const userName = [currentUser.firstName, currentUser.middleName, currentUser.lastName]
+    .filter(Boolean)
+    .join(' ') || 'Unknown User';
 
   /**
    * Handle delete user with confirmation
@@ -181,9 +192,20 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
       okText: 'Delete User',
       okType: 'danger',
       cancelText: 'Cancel',
-      onOk: () => {
-        onDelete(currentUser.id, userName);
-        onClose();
+      onOk: async () => {
+        setIsDeleting(true);
+        try {
+          await onDelete(currentUser.id, userName);
+          // Only close drawer on successful deletion
+          onClose();
+        } catch (error) {
+          const errorMsg = getErrorMessage(error);
+          antMessage.error(errorMsg);
+          console.error('[UserActionsDrawer] Delete failed:', errorMsg);
+          // Keep drawer open on failure
+        } finally {
+          setIsDeleting(false);
+        }
       },
     });
   };
@@ -203,10 +225,10 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
     // Reset form to original values
     if (currentUser) {
       form.setFieldsValue({
-        firstname: currentUser.firstname,
-        middlename: currentUser.middlename,
-        lastname: currentUser.lastname,
-        department: currentUser.department,
+        firstName: currentUser.firstName || '',
+        middleName: currentUser.middleName || '',
+        lastName: currentUser.lastName || '',
+        department: currentUser.department || '',
         phoneNumber: currentUser.phoneNumber || '',
       });
     }
@@ -231,9 +253,11 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
   };
 
   /**
-   * Handle status change with instant local update
+   * Handle status change with error handling and rollback
    */
-  const handleStatusChange = (status: UserStatus) => {
+  const handleStatusChange = async (status: UserStatus) => {
+    const previousStatus = currentUser.status;
+    
     // Warn if changing own status
     if (isOwnProfile) {
       Modal.confirm({
@@ -248,38 +272,70 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
             <ul style={{ color: '#666', marginLeft: 20 }}>
               <li>Log you out immediately after the change</li>
               <li>You will need to log back in</li>
-              {status === 'Suspended' && <li style={{ color: '#ff4d4f' }}><strong>Suspend your own account</strong> - you won't be able to log back in!</li>}
+              {status === 'suspended' && <li style={{ color: '#ff4d4f' }}><strong>Suspend your own account</strong> - you won't be able to log back in!</li>}
             </ul>
             <p style={{ marginTop: 12 }}>Are you sure you want to continue?</p>
           </div>
         ),
         okText: 'Yes, Change Status',
-        okType: status === 'Suspended' ? 'danger' : 'primary',
+        okType: status === 'suspended' ? 'danger' : 'primary',
         cancelText: 'Cancel',
-        onOk: () => {
-          // Update local state immediately for instant UI feedback
+        onOk: async () => {
+          setIsChangingStatus(true);
+          // Optimistic update
           setCurrentUser({
             ...currentUser,
             status,
           });
-          // Call parent handler to persist changes
-          onQuickStatusChange(currentUser.id, status);
+          
+          try {
+            await onQuickStatusChange(currentUser.id, status);
+          } catch (error) {
+            // Rollback on failure
+            setCurrentUser({
+              ...currentUser,
+              status: previousStatus,
+            });
+            const errorMsg = getErrorMessage(error);
+            antMessage.error(errorMsg);
+            console.error('[UserActionsDrawer] Status change failed:', errorMsg);
+          } finally {
+            setIsChangingStatus(false);
+          }
         },
       });
     } else {
-      // Not own profile, update normally
+      // Not own profile, update with error handling
+      setIsChangingStatus(true);
+      // Optimistic update
       setCurrentUser({
         ...currentUser,
         status,
       });
-      onQuickStatusChange(currentUser.id, status);
+      
+      try {
+        await onQuickStatusChange(currentUser.id, status);
+      } catch (error) {
+        // Rollback on failure
+        setCurrentUser({
+          ...currentUser,
+          status: previousStatus,
+        });
+        const errorMsg = getErrorMessage(error);
+        antMessage.error(errorMsg);
+        console.error('[UserActionsDrawer] Status change failed:', errorMsg);
+      } finally {
+        setIsChangingStatus(false);
+      }
     }
   };
 
   /**
-   * Handle role change with instant local update
+   * Handle role change with error handling and rollback
    */
-  const handleRoleChange = (role: UserRole) => {
+  const handleRoleChange = async (role: UserRole) => {
+    const previousRole = currentUser.role;
+    
     // Warn if changing own role
     if (isOwnProfile) {
       Modal.confirm({
@@ -295,7 +351,7 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
               <li>Log you out immediately after the change</li>
               <li>Update your access permissions</li>
               <li>You will need to log back in</li>
-              {role === 'Staff' && <li style={{ color: '#ff4d4f' }}><strong>Remove your Admin privileges</strong></li>}
+              {role === 'staff' && <li style={{ color: '#ff4d4f' }}><strong>Remove your Admin privileges</strong></li>}
             </ul>
             <p style={{ marginTop: 12 }}>Are you sure you want to continue?</p>
           </div>
@@ -303,23 +359,53 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
         okText: 'Yes, Change Role',
         okType: 'primary',
         cancelText: 'Cancel',
-        onOk: () => {
-          // Update local state immediately for instant UI feedback
+        onOk: async () => {
+          setIsChangingRole(true);
+          // Optimistic update
           setCurrentUser({
             ...currentUser,
             role,
           });
-          // Call parent handler to persist changes
-          onQuickRoleChange(currentUser.id, role);
+          
+          try {
+            await onQuickRoleChange(currentUser.id, role);
+          } catch (error) {
+            // Rollback on failure
+            setCurrentUser({
+              ...currentUser,
+              role: previousRole,
+            });
+            const errorMsg = getErrorMessage(error);
+            antMessage.error(errorMsg);
+            console.error('[UserActionsDrawer] Role change failed:', errorMsg);
+          } finally {
+            setIsChangingRole(false);
+          }
         },
       });
     } else {
-      // Not own profile, update normally
+      // Not own profile, update with error handling
+      setIsChangingRole(true);
+      // Optimistic update
       setCurrentUser({
         ...currentUser,
         role,
       });
-      onQuickRoleChange(currentUser.id, role);
+      
+      try {
+        await onQuickRoleChange(currentUser.id, role);
+      } catch (error) {
+        // Rollback on failure
+        setCurrentUser({
+          ...currentUser,
+          role: previousRole,
+        });
+        const errorMsg = getErrorMessage(error);
+        antMessage.error(errorMsg);
+        console.error('[UserActionsDrawer] Role change failed:', errorMsg);
+      } finally {
+        setIsChangingRole(false);
+      }
     }
   };
 
@@ -336,7 +422,7 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
             />
           )}
           <Avatar size={40} icon={<UserOutlined />} style={{ backgroundColor: '#1890ff' }}>
-            {currentUser.firstname[0]}{currentUser.lastname[0]}
+            {(currentUser.firstName?.[0] || '')}{(currentUser.lastName?.[0] || '')}
           </Avatar>
           <div>
             <Title level={5} style={{ margin: 0 }}>
@@ -373,18 +459,18 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
     >
       {isEditMode ? (
         // EDIT MODE - Show Edit Form
-        <div>
-            <Form
-              form={form}
-              layout="vertical"
-              initialValues={{
-                firstname: currentUser.firstname,
-                middlename: currentUser.middlename,
-                lastname: currentUser.lastname,
-                department: currentUser.department,
-                phoneNumber: currentUser.phoneNumber || '',
-              }}
-            >
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{
+            firstName: currentUser.firstName || '',
+            middleName: currentUser.middleName || '',
+            lastName: currentUser.lastName || '',
+            department: currentUser.department || '',
+            phoneNumber: currentUser.phoneNumber || '',
+          }}
+        >
+          <div>
               {/* Current Read-Only Info */}
               <div style={{ marginBottom: 24, padding: 16, backgroundColor: '#f5f5f5', borderRadius: 8 }}>
                 <Text strong style={{ display: 'block', marginBottom: 12 }}>
@@ -398,13 +484,13 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                   <Col span={12}>
                     <Text type="secondary">Status: </Text>
                     <Tag icon={getStatusIcon(currentUser.status)} color={getStatusColor(currentUser.status)}>
-                      {currentUser.status}
+                      {currentUser.status === 'active' ? 'Active' : currentUser.status === 'pending' ? 'Pending' : 'Suspended'}
                     </Tag>
                   </Col>
                   <Col span={12}>
                     <Text type="secondary">Role: </Text>
                     <Tag color={getRoleColor(currentUser.role)}>
-                      {currentUser.role}
+                      {currentUser.role === 'admin' ? 'Admin' : 'Staff'}
                     </Tag>
                   </Col>
                 </Row>
@@ -414,7 +500,7 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
             <Row gutter={16}>
               <Col span={8}>
                 <Form.Item
-                  name="firstname"
+                  name="firstName"
                   label="First Name"
                   rules={[
                     { required: true, message: 'First name is required' },
@@ -432,7 +518,7 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
 
               <Col span={8}>
                 <Form.Item
-                  name="middlename"
+                  name="middleName"
                   label="Middle Name"
                   rules={[
                     { max: 50, message: 'Max 50 characters' },
@@ -447,7 +533,7 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
 
               <Col span={8}>
                 <Form.Item
-                  name="lastname"
+                  name="lastName"
                   label="Last Name"
                   rules={[
                     { required: true, message: 'Last name is required' },
@@ -503,12 +589,12 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                 onChange={(e) => {
                   // Auto-strip non-digits
                   const digitsOnly = e.target.value.replace(/\D/g, '');
-                  form.setFieldValue('phoneNumber', digitsOnly);
+                  form.setFieldsValue({ phoneNumber: digitsOnly });
                 }}
               />
             </Form.Item>
-          </Form>
-        </div>
+          </div>
+        </Form>
       ) : (
         // VIEW MODE - Show User Details and Actions
         <>
@@ -658,14 +744,15 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                     <Col span={12}>
                       <Button
                         icon={<CheckCircleOutlined />}
-                        disabled={currentUser.status === 'Approved'}
-                        onClick={() => handleStatusChange('Approved')}
+                        disabled={currentUser.status === 'active' || isChangingStatus || loading}
+                        loading={isChangingStatus}
+                        onClick={() => handleStatusChange('active')}
                         size="large"
                         block
                         style={{ 
-                          backgroundColor: currentUser.status === 'Approved' ? undefined : '#f6ffed',
-                          borderColor: currentUser.status === 'Approved' ? undefined : '#52c41a',
-                          color: currentUser.status === 'Approved' ? undefined : '#52c41a',
+                          backgroundColor: currentUser.status === 'active' ? undefined : '#f6ffed',
+                          borderColor: currentUser.status === 'active' ? undefined : '#52c41a',
+                          color: currentUser.status === 'active' ? undefined : '#52c41a',
                           fontWeight: 500,
                           height: 44,
                         }}
@@ -676,9 +763,10 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                     <Col span={12}>
                       <Button
                         icon={<StopOutlined />}
-                        disabled={currentUser.status === 'Suspended'}
-                        onClick={() => handleStatusChange('Suspended')}
-                        danger={currentUser.status !== 'Suspended'}
+                        disabled={currentUser.status === 'suspended' || isChangingStatus || loading}
+                        loading={isChangingStatus}
+                        onClick={() => handleStatusChange('suspended')}
+                        danger={currentUser.status !== 'suspended'}
                         size="large"
                         block
                         style={{
@@ -714,14 +802,15 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                   <Row gutter={12}>
                     <Col span={12}>
                       <Button
-                        disabled={currentUser.role === 'Admin'}
-                        onClick={() => handleRoleChange('Admin')}
+                        disabled={currentUser.role === 'admin' || isChangingRole || loading}
+                        loading={isChangingRole}
+                        onClick={() => handleRoleChange('admin')}
                         size="large"
                         block
                         style={{ 
-                          backgroundColor: currentUser.role === 'Admin' ? undefined : '#fff1f0',
-                          borderColor: currentUser.role === 'Admin' ? undefined : '#ff4d4f',
-                          color: currentUser.role === 'Admin' ? undefined : '#ff4d4f',
+                          backgroundColor: currentUser.role === 'admin' ? undefined : '#fff1f0',
+                          borderColor: currentUser.role === 'admin' ? undefined : '#ff4d4f',
+                          color: currentUser.role === 'admin' ? undefined : '#ff4d4f',
                           fontWeight: 500,
                           height: 44,
                         }}
@@ -731,14 +820,15 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                     </Col>
                     <Col span={12}>
                       <Button
-                        disabled={currentUser.role === 'Staff'}
-                        onClick={() => handleRoleChange('Staff')}
+                        disabled={currentUser.role === 'staff' || isChangingRole || loading}
+                        loading={isChangingRole}
+                        onClick={() => handleRoleChange('staff')}
                         size="large"
                         block
                         style={{ 
-                          backgroundColor: currentUser.role === 'Staff' ? undefined : '#e6f7ff',
-                          borderColor: currentUser.role === 'Staff' ? undefined : '#1890ff',
-                          color: currentUser.role === 'Staff' ? undefined : '#1890ff',
+                          backgroundColor: currentUser.role === 'staff' ? undefined : '#e6f7ff',
+                          borderColor: currentUser.role === 'staff' ? undefined : '#1890ff',
+                          color: currentUser.role === 'staff' ? undefined : '#1890ff',
                           fontWeight: 500,
                           height: 44,
                         }}
@@ -782,7 +872,8 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                       size="large"
                       block
                       onClick={handleDeleteClick}
-                      disabled={isOwnProfile}
+                      disabled={isOwnProfile || isDeleting || loading}
+                      loading={isDeleting}
                       style={{
                         fontWeight: 600,
                         height: 44,

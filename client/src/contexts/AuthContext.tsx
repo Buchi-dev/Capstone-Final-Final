@@ -1,152 +1,171 @@
 /**
  * Authentication Context
  * Provides authentication state and user data throughout the application
+ * Uses Express/Passport.js session-based authentication
  */
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import type { ReactNode } from "react";
+import { authService, type AuthUser } from "../services/auth.Service";
+import { auth } from "../config/firebase.config";
 import { onAuthStateChanged } from "firebase/auth";
-import type { User } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
-import { auth, db } from "../config/firebase";
+import { initializeSocket, disconnectSocket } from "../utils/socket";
+import { AuthContext, type AuthContextType } from "./auth.context";
 
-// User status types
-export type UserStatus = "Pending" | "Approved" | "Suspended";
-export type UserRole = "Staff" | "Admin";
-
-// Extended user profile from Firestore
-export interface UserProfile {
-  uuid: string;
-  firstname: string;
-  lastname: string;
-  middlename: string;
-  department: string;
-  phoneNumber: string;
-  email: string;
-  role: UserRole;
-  status: UserStatus;
-  createdAt: Date;
-  updatedAt?: Date;
-  lastLogin?: Date;
-}
-
-// Auth context state
-interface AuthContextType {
-  user: User | null;
-  userProfile: UserProfile | null;
-  loading: boolean;
-  isAuthenticated: boolean;
-  isApproved: boolean;
-  isPending: boolean;
-  isSuspended: boolean;
-  isAdmin: boolean;
-  isStaff: boolean;
-}
-
-// Create context with undefined default
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// User status types (mapped from MongoDB model)
+export type UserStatus = "active" | "pending" | "suspended";
+export type UserRole = "admin" | "staff";
 
 /**
  * Auth Provider Component
  * Wraps the app and provides authentication state
+ * Uses session-based auth with periodic checks
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [firebaseReady, setFirebaseReady] = useState(false);
+  
+  // Track if listener has been initialized to prevent duplicates
+  const listenerInitialized = useRef(false);
+  const socketInitialized = useRef(false);
 
-  useEffect(() => {
-    // Subscribe to auth state changes
-    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      setUser(firebaseUser);
-
-      if (firebaseUser) {
-        // Force refresh ID token to get latest custom claims (role, status)
-        // This ensures the token includes claims set by beforeSignIn blocking function
-        try {
-          await firebaseUser.getIdToken(true);
-        } catch (error) {
-          console.error("Error refreshing token:", error);
-        }
-
-        // Subscribe to user profile changes in Firestore
-        const userDocRef = doc(db, "users", firebaseUser.uid);
-        
-        const unsubscribeProfile = onSnapshot(
-          userDocRef,
-          (docSnapshot) => {
-            if (docSnapshot.exists()) {
-              const data = docSnapshot.data();
-              setUserProfile({
-                uuid: data.uuid,
-                firstname: data.firstname || "",
-                lastname: data.lastname || "",
-                middlename: data.middlename || "",
-                department: data.department || "",
-                phoneNumber: data.phoneNumber || "",
-                email: data.email || "",
-                role: data.role || "Staff",
-                status: data.status || "Pending",
-                createdAt: data.createdAt?.toDate() || new Date(),
-                updatedAt: data.updatedAt?.toDate(),
-                lastLogin: data.lastLogin?.toDate(),
-              } as UserProfile);
-            } else {
-              setUserProfile(null);
-            }
-            setLoading(false);
-          },
-          (error) => {
-            console.error("Error fetching user profile:", error);
-            setUserProfile(null);
-            setLoading(false);
-          }
-        );
-
-        // Cleanup profile listener
-        return () => unsubscribeProfile();
+  /**
+   * Fetch current user from backend
+   */
+  const fetchUser = useCallback(async () => {
+    try {
+      const { authenticated, user: userData } = await authService.checkAuthStatus();
+      
+      if (authenticated && userData) {
+        setUser(userData);
       } else {
-        // User signed out
-        setUserProfile(null);
+        setUser(null);
+      }
+    } catch (error) {
+      console.error("[AuthContext] Error fetching user:", error);
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /**
+   * Manual refetch function for UI components
+   */
+  const refetchUser = useCallback(async () => {
+    await fetchUser();
+  }, [fetchUser]);
+
+  // Listen to Firebase auth state changes (SINGLE INITIALIZATION)
+  useEffect(() => {
+    // Prevent duplicate listener setup
+    if (listenerInitialized.current) {
+      if (import.meta.env.DEV) {
+        console.warn('[AuthContext] Listener already initialized, skipping duplicate setup');
+      }
+      return;
+    }
+
+    listenerInitialized.current = true;
+    
+    if (import.meta.env.DEV) {
+      console.log('[AuthContext] Setting up Firebase auth listener (once)...');
+    }
+    
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (import.meta.env.DEV) {
+        console.log('[AuthContext] Firebase auth state changed:', firebaseUser?.email || 'No user');
+      }
+      
+      if (firebaseUser) {
+        // User is signed in with Firebase
+        setFirebaseReady(true);
+        
+        // Initialize Socket.IO connection once
+        if (!socketInitialized.current) {
+          socketInitialized.current = true;
+          if (import.meta.env.DEV) {
+            console.log('[AuthContext] User authenticated, connecting to Socket.IO...');
+          }
+          try {
+            await initializeSocket();
+            if (import.meta.env.DEV) {
+              console.log('[AuthContext] Socket.IO connected successfully');
+            }
+          } catch (socketError) {
+            console.error('[AuthContext] Failed to connect to Socket.IO:', socketError);
+            socketInitialized.current = false; // Allow retry on error
+            // Non-fatal error, app can still work with HTTP polling
+          }
+        }
+        
+        // Fetch user data from backend
+        fetchUser();
+      } else {
+        // User is signed out
+        if (import.meta.env.DEV) {
+          console.log('[AuthContext] User logged out, disconnecting Socket.IO...');
+        }
+        disconnectSocket();
+        socketInitialized.current = false;
+        
+        setFirebaseReady(true);
+        setUser(null);
         setLoading(false);
       }
     });
 
-    // Cleanup auth listener
-    return () => unsubscribeAuth();
-  }, []);
+    return () => {
+      unsubscribe();
+      listenerInitialized.current = false;
+    };
+  }, [fetchUser]); // fetchUser is stable due to useCallback
+
+  // Set up periodic auth check (every 5 minutes)
+  useEffect(() => {
+    if (!firebaseReady) return;
+
+    if (import.meta.env.DEV) {
+      console.log('[AuthContext] Setting up periodic auth check (5 min interval)');
+    }
+
+    const interval = setInterval(() => {
+      if (auth.currentUser) {
+        if (import.meta.env.DEV) {
+          console.log('[AuthContext] Periodic auth check...');
+        }
+        fetchUser();
+      }
+    }, 5 * 60 * 1000); // 5 minutes
+
+    return () => {
+      clearInterval(interval);
+      if (import.meta.env.DEV) {
+        console.log('[AuthContext] Cleaning up periodic auth check');
+      }
+    };
+  }, [firebaseReady, fetchUser]);
 
   // Computed values
   const isAuthenticated = !!user;
-  const isApproved = userProfile?.status === "Approved";
-  const isPending = userProfile?.status === "Pending";
-  const isSuspended = userProfile?.status === "Suspended";
-  const isAdmin = userProfile?.role === "Admin";
-  const isStaff = userProfile?.role === "Staff";
+  const isActive = user?.status === "active";
+  const isPending = user?.status === "pending";
+  const isSuspended = user?.status === "suspended";
+  const isAdmin = user?.role === "admin";
+  const isStaff = user?.role === "staff";
 
   const value: AuthContextType = {
     user,
-    userProfile,
     loading,
     isAuthenticated,
-    isApproved,
+    isActive,
     isPending,
     isSuspended,
     isAdmin,
     isStaff,
+    refetchUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-/**
- * Custom hook to use auth context
- * Throws error if used outside AuthProvider
- */
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
 }

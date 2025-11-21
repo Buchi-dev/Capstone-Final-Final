@@ -38,7 +38,7 @@ export const useReportHistory = () => {
   const loadReportHistory = () => {
     try {
       const history = JSON.parse(localStorage.getItem('reportHistory') || '[]');
-      setReportHistory(history.map((item: any) => ({
+      setReportHistory(history.map((item: { generatedAt: string | Date }) => ({
         ...item,
         generatedAt: new Date(item.generatedAt)
       })));

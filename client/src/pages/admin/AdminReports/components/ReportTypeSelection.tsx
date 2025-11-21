@@ -6,7 +6,6 @@
  */
 import { Card, Row, Col, Space, Typography, Tag, Badge, Tooltip } from 'antd';
 import {
-  ExperimentOutlined,
   ArrowRightOutlined,
   StarOutlined,
   FileTextOutlined,
@@ -168,14 +167,3 @@ export const ReportTypeSelection = ({
     </Card>
   );
 };
-
-export const getReportTypes = (token: any): ReportTypeOption[] => [
-  {
-    key: 'water_quality',
-    title: 'Water Quality Report',
-    description: 'Comprehensive analysis of water quality parameters including turbidity, TDS, pH levels, and compliance assessment against WHO standards',
-    icon: <ExperimentOutlined />,
-    color: token.colorInfo,
-    popular: true,
-  },
-];

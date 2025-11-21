@@ -19,7 +19,7 @@ import {
   HomeOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
-import { ROUTES } from '../../router';
+import { ROUTES } from '../../router/routes';
 import UserMenu from '../UserMenu';
 import AlertNotificationCenter from '../AlertNotificationCenter';
 

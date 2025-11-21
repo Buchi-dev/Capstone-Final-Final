@@ -2,7 +2,7 @@
  * StaffAnalytics - Data Analytics View for Staff Role
  * Displays water quality trends and analytics
  * 
- * Architecture: Uses global hook useRealtime_Devices()
+ * Architecture: Uses global hook useDevices()
  */
 
 import { useMemo } from 'react';
@@ -16,7 +16,7 @@ import {
 } from '@ant-design/icons';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
-import { useRealtime_Devices, type DeviceWithSensorData } from '@/hooks';
+import { useDevices } from '../../../hooks';
 import { PageHeader, StatsCard, PageContainer, DataCard } from '../../../components/staff';
 import { Typography } from 'antd';
 import {
@@ -38,17 +38,19 @@ const { Text } = Typography;
 export const StaffAnalytics = () => {
   const token = useThemeToken();
   
-  // Use global hook for real-time device data
-  const { devices: realtimeDevices, isLoading, refetch } = useRealtime_Devices();
+  // ✅ GLOBAL HOOK - Real-time device data with SWR polling
+  const { devices: realtimeDevices, isLoading, refetch } = useDevices({ 
+    pollInterval: 30000 // Poll every 30 seconds for analytics
+  });
 
-  const handleRefresh = () => {
-    refetch();
+  const handleRefresh = async () => {
+    await refetch();
   };
 
   // Calculate analytics data from real-time devices
   const analyticsData = useMemo(() => {
     const devicesWithReadings = realtimeDevices.filter(
-      (d: DeviceWithSensorData) => d.latestReading !== null
+      (d) => d.latestReading !== null
     );
 
     if (devicesWithReadings.length === 0) {
@@ -60,16 +62,21 @@ export const StaffAnalytics = () => {
       };
     }
 
-    const deviceStats: any[] = [];
+    const deviceStats: Array<{
+      device: string;
+      ph: number;
+      turbidity: number;
+      tds: number;
+    }> = [];
     let totalPh = 0, totalTurbidity = 0, totalTds = 0;
     let count = 0;
 
-    devicesWithReadings.forEach((device: DeviceWithSensorData) => {
+    devicesWithReadings.forEach((device) => {
       const reading = device.latestReading;
       if (!reading) return;
 
       deviceStats.push({
-        device: device.deviceName || device.deviceId,
+        device: device.name || device.deviceId,
         ph: reading.ph ? Number(reading.ph.toFixed(2)) : 0,
         turbidity: reading.turbidity ? Number(reading.turbidity.toFixed(2)) : 0,
         tds: reading.tds ? Number(reading.tds.toFixed(2)) : 0,
@@ -235,13 +242,13 @@ export const StaffAnalytics = () => {
                 </div>
                 <Divider style={{ margin: '8px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Text>Temperature:</Text>
-                  <Text strong style={{ color: token.colorSuccess }}>Normal</Text>
+                  <Text>Turbidity:</Text>
+                  <Text strong style={{ color: token.colorWarning }}>Moderate</Text>
                 </div>
                 <Divider style={{ margin: '8px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Text>Turbidity:</Text>
-                  <Text strong style={{ color: token.colorWarning }}>Moderate</Text>
+                  <Text>TDS:</Text>
+                  <Text strong style={{ color: token.colorSuccess }}>Normal</Text>
                 </div>
               </Space>
             </DataCard>

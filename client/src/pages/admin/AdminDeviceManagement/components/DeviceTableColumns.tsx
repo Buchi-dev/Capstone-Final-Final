@@ -1,5 +1,6 @@
 import type { ColumnsType } from 'antd/es/table';
 import { Space, Tag, Tooltip, Button, Typography } from 'antd';
+import type { GlobalToken } from 'antd/es/theme/interface';
 import {
   DeleteOutlined,
   EyeOutlined,
@@ -27,7 +28,7 @@ const statusConfig: Record<DeviceStatus, { color: string; icon: ReactNode }> = {
 
 interface UseDeviceColumnsProps {
   activeTab: 'registered' | 'unregistered';
-  token: any;
+  token: GlobalToken;
   onView: (device: Device) => void;
   onDelete: (device: Device) => void;
   onRegister: (device: Device) => void;
@@ -144,7 +145,7 @@ export const useDeviceColumns = ({
           <Space size="small" style={{ width: '100%' }}>
             <EnvironmentOutlined
               style={{
-                color: registered ? token.colorSuccess : token.colorTextDisabled,
+                color: (registered ? token.colorSuccess : token.colorTextDisabled) as string,
                 fontSize: '14px',
               }}
             />
@@ -174,7 +175,7 @@ export const useDeviceColumns = ({
       render: (_, record) => (
         <Space direction="vertical" size={2}>
           <Space size="small">
-            <WifiOutlined style={{ color: token.colorPrimary, fontSize: '12px' }} />
+            <WifiOutlined style={{ color: token.colorPrimary as string, fontSize: '12px' }} />
             <Text code style={{ fontSize: '11px' }}>
               {record.ipAddress}
             </Text>
@@ -247,7 +248,7 @@ export const useDeviceColumns = ({
       render: (text) => (
         <Tooltip title={text}>
           <Space size="small">
-            <WarningOutlined style={{ color: token.colorWarning, fontSize: '14px' }} />
+            <WarningOutlined style={{ color: token.colorWarning as string, fontSize: '14px' }} />
             <Text strong code style={{ fontSize: '12px' }}>
               {text}
             </Text>
@@ -269,7 +270,7 @@ export const useDeviceColumns = ({
             </Tag>
           </Space>
           <Space size="small" wrap>
-            <WifiOutlined style={{ color: token.colorPrimary, fontSize: '12px' }} />
+            <WifiOutlined style={{ color: token.colorPrimary as string, fontSize: '12px' }} />
             <Text code style={{ fontSize: '11px' }}>
               {record.ipAddress}
             </Text>

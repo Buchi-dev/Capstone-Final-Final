@@ -18,6 +18,7 @@ import {
   Dropdown,
   Tooltip
 } from 'antd';
+import type { GlobalToken } from 'antd/es/theme/interface';
 import {
   FileTextOutlined,
   FilePdfOutlined,
@@ -38,7 +39,7 @@ const { Text, Paragraph } = Typography;
 
 interface ReportHistorySidebarProps {
   reportHistory: ReportHistory[];
-  token: any;
+  token: GlobalToken;
   title?: string;
   showViewAll?: boolean;
   onViewAll?: () => void;
@@ -63,11 +64,11 @@ export const ReportHistorySidebar = ({
   onViewAll,
   fullView = false,
 }: ReportHistorySidebarProps) => {
-  const getReportTypeColor = (_type: string) => {
+  const getReportTypeColor = (/* _type?: string */) => {
     return 'blue';
   };
 
-  const getReportTypeLabel = (_type: string) => {
+  const getReportTypeLabel = (/* _type?: string */) => {
     return 'Water Quality';
   };
 
@@ -82,7 +83,7 @@ export const ReportHistorySidebar = ({
                 title="Total Reports"
                 value={reportHistory.length}
                 prefix={<FileTextOutlined />}
-                valueStyle={{ color: token.colorPrimary }}
+                valueStyle={{ color: token.colorPrimary as string }}
               />
             </Card>
           </Col>
@@ -94,7 +95,7 @@ export const ReportHistorySidebar = ({
                   dayjs(r.generatedAt).isAfter(dayjs().startOf('month'))
                 ).length}
                 prefix={<FilePdfOutlined />}
-                valueStyle={{ color: token.colorSuccess }}
+                valueStyle={{ color: token.colorSuccess as string }}
               />
             </Card>
           </Col>
@@ -104,7 +105,7 @@ export const ReportHistorySidebar = ({
                 title="Total Pages"
                 value={reportHistory.reduce((sum, r) => sum + (r.pages || 0), 0)}
                 prefix={<FileTextOutlined />}
-                valueStyle={{ color: token.colorInfo }}
+                valueStyle={{ color: token.colorInfo as string }}
               />
             </Card>
           </Col>
@@ -171,7 +172,7 @@ export const ReportHistorySidebar = ({
                     avatar={
                       <div style={{ 
                         fontSize: 32, 
-                        color: token.colorError,
+                        color: token.colorError as string,
                         display: 'flex',
                         alignItems: 'center'
                       }}>
@@ -182,8 +183,8 @@ export const ReportHistorySidebar = ({
                       <Space direction="vertical" size={4}>
                         <Text strong>{item.title}</Text>
                         <Space size={4} wrap>
-                          <Tag color={getReportTypeColor(item.type || '')}>
-                            {getReportTypeLabel(item.type || '')}
+                          <Tag color={getReportTypeColor()}>
+                            {getReportTypeLabel()}
                           </Tag>
                           <Tag color="blue">{item.devices} devices</Tag>
                           <Tag color="green">{item.pages} pages</Tag>
@@ -219,7 +220,7 @@ export const ReportHistorySidebar = ({
             title="Reports Generated"
             value={reportHistory.length}
             prefix={<FileTextOutlined />}
-            valueStyle={{ color: token.colorPrimary }}
+            valueStyle={{ color: token.colorPrimary as string }}
           />
         </Card>
       )}
@@ -267,7 +268,7 @@ export const ReportHistorySidebar = ({
                 <List.Item.Meta
                   avatar={
                     <FilePdfOutlined 
-                      style={{ fontSize: 24, color: token.colorError }} 
+                      style={{ fontSize: 24, color: token.colorError as string }} 
                     />
                   }
                   title={
@@ -285,8 +286,8 @@ export const ReportHistorySidebar = ({
                         {dayjs(item.generatedAt).format('MMM D, YYYY h:mm A')}
                       </Text>
                       <Space size={4} wrap>
-                        <Tag color={getReportTypeColor(item.type || '')} style={{ fontSize: 11 }}>
-                          {getReportTypeLabel(item.type || '')}
+                        <Tag color={getReportTypeColor()} style={{ fontSize: 11 }}>
+                          {getReportTypeLabel()}
                         </Tag>
                         <Tag color="blue" style={{ fontSize: 11 }}>
                           {item.devices} devices

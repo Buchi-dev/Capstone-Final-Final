@@ -181,9 +181,7 @@ export const RegisterDeviceModal = ({
             />
           </Form>
         </>
-      ) : (
-        <Form form={form} layout="vertical" style={{ display: 'none' }} />
-      )}
+      ) : null}
     </Modal>
   );
 };

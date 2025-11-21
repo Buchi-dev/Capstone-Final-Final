@@ -12,7 +12,7 @@
  * Architecture: Uses GLOBAL read hooks for real-time data
  */
 import { Layout, Space, Spin, Tabs } from 'antd';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { 
   DashboardOutlined, 
   LineChartOutlined, 
@@ -23,10 +23,11 @@ import {
 } from '@ant-design/icons';
 import { AdminLayout } from '../../../components/layouts';
 import { PageHeader } from '../../../components/PageHeader';
+import type { DeviceWithReadings } from '../../../schemas';
 import { 
-  useRealtime_Devices, 
-  useRealtime_Alerts,
-  useRealtime_MQTTMetrics 
+  useDevices,
+  useAlerts,
+  useSystemHealth
 } from '../../../hooks';
 import { useAnalyticsProcessing, useAnalyticsStats } from './hooks';
 import {
@@ -49,18 +50,28 @@ export const AdminAnalytics = memo(() => {
   const {
     devices,
     isLoading: devicesLoading,
-  } = useRealtime_Devices({ includeMetadata: true });
+  } = useDevices({ pollInterval: 15000 });
 
   const {
     alerts,
     isLoading: alertsLoading,
-  } = useRealtime_Alerts({ maxAlerts: 100 });
+  } = useAlerts({ pollInterval: 5000 });
 
   const {
-    health: mqttHealth,
-    status: mqttStatus,
-    isLoading: mqttLoading,
-  } = useRealtime_MQTTMetrics({ pollInterval: 3000 });
+    health: systemHealthData,
+    isLoading: healthLoading,
+  } = useSystemHealth({ pollInterval: 30000 });
+
+  // Enrich devices with required properties for analytics
+  const enrichedDevices = useMemo<DeviceWithReadings[]>(() => {
+    return devices.map(device => ({
+      ...device,
+      latestReading: null, // TODO: Fetch latest readings from RTDB
+      activeAlerts: alerts.filter(a => a.deviceId === device.deviceId && a.status === 'Active'),
+      severityScore: 0,
+      severityLevel: 'normal' as const,
+    }));
+  }, [devices, alerts]);
 
   // ✅ LOCAL HOOK - Calculate analytics statistics (UI logic only)
   const { 
@@ -71,20 +82,20 @@ export const AdminAnalytics = memo(() => {
     complianceStatus,
     devicePerformance,
     aggregatedMetrics,
-  } = useAnalyticsStats(devices, alerts, mqttHealth, mqttStatus);
+  } = useAnalyticsStats(enrichedDevices, alerts, systemHealthData);
 
   // ✅ LOCAL HOOK - Process data for charts (UI logic only)
   const { 
     timeSeriesData, 
     parameterDistribution, 
     parameterComparisonData 
-  } = useAnalyticsProcessing(devices);
+  } = useAnalyticsProcessing(enrichedDevices);
 
   // Combined loading state
-  const loading = devicesLoading || alertsLoading || mqttLoading;
+  const loading = devicesLoading || alertsLoading || healthLoading;
 
   // Initial loading state
-  if (loading && devices.length === 0) {
+  if (loading && enrichedDevices.length === 0) {
     return (
       <AdminLayout>
         <div style={{ textAlign: 'center', padding: '100px 0' }}>

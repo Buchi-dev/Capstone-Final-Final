@@ -44,9 +44,66 @@ interface jsPDFWithAutoTable extends jsPDF {
   };
 }
 
+// Type definitions for report data
+interface WaterQualityMetrics {
+  turbidity?: { value: number; status: string };
+  tds?: { value: number; status: string };
+  ph?: { value: number; status: string };
+  totalReadings?: number;
+  avgTurbidity?: number;
+  avgTDS?: number;
+  avgPH?: number;
+  minTurbidity?: number;
+  maxTurbidity?: number;
+  minTDS?: number;
+  maxTDS?: number;
+  minPH?: number;
+  maxPH?: number;
+}
+
+interface AlertData {
+  severity: string;
+  parameter: string;
+  value: number;
+  timestamp: string | Date;
+  message?: string;
+  description?: string;
+  location?: string;
+}
+
+interface DeviceReport {
+  device: { deviceId: string; name: string };
+  deviceId?: string;
+  deviceName?: string;
+  location?: string;
+  readingCount: number;
+  metrics?: WaterQualityMetrics;
+  alerts?: AlertData[];
+  readings?: { timestamp: string | Date; turbidity?: number; tds?: number; ph?: number }[];
+}
+
+interface ReportSummary {
+  totalReadings?: number;
+  avgTurbidity?: number;
+  avgTDS?: number;
+  avgPH?: number;
+  averageTurbidity?: number;
+  averageTDS?: number;
+  averagePH?: number;
+  turbidity?: { value: number; status: string };
+  tds?: { value: number; status: string };
+  ph?: { value: number; status: string };
+}
+
+interface WaterQualityReportData {
+  devices?: DeviceReport[];
+  summary?: ReportSummary;
+  period?: { start: string | Date; end: string | Date } | string;
+}
+
 export const generateWaterQualityReport = async (
   config: ReportConfig,
-  reportData: any
+  reportData: WaterQualityReportData
 ): Promise<jsPDF> => {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -124,7 +181,7 @@ export const generateWaterQualityReport = async (
   doc.text(`Devices Monitored: ${reportData.devices?.length || config.deviceIds.length}`, col1X, yPos + 10);
   
   // Column 2
-  if (reportData.period) {
+  if (reportData.period && typeof reportData.period !== 'string') {
     doc.text(`Report Period:`, col2X, yPos);
     doc.text(`${dayjs(reportData.period.start).format('MMM D, YYYY')} - ${dayjs(reportData.period.end).format('MMM D, YYYY')}`, col2X, yPos + 5);
   }
@@ -243,7 +300,7 @@ export const generateWaterQualityReport = async (
     
     // Check if we have actual data
     const hasData = summary.averageTurbidity !== undefined && 
-                    summary.totalReadings > 0;
+                    (summary.totalReadings || 0) > 0;
 
     // Add summary stats in badge (smaller text, three rows)
     doc.setFont('helvetica', 'normal');
@@ -251,7 +308,7 @@ export const generateWaterQualityReport = async (
     
     if (hasData) {
       doc.text(
-        `Turbidity: ${summary.averageTurbidity.toFixed(2)} NTU | TDS: ${summary.averageTDS.toFixed(2)} ppm | pH: ${summary.averagePH.toFixed(2)} | Total Readings: ${summary.totalReadings}`, 
+        `Turbidity: ${(summary.averageTurbidity || 0).toFixed(2)} NTU | TDS: ${(summary.averageTDS || 0).toFixed(2)} ppm | pH: ${(summary.averagePH || 0).toFixed(2)} | Total Readings: ${summary.totalReadings || 0}`, 
         SPACING.page.left + 5, 
         yPos + 18
       );
@@ -415,7 +472,7 @@ export const generateWaterQualityReport = async (
               halign: 'center',
             }
           },
-          didParseCell: function(data: any) {
+          didParseCell: function(data) {
             // Color-code Status column
             if (data.column.index === 4) {
               const status = String(data.cell.raw || '').toUpperCase();
@@ -510,7 +567,7 @@ export const generateWaterQualityReport = async (
             3: { fontStyle: 'bold', cellWidth: 35 },
             4: { fontStyle: 'bold', cellWidth: 35 },
           },
-          didParseCell: function(data: any) {
+          didParseCell: function(data) {
             // Color-code Status column (index 3)
             if (data.column.index === 3) {
               const status = String(data.cell.raw || '').toLowerCase();
@@ -593,7 +650,7 @@ export const generateWaterQualityReport = async (
 
         // Display alerts in organized table format (max 10 alerts)
         const alertsToShow = sortedAlerts.slice(0, 10);
-        const alertTableData = alertsToShow.map((alert: any) => {
+        const alertTableData = alertsToShow.map((alert) => {
           const severity = (alert.severity || 'low').toUpperCase();
           
           // Get message with fallback to description or location info
@@ -607,7 +664,7 @@ export const generateWaterQualityReport = async (
           if (alert.timestamp) {
             try {
               timestamp = dayjs(alert.timestamp).format('MMM D, HH:mm');
-            } catch (error) {
+            } catch {
               timestamp = 'Recent';
             }
           }
@@ -660,7 +717,7 @@ export const generateWaterQualityReport = async (
               fontStyle: 'normal',
             }
           },
-          didParseCell: function(data: any) {
+          didParseCell: function(data) {
             // Color-code Severity column with distinct backgrounds
             if (data.column.index === 0 && data.section === 'body') {
               const severity = String(data.cell.raw || '').toLowerCase();
@@ -710,7 +767,7 @@ export const generateWaterQualityReport = async (
   // ============================================================================
   // RECOMMENDATIONS SECTION - Action Items
   // ============================================================================
-  const hasIssues = reportData.devices?.some((d: any) => d.alerts && d.alerts.length > 0);
+  const hasIssues = reportData.devices?.some((d) => d.alerts && d.alerts.length > 0);
   if (hasIssues) {
     if (yPos > 220) {
       doc.addPage();
@@ -798,7 +855,7 @@ export const generateWaterQualityReport = async (
 /**
  * Determine overall water quality status based on summary metrics
  */
-function getOverallStatus(summary: any): { status: string; color: [number, number, number] } {
+function getOverallStatus(summary: ReportSummary): { status: string; color: [number, number, number] } {
   // Check if summary exists and has numeric values (use !== undefined to handle 0 values)
   if (!summary || 
       (summary.averageTurbidity === undefined && 
@@ -835,7 +892,7 @@ function getOverallStatus(summary: any): { status: string; color: [number, numbe
 /**
  * Generate recommendations based on report data
  */
-function generateRecommendations(reportData: any): string[] {
+function generateRecommendations(reportData: WaterQualityReportData): string[] {
   const recommendations: string[] = [];
   
   if (!reportData.devices || reportData.devices.length === 0) {
@@ -876,7 +933,7 @@ function generateRecommendations(reportData: any): string[] {
   }
 
   // Check for devices with no data
-  const devicesWithNoData = reportData.devices.filter((d: any) => 
+  const devicesWithNoData = reportData.devices.filter((d) => 
     !d.metrics || d.metrics.totalReadings === 0
   );
   if (devicesWithNoData.length > 0) {
@@ -907,8 +964,8 @@ function generateRecommendations(reportData: any): string[] {
 /**
  * Calculate overall compliance metrics from summary data
  */
-function calculateComplianceMetrics(summary: any): { rate: number; compliantCount: number; totalCount: number } {
-  if (!summary || summary.totalReadings === 0) {
+function calculateComplianceMetrics(summary: ReportSummary): { rate: number; compliantCount: number; totalCount: number } {
+  if (!summary || (summary.totalReadings === 0 && summary.avgTurbidity === undefined)) {
     return { rate: 0, compliantCount: 0, totalCount: 3 };
   }
 
@@ -928,7 +985,7 @@ function calculateComplianceMetrics(summary: any): { rate: number; compliantCoun
 /**
  * Calculate compliance details for a specific device
  */
-function calculateDeviceCompliance(metrics: any): {
+function calculateDeviceCompliance(metrics: WaterQualityMetrics): {
   turbidity: { value: string; standard: string; status: string; percentage: string };
   tds: { value: string; standard: string; status: string; percentage: string };
   ph: { value: string; standard: string; status: string; percentage: string };

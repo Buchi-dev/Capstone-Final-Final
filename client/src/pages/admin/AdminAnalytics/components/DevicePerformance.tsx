@@ -189,7 +189,7 @@ export const DevicePerformance = memo<DevicePerformanceProps>(({
       title: 'Status',
       key: 'status',
       width: 100,
-      render: (_: any, record) => {
+      render: (_: unknown, record: { qualityScore: number; uptimePercentage: number; alertCount: number }) => {
         const isHealthy = 
           record.qualityScore >= 75 && 
           record.uptimePercentage >= 90 && 

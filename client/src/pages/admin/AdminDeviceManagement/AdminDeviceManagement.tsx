@@ -10,7 +10,7 @@ import {
   RegisterDeviceModal,
 } from './components';
 import { useDeviceFilter } from './hooks';
-import { useRealtime_Devices, useCall_Devices } from '../../../hooks';
+import { useDevices, useDeviceMutations } from '../../../hooks';
 import type { Device } from '../../../schemas';
 import './DeviceManagement.css';
 
@@ -23,8 +23,8 @@ const { Search } = Input;
  * Manages IoT devices with CRUD operations and registration.
  * 
  * Architecture: Uses GLOBAL hooks for data fetching and mutations
- * - useRealtime_Devices() - Real-time device data from Firestore/RTDB
- * - useCall_Devices() - Device write operations (add, update, delete, register)
+ * - useDevices() - Real-time device data
+ * - useDeviceMutations() - Device write operations (add, update, delete, register)
  * - useDeviceFilter() - Local UI logic for filtering and stats
  */
 export const AdminDeviceManagement = () => {
@@ -39,19 +39,17 @@ export const AdminDeviceManagement = () => {
     devices: devicesWithSensorData,
     isLoading,
     refetch,
-  } = useRealtime_Devices({ includeMetadata: true });
+  } = useDevices({ pollInterval: 15000 });
 
   // ✅ GLOBAL HOOK - Device write operations
   const {
     deleteDevice,
     registerDevice,
-  } = useCall_Devices();
+  } = useDeviceMutations();
 
-  // Extract Device objects from metadata
+  // Extract Device objects - devices already have metadata
   const devices = useMemo(() => {
-    return devicesWithSensorData
-      .map((d) => d.metadata)
-      .filter((d): d is Device => d !== undefined);
+    return devicesWithSensorData as Device[];
   }, [devicesWithSensorData]);
 
   // ✅ LOCAL HOOK - UI-specific filtering logic

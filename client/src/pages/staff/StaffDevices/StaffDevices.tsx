@@ -2,7 +2,7 @@
  * StaffDevices - Device Management View for Staff Role
  * Displays all monitoring devices with status and details
  * 
- * Architecture: Uses global hook useRealtime_Devices()
+ * Architecture: Uses global hooks useDevices()
  */
 
 import { useState, useMemo } from 'react';
@@ -31,7 +31,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
-import { useRealtime_Devices, type DeviceWithSensorData } from '@/hooks';
+import { useDevices } from '../../../hooks';
 import { calculateDeviceStatus } from '../../../utils/waterQualityUtils';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -58,29 +58,42 @@ export const StaffDevices = () => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   
-  // Use global hook for real-time device data
-  const { devices: realtimeDevices, isLoading } = useRealtime_Devices();
+  // ✅ GLOBAL HOOK - Real-time device data with SWR polling
+  const { devices: realtimeDevices, isLoading } = useDevices({ 
+    pollInterval: 15000 // Poll every 15 seconds
+  });
 
   // Transform devices for display using utility function
   const devices: Device[] = useMemo(() => {
-    return realtimeDevices.map((device: DeviceWithSensorData) => {
+    return realtimeDevices.map((device) => {
       const reading = device.latestReading;
       const status = calculateDeviceStatus(device.status, reading);
       
       const uptime = status === 'online' ? '99.5%' : status === 'warning' ? '95.0%' : '0%';
       
+      // Format location as string
+      let locationStr = 'Unknown';
+      if (device.metadata?.location) {
+        const loc = device.metadata.location;
+        if (typeof loc === 'string') {
+          locationStr = loc;
+        } else if (loc.building) {
+          locationStr = `${loc.building}${loc.floor ? ', ' + loc.floor : ''}`;
+        }
+      }
+      
       return {
         key: device.deviceId,
         id: device.deviceId,
-        name: device.deviceName || device.deviceId,
-        location: device.location || 'Unknown',
+        name: device.name || device.deviceId,
+        location: locationStr,
         status,
         lastUpdate: reading?.timestamp 
           ? new Date(reading.timestamp).toLocaleString() 
           : 'No data',
         uptime,
         sensors: ['turbidity', 'tds', 'ph'],
-      };
+      } as Device;
     });
   }, [realtimeDevices]);
 

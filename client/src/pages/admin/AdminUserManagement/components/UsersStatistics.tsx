@@ -23,11 +23,11 @@ interface UsersStatisticsProps {
 export const UsersStatistics: React.FC<UsersStatisticsProps> = ({ users, loading = false }) => {
   const stats = useMemo(() => {
     const total = users.length;
-    const approved = users.filter((u) => u.status === 'Approved').length;
-    const pending = users.filter((u) => u.status === 'Pending').length;
-    const suspended = users.filter((u) => u.status === 'Suspended').length;
-    const admins = users.filter((u) => u.role === 'Admin').length;
-    const staff = users.filter((u) => u.role === 'Staff').length;
+    const approved = users.filter((u) => u.status === 'active').length;
+    const pending = users.filter((u) => u.status === 'pending').length;
+    const suspended = users.filter((u) => u.status === 'suspended').length;
+    const admins = users.filter((u) => u.role === 'admin').length;
+    const staff = users.filter((u) => u.role === 'staff').length;
 
     const approvedPercent = total > 0 ? (approved / total) * 100 : 0;
     const adminPercent = total > 0 ? (admins / total) * 100 : 0;
@@ -48,7 +48,7 @@ export const UsersStatistics: React.FC<UsersStatisticsProps> = ({ users, loading
     <Row gutter={[16, 16]}>
       {/* Total Users */}
       <Col xs={24} sm={12} lg={6}>
-        <Card bordered={false} loading={loading}>
+        <Card variant="borderless" loading={loading}>
           <Statistic
             title="Total Users"
             value={stats.total}
@@ -60,7 +60,7 @@ export const UsersStatistics: React.FC<UsersStatisticsProps> = ({ users, loading
 
       {/* Approved Users */}
       <Col xs={24} sm={12} lg={6}>
-        <Card bordered={false} loading={loading}>
+        <Card variant="borderless" loading={loading}>
           <Statistic
             title="Approved"
             value={stats.approved}
@@ -82,7 +82,7 @@ export const UsersStatistics: React.FC<UsersStatisticsProps> = ({ users, loading
 
       {/* Pending Users */}
       <Col xs={24} sm={12} lg={6}>
-        <Card bordered={false} loading={loading}>
+        <Card variant="borderless" loading={loading}>
           <Statistic
             title="Pending Approval"
             value={stats.pending}
@@ -94,7 +94,7 @@ export const UsersStatistics: React.FC<UsersStatisticsProps> = ({ users, loading
 
       {/* Suspended Users */}
       <Col xs={24} sm={12} lg={6}>
-        <Card bordered={false} loading={loading}>
+        <Card variant="borderless" loading={loading}>
           <Statistic
             title="Suspended"
             value={stats.suspended}
@@ -106,7 +106,7 @@ export const UsersStatistics: React.FC<UsersStatisticsProps> = ({ users, loading
 
       {/* Admins */}
       <Col xs={24} sm={12} lg={6}>
-        <Card bordered={false} loading={loading}>
+        <Card variant="borderless" loading={loading}>
           <Statistic
             title="Administrators"
             value={stats.admins}
@@ -128,7 +128,7 @@ export const UsersStatistics: React.FC<UsersStatisticsProps> = ({ users, loading
 
       {/* Staff */}
       <Col xs={24} sm={12} lg={6}>
-        <Card bordered={false} loading={loading}>
+        <Card variant="borderless" loading={loading}>
           <Statistic
             title="Staff Members"
             value={stats.staff}

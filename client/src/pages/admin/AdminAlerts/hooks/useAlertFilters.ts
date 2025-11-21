@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import type { WaterQualityAlert, AlertFiltersExtended } from '../../../../schemas';
 
 /**
@@ -9,15 +9,14 @@ import type { WaterQualityAlert, AlertFiltersExtended } from '../../../../schema
  * 
  * Purpose: Manage filter state and apply client-side filtering to alerts
  * 
- * @param alerts - Array of all alerts (from global hook: useRealtime_Alerts)
+ * @param alerts - Array of all alerts (from global hook: useAlerts)
  * @returns Filtered alerts, filters state, and filter management functions
  */
 export const useAlertFilters = (alerts: WaterQualityAlert[]) => {
   const [filters, setFilters] = useState<AlertFiltersExtended>({});
-  const [filteredAlerts, setFilteredAlerts] = useState<WaterQualityAlert[]>(alerts);
 
-  // Auto-apply filters when alerts or filters change
-  useEffect(() => {
+  // Use useMemo to compute filtered alerts instead of useEffect to prevent infinite loops
+  const filteredAlerts = useMemo(() => {
     let filtered = [...alerts];
 
     if (filters.severity?.length) {
@@ -42,8 +41,8 @@ export const useAlertFilters = (alerts: WaterQualityAlert[]) => {
       );
     }
 
-    setFilteredAlerts(filtered);
-  }, [alerts, filters]);
+    return filtered;
+  }, [alerts, filters.severity, filters.status, filters.parameter, filters.searchTerm]);
 
   const clearFilters = () => {
     setFilters({});

@@ -16,7 +16,6 @@ import {
   Avatar,
 } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
-import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import {
   SearchOutlined,
   CheckCircleOutlined,
@@ -57,10 +56,10 @@ export const UsersTable: React.FC<UsersTableProps> = ({
       const searchLower = searchText.toLowerCase();
       const matchesSearch =
         !searchText ||
-        user.firstname.toLowerCase().includes(searchLower) ||
-        user.lastname.toLowerCase().includes(searchLower) ||
+        (user.firstName?.toLowerCase().includes(searchLower) ?? false) ||
+        (user.lastName?.toLowerCase().includes(searchLower) ?? false) ||
         user.email.toLowerCase().includes(searchLower) ||
-        user.department.toLowerCase().includes(searchLower);
+        (user.department?.toLowerCase().includes(searchLower) ?? false);
 
       // Status filter
       const matchesStatus = statusFilter === 'All' || user.status === statusFilter;
@@ -74,11 +73,11 @@ export const UsersTable: React.FC<UsersTableProps> = ({
 
   const getStatusColor = (status: UserStatus) => {
     switch (status) {
-      case 'Approved':
+      case 'active':
         return 'success';
-      case 'Pending':
+      case 'pending':
         return 'warning';
-      case 'Suspended':
+      case 'suspended':
         return 'error';
       default:
         return 'default';
@@ -87,11 +86,11 @@ export const UsersTable: React.FC<UsersTableProps> = ({
 
   const getStatusIcon = (status: UserStatus) => {
     switch (status) {
-      case 'Approved':
+      case 'active':
         return <CheckCircleOutlined />;
-      case 'Pending':
+      case 'pending':
         return <ClockCircleOutlined />;
-      case 'Suspended':
+      case 'suspended':
         return <StopOutlined />;
       default:
         return null;
@@ -99,7 +98,7 @@ export const UsersTable: React.FC<UsersTableProps> = ({
   };
 
   const getRoleColor = (role: UserRole) => {
-    return role === 'Admin' ? 'blue' : 'default';
+    return role === 'admin' ? 'red' : 'blue';
   };
 
   const getInitials = (firstname: string, lastname: string) => {
@@ -112,22 +111,22 @@ export const UsersTable: React.FC<UsersTableProps> = ({
       key: 'user',
       width: 280,
       fixed: 'left',
-      sorter: (a, b) => a.lastname.localeCompare(b.lastname),
+      sorter: (a, b) => (a.lastName || '').localeCompare(b.lastName || ''),
       render: (_, record) => (
         <Space size="middle">
           <Avatar
             style={{
-              backgroundColor: record.role === 'Admin' ? '#1890ff' : '#52c41a',
+              backgroundColor: record.role === 'admin' ? '#ff4d4f' : '#1890ff',
               verticalAlign: 'middle',
             }}
             size="large"
           >
-            {getInitials(record.firstname, record.lastname)}
+            {getInitials(record.firstName || '', record.lastName || '')}
           </Avatar>
           <div>
             <div>
               <Text strong>
-                {record.firstname} {record.middlename} {record.lastname}
+                {[record.firstName, record.middleName, record.lastName].filter(Boolean).join(' ') || 'Unknown User'}
               </Text>
             </div>
             <Text type="secondary" style={{ fontSize: 12 }}>
@@ -143,8 +142,8 @@ export const UsersTable: React.FC<UsersTableProps> = ({
       key: 'department',
       width: 150,
       align: 'center',
-      sorter: (a, b) => a.department.localeCompare(b.department),
-      render: (department) => <Text>{department}</Text>,
+      sorter: (a, b) => (a.department || '').localeCompare(b.department || ''),
+      render: (department) => <Text>{department || 'N/A'}</Text>,
     },
     {
       title: 'Phone',
@@ -159,14 +158,6 @@ export const UsersTable: React.FC<UsersTableProps> = ({
       key: 'statusRole',
       width: 180,
       align: 'center',
-      filters: [
-        { text: 'Approved', value: 'Approved' },
-        { text: 'Pending', value: 'Pending' },
-        { text: 'Suspended', value: 'Suspended' },
-        { text: 'Admin', value: 'Admin' },
-        { text: 'Staff', value: 'Staff' },
-      ],
-      onFilter: (value, record) => record.status === value || record.role === value,
       render: (_, record) => (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <Tag 
@@ -180,7 +171,7 @@ export const UsersTable: React.FC<UsersTableProps> = ({
               margin: 0,
             }}
           >
-            {record.status}
+            {record.status === 'active' ? 'Active' : record.status === 'pending' ? 'Pending' : 'Suspended'}
           </Tag>
           <Tag 
             color={getRoleColor(record.role)}
@@ -192,7 +183,7 @@ export const UsersTable: React.FC<UsersTableProps> = ({
               margin: 0,
             }}
           >
-            {record.role}
+            {record.role === 'admin' ? 'Admin' : 'Staff'}
           </Tag>
         </Space>
       ),
@@ -251,8 +242,6 @@ export const UsersTable: React.FC<UsersTableProps> = ({
 
   const handleTableChange = (
     newPagination: TablePaginationConfig,
-    _filters: Record<string, FilterValue | null>,
-    _sorter: SorterResult<UserListData> | SorterResult<UserListData>[]
   ) => {
     setPagination(newPagination);
   };
@@ -278,9 +267,9 @@ export const UsersTable: React.FC<UsersTableProps> = ({
           size="large"
         >
           <Select.Option value="All">All Statuses</Select.Option>
-          <Select.Option value="Approved">Approved</Select.Option>
-          <Select.Option value="Pending">Pending</Select.Option>
-          <Select.Option value="Suspended">Suspended</Select.Option>
+          <Select.Option value="active">Active</Select.Option>
+          <Select.Option value="pending">Pending</Select.Option>
+          <Select.Option value="suspended">Suspended</Select.Option>
         </Select>
         <Select
           placeholder="Filter by Role"
@@ -290,8 +279,8 @@ export const UsersTable: React.FC<UsersTableProps> = ({
           size="large"
         >
           <Select.Option value="All">All Roles</Select.Option>
-          <Select.Option value="Admin">Admin</Select.Option>
-          <Select.Option value="Staff">Staff</Select.Option>
+          <Select.Option value="admin">Admin</Select.Option>
+          <Select.Option value="staff">Staff</Select.Option>
         </Select>
       </Space>
 
