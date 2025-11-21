@@ -4,6 +4,7 @@ const { pingRedis, isRedisAvailable } = require('../configs/redis.Config');
 const { getQueueStats } = require('../utils/email.queue');
 const logger = require('../utils/logger');
 const { HTTP_STATUS } = require('../utils/constants');
+const { diagnoseAuth } = require('../utils/diagnostics');
 
 const router = express.Router();
 
@@ -217,5 +218,12 @@ router.get('/readiness', async (req, res) => {
     });
   }
 });
+
+/**
+ * @route   POST /health/diagnose-auth
+ * @desc    Diagnose authentication issues (requires token)
+ * @access  Public (but requires token in header to diagnose)
+ */
+router.post('/diagnose-auth', diagnoseAuth);
 
 module.exports = router;

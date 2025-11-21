@@ -139,6 +139,16 @@ export function useUsers(options: UseUsersOptions = {}): UseUsersReturn {
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
       dedupingInterval: 5000,
+      // Stop polling if we get auth errors
+      onError: (err) => {
+        if (err?.response?.status === 401) {
+          console.warn('[useUsers] Authentication error - stopping polling');
+        }
+      },
+      // Don't retry on 401 errors
+      shouldRetryOnError: (err) => {
+        return err?.response?.status !== 401;
+      },
     }
   );
 

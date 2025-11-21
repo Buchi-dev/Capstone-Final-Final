@@ -1,13 +1,13 @@
 /**
  * AdminAlerts - Manage Alerts Page
  * 
- * View, manage, and configure water quality alerts with real-time updates.
+ * View, manage, and configure water quality alerts.
  * 
  * Architecture:
  * ✅ Service Layer → Global Hooks → UI Components
  * 
  * Data Flow:
- * - READ: useAlerts() - Real-time alerts with SWR polling
+ * - READ: useAlerts() - Fetch alerts with manual refresh
  * - WRITE: useAlertMutations() - Alert operations (acknowledge, resolve)
  * - UI Logic: Local hooks for filtering and statistics (useAlertFilters, useAlertStats)
  * 
@@ -34,11 +34,11 @@ const { Content } = Layout;
 export const AdminAlerts = () => {
   const [selectedAlert, setSelectedAlert] = useState<WaterQualityAlert | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // ✅ GLOBAL READ HOOK - Real-time alerts with SWR polling
+  // ✅ GLOBAL READ HOOK - Fetch alerts on demand
   const { alerts, isLoading: loading, error: alertsError, refetch } = useAlerts({ 
-    filters: { limit: 100 },
-    pollInterval: 5000 // Poll every 5 seconds
+    filters: { limit: 100 }
   });
 
   // ✅ GLOBAL WRITE HOOK - Alert operations (acknowledge, resolve)
@@ -71,6 +71,18 @@ export const AdminAlerts = () => {
   const handleClearFilters = () => {
     clearFilters();
     message.info('Filters cleared');
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refetch();
+      message.success('Alerts refreshed successfully');
+    } catch (error) {
+      message.error('Failed to refresh alerts');
+    } finally {
+      setIsRefreshing(false);
+    }
   };
 
   const viewAlertDetails = (alert: WaterQualityAlert) => {
@@ -112,7 +124,7 @@ export const AdminAlerts = () => {
         <PageHeader
           title="Water Quality Alerts"
           icon={<BellOutlined />}
-          description="Monitor and manage real-time water quality alerts"
+          description="Monitor and manage water quality alerts"
           breadcrumbItems={[
             { title: 'Alerts', icon: <BellOutlined /> }
           ]}
@@ -120,9 +132,9 @@ export const AdminAlerts = () => {
             {
               key: 'refresh',
               label: 'Refresh',
-              icon: <ReloadOutlined spin={loading} />,
-              onClick: () => window.location.reload(),
-              disabled: loading,
+              icon: <ReloadOutlined spin={isRefreshing} />,
+              onClick: handleRefresh,
+              disabled: loading || isRefreshing,
             }
           ]}
         />

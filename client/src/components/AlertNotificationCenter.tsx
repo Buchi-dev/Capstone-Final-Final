@@ -32,9 +32,9 @@ export default function AlertNotificationCenter() {
   const navigate = useNavigate();
 
   // Use the SWR-based hook for real-time alerts
-  // Poll every 30 seconds for global notifications (less aggressive than page-level polling)
+  // Removed custom pollInterval - rely on global SWR cache shared across all components
   const { alerts: allAlerts, isLoading } = useAlerts({
-    pollInterval: 30000, // 30 seconds - less frequent for background notifications
+    enabled: true,
   });
 
   // Filter for active/acknowledged alerts and limit to 10
@@ -180,7 +180,8 @@ export default function AlertNotificationCenter() {
                           display: 'block',
                           marginBottom: 4,
                         }}
-                        ellipsis={{ tooltip: alert.message || `${alert.parameter.toUpperCase()} alert` }}
+                        ellipsis={{ tooltip: true }}
+                        title={alert.message || `${alert.parameter.toUpperCase()} alert detected`}
                       >
                         {alert.message || `${alert.parameter.toUpperCase()} alert detected`}
                       </Text>

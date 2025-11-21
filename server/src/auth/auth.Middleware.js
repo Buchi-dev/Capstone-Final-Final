@@ -12,21 +12,84 @@ const authenticateFirebase = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      logger.warn('[Auth Middleware] No authorization header', {
+        path: req.path,
+        hasHeader: !!authHeader,
+      });
       return res.status(401).json({
         success: false,
-        message: 'No token provided',
+        message: 'Authentication required',
       });
     }
 
     const idToken = authHeader.split('Bearer ')[1];
 
+    if (!idToken || idToken.trim() === '') {
+      logger.warn('[Auth Middleware] Empty token', { path: req.path });
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required',
+      });
+    }
+
     // Verify Firebase token
-    const decodedToken = await verifyIdToken(idToken);
+    let decodedToken;
+    try {
+      // Log token info for debugging (first 20 chars only for security)
+      logger.info('[Auth Middleware] Attempting to verify token', {
+        tokenPrefix: idToken.substring(0, 20) + '...',
+        tokenLength: idToken.length,
+        path: req.path,
+      });
+      
+      decodedToken = await verifyIdToken(idToken);
+      
+      logger.info('[Auth Middleware] Token verified successfully', {
+        uid: decodedToken.uid,
+        email: decodedToken.email,
+        path: req.path,
+      });
+    } catch (tokenError) {
+      logger.error('[Auth Middleware] Firebase token verification failed', {
+        error: tokenError.message,
+        errorCode: tokenError.code,
+        errorStack: tokenError.stack,
+        tokenPrefix: idToken.substring(0, 20) + '...',
+        path: req.path,
+      });
+      
+      // Provide more specific error messages
+      if (tokenError.code === 'auth/id-token-expired') {
+        return res.status(401).json({
+          success: false,
+          message: 'Token expired',
+        });
+      }
+      
+      if (tokenError.code === 'auth/argument-error') {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid token format',
+          details: process.env.NODE_ENV === 'development' ? tokenError.message : undefined,
+        });
+      }
+      
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token',
+        details: process.env.NODE_ENV === 'development' ? tokenError.message : undefined,
+      });
+    }
     
     // Get user from database using Firebase UID
     const user = await User.findOne({ firebaseUid: decodedToken.uid });
 
     if (!user) {
+      logger.warn('[Auth Middleware] User not found in database', {
+        firebaseUid: decodedToken.uid,
+        email: decodedToken.email,
+        path: req.path,
+      });
       return res.status(401).json({
         success: false,
         message: 'User not found',
@@ -35,6 +98,11 @@ const authenticateFirebase = async (req, res, next) => {
 
     // Check user status
     if (user.status === 'suspended') {
+      logger.warn('[Auth Middleware] Suspended user access attempt', {
+        userId: user._id,
+        email: user.email,
+        path: req.path,
+      });
       return res.status(403).json({
         success: false,
         message: 'Account suspended',
@@ -42,6 +110,11 @@ const authenticateFirebase = async (req, res, next) => {
     }
 
     if (user.status === 'pending') {
+      logger.warn('[Auth Middleware] Pending user access attempt', {
+        userId: user._id,
+        email: user.email,
+        path: req.path,
+      });
       return res.status(403).json({
         success: false,
         message: 'Account pending approval',
@@ -52,16 +125,26 @@ const authenticateFirebase = async (req, res, next) => {
     req.user = user;
     req.firebaseUser = decodedToken;
     
+    logger.info('[Auth Middleware] Authentication successful', {
+      userId: user._id,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      path: req.path,
+    });
+    
     next();
   } catch (error) {
-    logger.error('[Auth Middleware] Authentication failed', {
+    logger.error('[Auth Middleware] Unexpected authentication error', {
       error: error.message,
+      stack: error.stack,
       path: req.path,
     });
 
     return res.status(401).json({
       success: false,
-      message: 'Invalid or expired token',
+      message: 'Authentication failed',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
@@ -80,29 +163,45 @@ const ensureAuthenticated = authenticateFirebase;
  * @returns {Function} Express middleware function
  */
 const ensureRole = (...roles) => {
-  return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required',
-      });
-    }
+  return async (req, res, next) => {
+    // First authenticate the user
+    try {
+      await authenticateFirebase(req, res, async () => {
+        // After authentication, check role
+        if (!req.user) {
+          return res.status(401).json({
+            success: false,
+            message: 'Authentication required',
+          });
+        }
 
-    if (!roles.includes(req.user.role)) {
-      logger.warn('[Auth Middleware] Unauthorized access attempt', {
-        userId: req.user._id,
-        userRole: req.user.role,
-        requiredRoles: roles,
+        if (!roles.includes(req.user.role)) {
+          logger.warn('[Auth Middleware] Unauthorized access attempt', {
+            userId: req.user._id,
+            userRole: req.user.role,
+            requiredRoles: roles,
+            path: req.path,
+          });
+
+          return res.status(403).json({
+            success: false,
+            message: 'Insufficient permissions',
+          });
+        }
+
+        next();
+      });
+    } catch (error) {
+      logger.error('[Auth Middleware] Role check error', {
+        error: error.message,
         path: req.path,
       });
-
-      return res.status(403).json({
+      
+      return res.status(401).json({
         success: false,
-        message: 'Insufficient permissions',
+        message: 'Authentication failed',
       });
     }
-
-    next();
   };
 };
 

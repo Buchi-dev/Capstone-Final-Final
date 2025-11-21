@@ -17,11 +17,9 @@
  */
 
 import useSWR from 'swr';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { alertsService, type AlertFilters, type AlertStats } from '../services/alerts.Service';
 import type { WaterQualityAlert } from '../schemas';
-import { useVisibilityPolling } from './useVisibilityPolling';
-import { getSocket, subscribe, unsubscribe } from '../utils/socket';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -29,9 +27,7 @@ import { getSocket, subscribe, unsubscribe } from '../utils/socket';
 
 export interface UseAlertsOptions {
   filters?: AlertFilters;
-  pollInterval?: number;
   enabled?: boolean;
-  realtime?: boolean; // Enable WebSocket real-time updates
 }
 
 export interface UseAlertsReturn {
@@ -55,24 +51,18 @@ export interface UseAlertMutationsReturn {
 // ============================================================================
 
 /**
- * Fetch alerts with optional filtering and real-time updates
+ * Fetch alerts with optional filtering
  * 
  * @example
  * const { alerts, stats, isLoading, refetch } = useAlerts({
- *   filters: { status: 'Unacknowledged', severity: 'Critical' },
- *   pollInterval: 5000 // Poll every 5 seconds
+ *   filters: { status: 'Unacknowledged', severity: 'Critical' }
  * });
  */
 export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
   const {
     filters = {},
-    pollInterval = 15000, // Changed from 10000 to 15000
     enabled = true,
-    realtime = true, // Enable WebSocket by default
   } = options;
-
-  // Add visibility detection to pause polling when tab is hidden
-  const adjustedPollInterval = useVisibilityPolling(pollInterval);
 
   // Generate cache key from filters
   const cacheKey = enabled
@@ -92,49 +82,11 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
       return response.data;
     },
     {
-      refreshInterval: realtime ? 0 : adjustedPollInterval, // Disable polling if realtime
-      revalidateOnFocus: true,
+      revalidateOnFocus: false, // Rely on manual refresh or polling
       revalidateOnReconnect: true,
-      dedupingInterval: 2000,
+      dedupingInterval: 10000, // Prevent duplicate requests for 10 seconds
     }
   );
-
-  // WebSocket subscription for real-time updates
-  useEffect(() => {
-    if (!enabled || !realtime) return;
-
-    const socket = getSocket();
-    if (!socket?.connected) {
-      console.warn('[useAlerts] Socket not connected, using polling fallback');
-      return;
-    }
-
-    // Subscribe to alerts room
-    subscribe('alerts');
-    console.log('[useAlerts] Subscribed to real-time alerts');
-
-    // Handle new alerts
-    const handleNewAlert = (data: any) => {
-      console.log('[useAlerts] New alert received:', data.alert);
-      mutate(); // Revalidate cache
-    };
-
-    // Handle alert updates
-    const handleAlertUpdated = (data: any) => {
-      console.log('[useAlerts] Alert updated:', data.alertId);
-      mutate(); // Revalidate cache
-    };
-
-    socket.on('alert:new', handleNewAlert);
-    socket.on('alert:updated', handleAlertUpdated);
-
-    return () => {
-      socket.off('alert:new', handleNewAlert);
-      socket.off('alert:updated', handleAlertUpdated);
-      unsubscribe('alerts');
-      console.log('[useAlerts] Unsubscribed from real-time alerts');
-    };
-  }, [enabled, realtime, mutate]);
 
   // Fetch stats
   const {
@@ -148,8 +100,8 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
       return response.data;
     },
     {
-      refreshInterval: pollInterval * 2, // Stats update less frequently
-      revalidateOnFocus: false,
+      revalidateOnFocus: false, // Stats don't change frequently
+      dedupingInterval: 15000, // Increased deduping interval
     }
   );
 

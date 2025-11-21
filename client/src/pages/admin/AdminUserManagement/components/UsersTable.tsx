@@ -99,7 +99,7 @@ export const UsersTable: React.FC<UsersTableProps> = ({
   };
 
   const getRoleColor = (role: UserRole) => {
-    return role === 'admin' ? 'blue' : 'default';
+    return role === 'admin' ? 'red' : 'blue';
   };
 
   const getInitials = (firstname: string, lastname: string) => {
@@ -117,7 +117,7 @@ export const UsersTable: React.FC<UsersTableProps> = ({
         <Space size="middle">
           <Avatar
             style={{
-              backgroundColor: record.role === 'admin' ? '#1890ff' : '#52c41a',
+              backgroundColor: record.role === 'admin' ? '#ff4d4f' : '#1890ff',
               verticalAlign: 'middle',
             }}
             size="large"
@@ -127,7 +127,7 @@ export const UsersTable: React.FC<UsersTableProps> = ({
           <div>
             <div>
               <Text strong>
-                {record.firstName} {record.middleName} {record.lastName}
+                {[record.firstName, record.middleName, record.lastName].filter(Boolean).join(' ') || 'Unknown User'}
               </Text>
             </div>
             <Text type="secondary" style={{ fontSize: 12 }}>
@@ -159,14 +159,6 @@ export const UsersTable: React.FC<UsersTableProps> = ({
       key: 'statusRole',
       width: 180,
       align: 'center',
-      filters: [
-        { text: 'Active', value: 'active' },
-        { text: 'Pending', value: 'pending' },
-        { text: 'Suspended', value: 'suspended' },
-        { text: 'Admin', value: 'admin' },
-        { text: 'Staff', value: 'staff' },
-      ],
-      onFilter: (value, record) => record.status === value || record.role === value,
       render: (_, record) => (
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <Tag 

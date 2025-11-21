@@ -1,6 +1,6 @@
 /**
  * SWR Configuration for Data Fetching with Polling
- * Provides real-time-like updates through HTTP polling
+ * Provides real-time-like updates through HTTP polling with aggressive deduplication
  */
 import { type SWRConfiguration } from 'swr';
 import { apiClient } from './api.config';
@@ -20,15 +20,22 @@ export const fetcher = async (url: string) => {
 /**
  * Base SWR configuration
  * Applied to all SWR hooks unless overridden
+ * 
+ * OPTIMIZED FOR DEDUPLICATION:
+ * - Long deduping interval prevents duplicate requests
+ * - Cache-first strategy reduces unnecessary network calls
+ * - Shared cache across all components
  */
 export const swrConfig: SWRConfiguration = {
   fetcher,
-  revalidateOnFocus: true,    // Refetch when window regains focus
+  revalidateOnFocus: false,    // Disabled to prevent refetch on tab switch (use manual refresh instead)
   revalidateOnReconnect: true, // Refetch when network reconnects
   shouldRetryOnError: true,    // Retry failed requests
   errorRetryCount: 3,          // Max retry attempts
   errorRetryInterval: 5000,    // 5 seconds between retries
-  dedupingInterval: 2000,      // Dedupe requests within 2 seconds
+  dedupingInterval: 10000,     // Increased from 2s to 10s - prevent duplicate requests for 10 seconds
+  focusThrottleInterval: 30000, // Throttle focus revalidation to max once per 30 seconds
+  provider: () => new Map(),   // Use global cache provider
   onError: (error: Error) => {
     console.error('[SWR Error]', error);
   },
@@ -37,12 +44,12 @@ export const swrConfig: SWRConfiguration = {
 /**
  * Real-time polling configuration
  * For critical data that needs frequent updates (alerts, sensor readings)
- * Optimized from 5 seconds to 15 seconds
+ * Optimized from 5 seconds to 30 seconds - rely on WebSocket for real-time updates
  */
 export const swrRealtimeConfig: SWRConfiguration = {
   ...swrConfig,
-  refreshInterval: 15000, // Changed from 5000 to 15000
-  dedupingInterval: 1000,
+  refreshInterval: 30000, // Changed from 15000 to 30000 (30 seconds)
+  dedupingInterval: 15000, // Increased from 1000 to 15000
 };
 
 /**

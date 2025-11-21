@@ -28,7 +28,7 @@ import {
 } from '../services/devices.Service';
 import type { Device, SensorReading } from '../schemas';
 import { useVisibilityPolling } from './useVisibilityPolling';
-import { getSocket, subscribe, unsubscribe } from '../utils/socket';
+import { getSocket, subscribe } from '../utils/socket';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -93,7 +93,7 @@ export interface UseDeviceMutationsReturn {
 export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
   const {
     filters = {},
-    pollInterval = 30000, // Changed from 15000 to 30000
+    pollInterval = 60000, // Changed from 30000 to 60000 (1 minute) - rely on WebSocket for updates
     enabled = true,
     realtime = true, // Enable WebSocket by default
   } = options;
@@ -120,13 +120,14 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
     },
     {
       refreshInterval: realtime ? 0 : adjustedPollInterval, // Disable polling if realtime
-      revalidateOnFocus: true,
+      revalidateOnFocus: false, // Rely on WebSocket updates
       revalidateOnReconnect: true,
-      dedupingInterval: 2000,
+      dedupingInterval: 15000, // Increased from 2000 to 15000
     }
   );
 
   // WebSocket subscription for real-time updates
+  // Uses ref to prevent multiple subscriptions from the same component
   useEffect(() => {
     if (!enabled || !realtime) return;
 
@@ -136,7 +137,7 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
       return;
     }
 
-    // Subscribe to devices room
+    // Only subscribe once - subscription is shared across all components
     subscribe('devices');
     console.log('[useDevices] Subscribed to real-time devices');
 
@@ -163,11 +164,12 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
     socket.on('reading:new', handleNewReading);
 
     return () => {
+      // Only remove event listeners, don't unsubscribe from room
+      // The subscription is shared across all components using this hook
       socket.off('device:updated', handleDeviceUpdated);
       socket.off('device:new', handleNewDevice);
       socket.off('reading:new', handleNewReading);
-      unsubscribe('devices');
-      console.log('[useDevices] Unsubscribed from real-time devices');
+      console.log('[useDevices] Cleaned up event listeners (subscription remains active)');
     };
   }, [enabled, realtime, mutate]);
 
@@ -183,8 +185,9 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
       return response.data;
     },
     {
-      refreshInterval: pollInterval * 2,
+      refreshInterval: pollInterval * 4, // Poll stats much less frequently (4 minutes)
       revalidateOnFocus: false,
+      dedupingInterval: 20000, // Increased deduping interval
     }
   );
 

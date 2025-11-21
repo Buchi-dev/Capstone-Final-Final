@@ -44,12 +44,48 @@ const configureFirebase = () => {
  */
 const verifyIdToken = async (idToken) => {
   try {
+    // Validate token is not empty
+    if (!idToken || typeof idToken !== 'string') {
+      throw new Error('Invalid token: Token must be a non-empty string');
+    }
+    
+    // Log verification attempt
+    logger.info('[Firebase] Verifying ID token', {
+      tokenLength: idToken.length,
+      tokenPrefix: idToken.substring(0, 20) + '...',
+    });
+    
     const decodedToken = await admin.auth().verifyIdToken(idToken);
+    
+    logger.info('[Firebase] Token verified successfully', {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+      aud: decodedToken.aud,
+      iss: decodedToken.iss,
+    });
+    
     return decodedToken;
   } catch (error) {
+    // Log detailed error information
     logger.error('[Firebase] Token verification failed', {
       error: error.message,
+      errorCode: error.code,
+      errorStack: error.stack,
     });
+    
+    // Check for specific permission errors
+    if (error.message && error.message.includes('serviceusage.services.use')) {
+      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logger.error('🔥 FIREBASE SERVICE ACCOUNT PERMISSION ERROR 🔥');
+      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logger.error('The service account needs additional permissions.');
+      logger.error('Required IAM Roles:');
+      logger.error('1. Service Account Token Creator');
+      logger.error('2. Firebase Admin SDK Administrator Service Agent');
+      logger.error('3. Service Usage Consumer');
+      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    }
+    
     throw error;
   }
 };

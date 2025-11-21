@@ -16,6 +16,9 @@ let socket: Socket | null = null;
 // Connection state
 let isConnecting = false;
 
+// Track active subscriptions to prevent duplicates
+const activeSubscriptions = new Set<SocketRoom>();
+
 /**
  * Socket event types for type safety
  */
@@ -219,6 +222,7 @@ export function getSocket(): Socket | null {
 
 /**
  * Subscribe to a Socket.IO room
+ * Prevents duplicate subscriptions to the same room
  * 
  * @param {SocketRoom} room - Room name to subscribe to
  * @returns {Promise<void>}
@@ -226,8 +230,15 @@ export function getSocket(): Socket | null {
 export async function subscribe(room: SocketRoom): Promise<void> {
   const socketInstance = await initializeSocket();
   
+  // Check if already subscribed
+  if (activeSubscriptions.has(room)) {
+    console.log(`[Socket.IO] Already subscribed to room: ${room}, skipping`);
+    return;
+  }
+  
   console.log(`[Socket.IO] Subscribing to room: ${room}`);
   socketInstance.emit(`subscribe:${room.split(':')[0]}`, room.includes(':') ? room.split(':')[1] : undefined);
+  activeSubscriptions.add(room);
 }
 
 /**
@@ -241,8 +252,15 @@ export function unsubscribe(room: SocketRoom): void {
     return;
   }
 
+  // Check if actually subscribed
+  if (!activeSubscriptions.has(room)) {
+    console.log(`[Socket.IO] Not subscribed to room: ${room}, skipping unsubscribe`);
+    return;
+  }
+
   console.log(`[Socket.IO] Unsubscribing from room: ${room}`);
   socket.emit(`unsubscribe:${room.split(':')[0]}`, room.includes(':') ? room.split(':')[1] : undefined);
+  activeSubscriptions.delete(room);
 }
 
 /**
@@ -287,6 +305,7 @@ export function disconnectSocket(): void {
     console.log('[Socket.IO] Disconnecting...');
     socket.disconnect();
     socket = null;
+    activeSubscriptions.clear(); // Clear subscription tracking
   }
 }
 

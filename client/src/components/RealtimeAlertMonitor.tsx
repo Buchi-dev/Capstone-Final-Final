@@ -50,8 +50,9 @@ export const RealtimeAlertMonitor = () => {
   const token = useThemeToken();
   
   // Use the SWR-based hook for real-time alerts
+  // Removed custom pollInterval - rely on global SWR cache shared across all components
   const { alerts: rawAlerts, isLoading } = useAlerts({
-    pollInterval: 5000,
+    enabled: true,
   });
 
   const [devicesBySeverity, setDevicesBySeverity] = useState<{

@@ -37,6 +37,8 @@ import {
 } from '@ant-design/icons';
 import type { UserListData, UserRole, UserStatus } from '../../../../schemas';
 import dayjs from 'dayjs';
+import { getErrorMessage } from '../../../../utils/errorHelpers';
+import { message as antMessage } from 'antd';
 
 const { Title, Text } = Typography;
 
@@ -55,9 +57,9 @@ interface UserActionsDrawerProps {
       phoneNumber: string;
     }
   ) => Promise<void>;
-  onQuickStatusChange: (userId: string, status: UserStatus) => void;
-  onQuickRoleChange: (userId: string, role: UserRole) => void;
-  onDelete: (userId: string, userName: string) => void;
+  onQuickStatusChange: (userId: string, status: UserStatus) => Promise<void>;
+  onQuickRoleChange: (userId: string, role: UserRole) => Promise<void>;
+  onDelete: (userId: string, userName: string) => Promise<void>;
   loading?: boolean;
 }
 
@@ -117,6 +119,9 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
 }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [form] = Form.useForm<FormValues>();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isChangingStatus, setIsChangingStatus] = useState(false);
+  const [isChangingRole, setIsChangingRole] = useState(false);
   
   // Local state to track current user data for instant updates
   const [currentUser, setCurrentUser] = useState<UserListData | null>(user);
@@ -135,6 +140,9 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
   useEffect(() => {
     if (!open) {
       setIsEditMode(false);
+      setIsDeleting(false);
+      setIsChangingStatus(false);
+      setIsChangingRole(false);
       form.resetFields();
     }
   }, [open, form]);
@@ -154,7 +162,10 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
 
   if (!currentUser) return null;
 
-  const userName = `${currentUser.firstName || ''} ${currentUser.lastName || ''}`;
+  // Join name parts conditionally to avoid extra whitespace
+  const userName = [currentUser.firstName, currentUser.middleName, currentUser.lastName]
+    .filter(Boolean)
+    .join(' ') || 'Unknown User';
 
   /**
    * Handle delete user with confirmation
@@ -181,9 +192,20 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
       okText: 'Delete User',
       okType: 'danger',
       cancelText: 'Cancel',
-      onOk: () => {
-        onDelete(currentUser.id, userName);
-        onClose();
+      onOk: async () => {
+        setIsDeleting(true);
+        try {
+          await onDelete(currentUser.id, userName);
+          // Only close drawer on successful deletion
+          onClose();
+        } catch (error) {
+          const errorMsg = getErrorMessage(error);
+          antMessage.error(errorMsg);
+          console.error('[UserActionsDrawer] Delete failed:', errorMsg);
+          // Keep drawer open on failure
+        } finally {
+          setIsDeleting(false);
+        }
       },
     });
   };
@@ -231,9 +253,11 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
   };
 
   /**
-   * Handle status change with instant local update
+   * Handle status change with error handling and rollback
    */
-  const handleStatusChange = (status: UserStatus) => {
+  const handleStatusChange = async (status: UserStatus) => {
+    const previousStatus = currentUser.status;
+    
     // Warn if changing own status
     if (isOwnProfile) {
       Modal.confirm({
@@ -256,30 +280,62 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
         okText: 'Yes, Change Status',
         okType: status === 'suspended' ? 'danger' : 'primary',
         cancelText: 'Cancel',
-        onOk: () => {
-          // Update local state immediately for instant UI feedback
+        onOk: async () => {
+          setIsChangingStatus(true);
+          // Optimistic update
           setCurrentUser({
             ...currentUser,
             status,
           });
-          // Call parent handler to persist changes
-          onQuickStatusChange(currentUser.id, status);
+          
+          try {
+            await onQuickStatusChange(currentUser.id, status);
+          } catch (error) {
+            // Rollback on failure
+            setCurrentUser({
+              ...currentUser,
+              status: previousStatus,
+            });
+            const errorMsg = getErrorMessage(error);
+            antMessage.error(errorMsg);
+            console.error('[UserActionsDrawer] Status change failed:', errorMsg);
+          } finally {
+            setIsChangingStatus(false);
+          }
         },
       });
     } else {
-      // Not own profile, update normally
+      // Not own profile, update with error handling
+      setIsChangingStatus(true);
+      // Optimistic update
       setCurrentUser({
         ...currentUser,
         status,
       });
-      onQuickStatusChange(currentUser.id, status);
+      
+      try {
+        await onQuickStatusChange(currentUser.id, status);
+      } catch (error) {
+        // Rollback on failure
+        setCurrentUser({
+          ...currentUser,
+          status: previousStatus,
+        });
+        const errorMsg = getErrorMessage(error);
+        antMessage.error(errorMsg);
+        console.error('[UserActionsDrawer] Status change failed:', errorMsg);
+      } finally {
+        setIsChangingStatus(false);
+      }
     }
   };
 
   /**
-   * Handle role change with instant local update
+   * Handle role change with error handling and rollback
    */
-  const handleRoleChange = (role: UserRole) => {
+  const handleRoleChange = async (role: UserRole) => {
+    const previousRole = currentUser.role;
+    
     // Warn if changing own role
     if (isOwnProfile) {
       Modal.confirm({
@@ -303,23 +359,53 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
         okText: 'Yes, Change Role',
         okType: 'primary',
         cancelText: 'Cancel',
-        onOk: () => {
-          // Update local state immediately for instant UI feedback
+        onOk: async () => {
+          setIsChangingRole(true);
+          // Optimistic update
           setCurrentUser({
             ...currentUser,
             role,
           });
-          // Call parent handler to persist changes
-          onQuickRoleChange(currentUser.id, role);
+          
+          try {
+            await onQuickRoleChange(currentUser.id, role);
+          } catch (error) {
+            // Rollback on failure
+            setCurrentUser({
+              ...currentUser,
+              role: previousRole,
+            });
+            const errorMsg = getErrorMessage(error);
+            antMessage.error(errorMsg);
+            console.error('[UserActionsDrawer] Role change failed:', errorMsg);
+          } finally {
+            setIsChangingRole(false);
+          }
         },
       });
     } else {
-      // Not own profile, update normally
+      // Not own profile, update with error handling
+      setIsChangingRole(true);
+      // Optimistic update
       setCurrentUser({
         ...currentUser,
         role,
       });
-      onQuickRoleChange(currentUser.id, role);
+      
+      try {
+        await onQuickRoleChange(currentUser.id, role);
+      } catch (error) {
+        // Rollback on failure
+        setCurrentUser({
+          ...currentUser,
+          role: previousRole,
+        });
+        const errorMsg = getErrorMessage(error);
+        antMessage.error(errorMsg);
+        console.error('[UserActionsDrawer] Role change failed:', errorMsg);
+      } finally {
+        setIsChangingRole(false);
+      }
     }
   };
 
@@ -373,18 +459,18 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
     >
       {isEditMode ? (
         // EDIT MODE - Show Edit Form
-        <div>
-            <Form
-              form={form}
-              layout="vertical"
-              initialValues={{
-                firstName: currentUser.firstName || '',
-                middleName: currentUser.middleName || '',
-                lastName: currentUser.lastName || '',
-                department: currentUser.department || '',
-                phoneNumber: currentUser.phoneNumber || '',
-              }}
-            >
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{
+            firstName: currentUser.firstName || '',
+            middleName: currentUser.middleName || '',
+            lastName: currentUser.lastName || '',
+            department: currentUser.department || '',
+            phoneNumber: currentUser.phoneNumber || '',
+          }}
+        >
+          <div>
               {/* Current Read-Only Info */}
               <div style={{ marginBottom: 24, padding: 16, backgroundColor: '#f5f5f5', borderRadius: 8 }}>
                 <Text strong style={{ display: 'block', marginBottom: 12 }}>
@@ -503,12 +589,12 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                 onChange={(e) => {
                   // Auto-strip non-digits
                   const digitsOnly = e.target.value.replace(/\D/g, '');
-                  form.setFieldValue('phoneNumber', digitsOnly);
+                  form.setFieldsValue({ phoneNumber: digitsOnly });
                 }}
               />
             </Form.Item>
-          </Form>
-        </div>
+          </div>
+        </Form>
       ) : (
         // VIEW MODE - Show User Details and Actions
         <>
@@ -658,7 +744,8 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                     <Col span={12}>
                       <Button
                         icon={<CheckCircleOutlined />}
-                        disabled={currentUser.status === 'active'}
+                        disabled={currentUser.status === 'active' || isChangingStatus || loading}
+                        loading={isChangingStatus}
                         onClick={() => handleStatusChange('active')}
                         size="large"
                         block
@@ -676,7 +763,8 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                     <Col span={12}>
                       <Button
                         icon={<StopOutlined />}
-                        disabled={currentUser.status === 'suspended'}
+                        disabled={currentUser.status === 'suspended' || isChangingStatus || loading}
+                        loading={isChangingStatus}
                         onClick={() => handleStatusChange('suspended')}
                         danger={currentUser.status !== 'suspended'}
                         size="large"
@@ -714,7 +802,8 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                   <Row gutter={12}>
                     <Col span={12}>
                       <Button
-                        disabled={currentUser.role === 'admin'}
+                        disabled={currentUser.role === 'admin' || isChangingRole || loading}
+                        loading={isChangingRole}
                         onClick={() => handleRoleChange('admin')}
                         size="large"
                         block
@@ -731,7 +820,8 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                     </Col>
                     <Col span={12}>
                       <Button
-                        disabled={currentUser.role === 'staff'}
+                        disabled={currentUser.role === 'staff' || isChangingRole || loading}
+                        loading={isChangingRole}
                         onClick={() => handleRoleChange('staff')}
                         size="large"
                         block
@@ -782,7 +872,8 @@ export const UserActionsDrawer: React.FC<UserActionsDrawerProps> = ({
                       size="large"
                       block
                       onClick={handleDeleteClick}
-                      disabled={isOwnProfile}
+                      disabled={isOwnProfile || isDeleting || loading}
+                      loading={isDeleting}
                       style={{
                         fontWeight: 600,
                         height: 44,

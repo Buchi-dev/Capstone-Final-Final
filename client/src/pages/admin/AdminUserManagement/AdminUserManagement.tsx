@@ -30,6 +30,7 @@ import {
   ReloadOutlined,
   PlusOutlined,
   HomeOutlined,
+  BugOutlined,
 } from "@ant-design/icons";
 import { useUsers, useUserMutations } from "../../../hooks";
 import { UsersTable } from "./components/UsersTable";
@@ -39,13 +40,15 @@ import type { UserListData, UserRole, UserStatus } from "../../../schemas";
 
 import { AdminLayout } from "../../../components/layouts/AdminLayout";
 import { useAuth } from "../../../contexts/AuthContext";
+import { diagnoseAndPrint } from "../../../utils/authDiagnostics";
+import { getErrorMessage } from "../../../utils/errorHelpers";
 
 const { Title, Text } = Typography;
 const { Content } = Layout;
 
 export const AdminUserManagement: React.FC = () => {
   const { token } = theme.useToken();
-  const { user: userProfile } = useAuth();
+  const { user: userProfile, refetchUser, loading: authLoading } = useAuth();
   
   // Global READ hook - Real-time user data
   const { 
@@ -53,7 +56,10 @@ export const AdminUserManagement: React.FC = () => {
     isLoading: loading, 
     error: realtimeError,
     refetch 
-  } = useUsers({ pollInterval: 15000 });
+  } = useUsers({ 
+    pollInterval: 15000,
+    enabled: !authLoading && !!userProfile, // Only fetch when auth is ready
+  });
 
   // Global WRITE hook - User operations
   const {
@@ -112,7 +118,9 @@ export const AdminUserManagement: React.FC = () => {
       }
       await refetch();
     } catch (error: any) {
-      message.error(error.message || 'Failed to update user profile');
+      const errorMsg = getErrorMessage(error);
+      message.error(errorMsg);
+      console.error('[AdminUserManagement] Update profile error:', errorMsg);
       throw error; // Re-throw to prevent drawer from closing
     }
   };
@@ -125,9 +133,19 @@ export const AdminUserManagement: React.FC = () => {
     try {
       await updateUserStatus(userId, { status });
       message.success(`User status updated to ${status}`);
+      
+      // If admin changed their own status, sync auth state
+      if (userId === userProfile?.id) {
+        console.log('[AdminUserManagement] Admin changed own status, syncing auth...');
+        await refetchUser();
+      }
+      
       await refetch();
     } catch (error: any) {
-      message.error(error.message || 'Failed to update user status');
+      const errorMsg = getErrorMessage(error);
+      message.error(errorMsg);
+      console.error('[AdminUserManagement] Update status error:', errorMsg);
+      throw error; // Re-throw for drawer to handle
     }
   };
 
@@ -136,9 +154,19 @@ export const AdminUserManagement: React.FC = () => {
     try {
       await updateUserRole(userId, { role });
       message.success(`User role updated to ${role}`);
+      
+      // If admin changed their own role, sync auth state
+      if (userId === userProfile?.id) {
+        console.log('[AdminUserManagement] Admin changed own role, syncing auth...');
+        await refetchUser();
+      }
+      
       await refetch();
     } catch (error: any) {
-      message.error(error.message || 'Failed to update user role');
+      const errorMsg = getErrorMessage(error);
+      message.error(errorMsg);
+      console.error('[AdminUserManagement] Update role error:', errorMsg);
+      throw error; // Re-throw for drawer to handle
     }
   };
 
@@ -147,10 +175,43 @@ export const AdminUserManagement: React.FC = () => {
     try {
       await deleteUser(userId);
       message.success(`User "${userName}" deleted successfully`);
+      await refetch(); // Refetch to update the list
     } catch (error: any) {
-      message.error(error.message || 'Failed to delete user');
+      const errorMsg = getErrorMessage(error);
+      message.error(errorMsg);
+      console.error('[AdminUserManagement] Delete user error:', errorMsg);
+      throw error; // Re-throw for drawer to handle
     }
   };
+
+  // Handle diagnostic check
+  const handleRunDiagnostics = async () => {
+    message.info('Running authentication diagnostics... Check browser console for results.');
+    const result = await diagnoseAndPrint();
+    
+    if (result.success) {
+      message.success('Authentication is working correctly!');
+    } else {
+      message.error(`Authentication issues found: ${result.diagnostics.summary.issues} issue(s)`);
+    }
+  };
+
+  // Show loading screen while auth is initializing
+  if (authLoading) {
+    return (
+      <AdminLayout>
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          minHeight: '100vh',
+          background: token.colorBgLayout
+        }}>
+          <Spin size="large" tip="Initializing authentication..." />
+        </div>
+      </AdminLayout>
+    );
+  }
 
   return (
     <AdminLayout>
@@ -204,9 +265,18 @@ export const AdminUserManagement: React.FC = () => {
                     </Text>
                   </div>
                   <Space size="middle">
+                    {import.meta.env.DEV && (
+                      <Button
+                        icon={<BugOutlined />}
+                        onClick={handleRunDiagnostics}
+                        title="Run authentication diagnostics"
+                      >
+                        Debug Auth
+                      </Button>
+                    )}
                     <Button
                       icon={<ReloadOutlined spin={refreshing} />}
-                      onClick={() => window.location.reload()}
+                      onClick={() => refetch()}
                       disabled={loading || refreshing}
                     >
                       Refresh
@@ -227,8 +297,57 @@ export const AdminUserManagement: React.FC = () => {
             {/* Error Alert */}
             {error && (
               <Alert
-                message="Error Loading Users"
-                description={error}
+                message={
+                  error.includes('Authentication') || error.includes('401') || error.includes('Unauthorized')
+                    ? "🔐 Session Expired"
+                    : "Error Loading Users"
+                }
+                description={
+                  <Space direction="vertical" style={{ width: '100%' }}>
+                    <Text>{error}</Text>
+                    {(error.includes('Authentication') || error.includes('401') || error.includes('Unauthorized')) && (
+                      <>
+                        <Text type="secondary">
+                          Your authentication token has expired. Firebase tokens expire after 1 hour for security.
+                        </Text>
+                        <Text strong style={{ color: '#1890ff' }}>
+                          Please refresh your session by clicking the button below:
+                        </Text>
+                        <Space>
+                          <Button 
+                            size="small" 
+                            type="primary"
+                            onClick={async () => {
+                              message.loading('Refreshing your session...', 0.5);
+                              await refetchUser();
+                              await refetch();
+                              message.success('Authentication refreshed');
+                            }}
+                          >
+                            Refresh Authentication
+                          </Button>
+                          <Button 
+                            size="small"
+                            onClick={() => {
+                              window.location.reload();
+                            }}
+                          >
+                            Reload Page
+                          </Button>
+                          {import.meta.env.DEV && (
+                            <Button 
+                              size="small"
+                              icon={<BugOutlined />}
+                              onClick={handleRunDiagnostics}
+                            >
+                              Debug
+                            </Button>
+                          )}
+                        </Space>
+                      </>
+                    )}
+                  </Space>
+                }
                 type="error"
                 showIcon
                 closable
