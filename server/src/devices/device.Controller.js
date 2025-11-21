@@ -259,7 +259,7 @@ const processSensorData = async (req, res) => {
     const { deviceId, pH, turbidity, tds, timestamp } = req.body;
 
     // Validate required fields
-    if (!deviceId || pH === undefined || turbidity === undefined || tds === undefined || temperature === undefined) {
+    if (!deviceId || pH === undefined || turbidity === undefined || tds === undefined) {
       return res.status(400).json({
         success: false,
         message: 'Missing required sensor fields',
@@ -291,7 +291,6 @@ const processSensorData = async (req, res) => {
       pH,
       turbidity,
       tds,
-      temperature,
       timestamp: timestamp ? new Date(timestamp) : new Date(),
     });
 
@@ -361,17 +360,6 @@ async function checkThresholdsAndCreateAlerts(device, reading) {
   } else if (reading.tds > thresholds.tds.warning) {
     alerts.push(
       await createAlert(device, 'TDS', reading.tds, thresholds.tds.warning, 'Warning', reading.timestamp)
-    );
-  }
-
-  // Check temperature
-  if (reading.temperature < thresholds.temperature.critical.min || reading.temperature > thresholds.temperature.critical.max) {
-    alerts.push(
-      await createAlert(device, 'Temperature', reading.temperature, thresholds.temperature.critical, 'Critical', reading.timestamp)
-    );
-  } else if (reading.temperature < thresholds.temperature.min || reading.temperature > thresholds.temperature.max) {
-    alerts.push(
-      await createAlert(device, 'Temperature', reading.temperature, thresholds.temperature, 'Warning', reading.timestamp)
     );
   }
 

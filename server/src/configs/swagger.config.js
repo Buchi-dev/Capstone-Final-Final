@@ -152,17 +152,12 @@ const options = {
               format: 'float',
               example: 320,
             },
-            temperature: {
-              type: 'number',
-              format: 'float',
-              example: 25.5,
-            },
             timestamp: {
               type: 'string',
               format: 'date-time',
             },
           },
-          required: ['deviceId', 'pH', 'turbidity', 'tds', 'temperature'],
+          required: ['deviceId', 'pH', 'turbidity', 'tds'],
         },
         Alert: {
           type: 'object',

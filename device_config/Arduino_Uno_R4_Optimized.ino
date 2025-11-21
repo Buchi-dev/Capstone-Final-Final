@@ -14,7 +14,6 @@
  * - tds: TDS measurement in ppm (parts per million)
  * - ph: pH level (0-14 scale)
  * - turbidity: Turbidity in NTU (Nephelometric Turbidity Units)
- * - temperature: Temperature in Celsius (placeholder: 25.0)
  * - timestamp: ISO 8601 timestamp
  * 
  * SENSOR CALIBRATION:
@@ -113,7 +112,6 @@ unsigned long sensorReadStartTime = 0;
 float turbidity = 0.0;
 float tds = 0.0;
 float ph = 0.0;
-float temperature = 25.0;  // Placeholder temperature
 
 bool serverConnected = false;
 
@@ -437,7 +435,6 @@ void publishSensorData() {
   doc["tds"] = tds;                    // TDS in ppm
   doc["ph"] = ph;                      // pH value (0-14)
   doc["turbidity"] = turbidity;        // Turbidity in NTU
-  doc["temperature"] = temperature;    // Temperature in Celsius
   doc["timestamp"] = millis();         // Device uptime
   
   String payload;

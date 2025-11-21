@@ -442,7 +442,7 @@ const resetUserPreferences = async (req, res) => {
       pushNotifications: false,
       sendScheduledAlerts: true,
       alertSeverities: ['Critical', 'Warning'],
-      parameters: ['pH', 'Turbidity', 'TDS', 'Temperature'],
+      parameters: ['pH', 'Turbidity', 'TDS'],
       devices: [],
       quietHoursEnabled: false,
       quietHoursStart: '22:00',

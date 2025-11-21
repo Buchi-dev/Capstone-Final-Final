@@ -87,10 +87,6 @@ const sensorReadingSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
-    temperature: {
-      type: Number,
-      required: true,
-    },
     timestamp: {
       type: Date,
       required: true,

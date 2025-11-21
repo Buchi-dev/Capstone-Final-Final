@@ -69,9 +69,6 @@ const generateWaterQualityReport = async (req, res) => {
           avgTDS: { $avg: '$tds' },
           minTDS: { $min: '$tds' },
           maxTDS: { $max: '$tds' },
-          avgTemperature: { $avg: '$temperature' },
-          minTemperature: { $min: '$temperature' },
-          maxTemperature: { $max: '$temperature' },
         },
       },
     ]);
@@ -132,11 +129,6 @@ const generateWaterQualityReport = async (req, res) => {
             min: parseFloat(agg.minTDS.toFixed(2)),
             max: parseFloat(agg.maxTDS.toFixed(2)),
             compliant: tdsCompliant,
-          },
-          temperature: {
-            avg: parseFloat(agg.avgTemperature.toFixed(2)),
-            min: parseFloat(agg.minTemperature.toFixed(2)),
-            max: parseFloat(agg.maxTemperature.toFixed(2)),
           },
         },
         alerts: {

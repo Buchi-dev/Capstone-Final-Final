@@ -85,8 +85,8 @@ const userSchema = new mongoose.Schema(
       },
       parameters: {
         type: [String],
-        enum: ['pH', 'Turbidity', 'TDS', 'Temperature'],
-        default: ['pH', 'Turbidity', 'TDS', 'Temperature'],
+        enum: ['pH', 'Turbidity', 'TDS'],
+        default: ['pH', 'Turbidity', 'TDS'],
       },
       devices: {
         type: [String],

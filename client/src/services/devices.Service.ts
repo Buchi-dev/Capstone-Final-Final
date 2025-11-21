@@ -66,7 +66,6 @@ export interface DeviceReadingsResponse {
     avgPH: number;
     avgTurbidity: number;
     avgTDS: number;
-    avgTemperature: number;
   };
 }
 

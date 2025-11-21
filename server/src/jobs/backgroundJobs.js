@@ -230,9 +230,6 @@ async function generateWaterQualityReportJob(startDate, endDate, deviceIds, gene
           avgTDS: { $avg: '$tds' },
           minTDS: { $min: '$tds' },
           maxTDS: { $max: '$tds' },
-          avgTemperature: { $avg: '$temperature' },
-          minTemperature: { $min: '$temperature' },
-          maxTemperature: { $max: '$temperature' },
         },
       },
     ]);
@@ -285,11 +282,6 @@ async function generateWaterQualityReportJob(startDate, endDate, deviceIds, gene
             min: parseFloat(agg.minTDS.toFixed(2)),
             max: parseFloat(agg.maxTDS.toFixed(2)),
             compliant: tdsCompliant,
-          },
-          temperature: {
-            avg: parseFloat(agg.avgTemperature.toFixed(2)),
-            min: parseFloat(agg.minTemperature.toFixed(2)),
-            max: parseFloat(agg.maxTemperature.toFixed(2)),
           },
         },
         alerts: {

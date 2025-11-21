@@ -156,7 +156,6 @@ const getSummary = async (req, res) => {
           avgPH: { $avg: '$pH' },
           avgTurbidity: { $avg: '$turbidity' },
           avgTDS: { $avg: '$tds' },
-          avgTemperature: { $avg: '$temperature' },
         },
       },
     ]);
@@ -165,7 +164,6 @@ const getSummary = async (req, res) => {
       pH: parseFloat(avgParameters[0].avgPH.toFixed(2)),
       turbidity: parseFloat(avgParameters[0].avgTurbidity.toFixed(2)),
       tds: parseFloat(avgParameters[0].avgTDS.toFixed(2)),
-      temperature: parseFloat(avgParameters[0].avgTemperature.toFixed(2)),
     } : null;
 
     res.json({
@@ -213,11 +211,11 @@ const getParameterAnalytics = async (req, res) => {
     if (!parameter) {
       return res.status(400).json({
         success: false,
-        message: 'Parameter is required (pH, turbidity, tds, temperature)',
+        message: 'Parameter is required (pH, turbidity, tds)',
       });
     }
 
-    const validParameters = ['pH', 'turbidity', 'tds', 'temperature'];
+    const validParameters = ['pH', 'turbidity', 'tds'];
     if (!validParameters.includes(parameter)) {
       return res.status(400).json({
         success: false,
@@ -325,8 +323,6 @@ function calculateBucketBoundaries(parameter) {
       return [0, 1, 2, 3, 4, 5, 10, 20, 50, 100];
     case 'tds':
       return [0, 100, 200, 300, 400, 500, 750, 1000, 1500, 2000];
-    case 'temperature':
-      return [0, 10, 15, 20, 25, 30, 35, 40, 50];
     default:
       return [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
   }
@@ -345,8 +341,6 @@ function getThresholds(parameter) {
       return { min: 0, max: 5, unit: 'NTU' };
     case 'tds':
       return { min: 0, max: 500, unit: 'ppm' };
-    case 'temperature':
-      return { min: 15, max: 30, unit: '°C' };
     default:
       return { min: 0, max: 100, unit: '' };
   }

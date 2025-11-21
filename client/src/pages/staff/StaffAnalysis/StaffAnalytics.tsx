@@ -238,13 +238,13 @@ export const StaffAnalytics = () => {
                 </div>
                 <Divider style={{ margin: '8px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Text>Temperature:</Text>
-                  <Text strong style={{ color: token.colorSuccess }}>Normal</Text>
+                  <Text>Turbidity:</Text>
+                  <Text strong style={{ color: token.colorWarning }}>Moderate</Text>
                 </div>
                 <Divider style={{ margin: '8px 0' }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Text>Turbidity:</Text>
-                  <Text strong style={{ color: token.colorWarning }}>Moderate</Text>
+                  <Text>TDS:</Text>
+                  <Text strong style={{ color: token.colorSuccess }}>Normal</Text>
                 </div>
               </Space>
             </DataCard>

@@ -37,9 +37,6 @@ const validateSensorData = [
   body('tds')
     .notEmpty().withMessage('TDS value is required')
     .isFloat({ min: 0 }).withMessage('TDS must be a positive number'),
-  body('temperature')
-    .notEmpty().withMessage('Temperature value is required')
-    .isFloat({ min: -10, max: 50 }).withMessage('Temperature must be between -10 and 50'),
   body('timestamp')
     .optional()
     .isISO8601().withMessage('Invalid timestamp format'),

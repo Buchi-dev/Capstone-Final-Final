@@ -54,7 +54,6 @@ export interface TrendPoint {
   avgPH?: number;
   avgTurbidity?: number;
   avgTDS?: number;
-  avgTemperature?: number;
   readingCount: number;
 }
 
@@ -83,7 +82,7 @@ export interface ParameterAnalytics {
 export interface TrendsQueryParams {
   startDate?: string;
   endDate?: string;
-  parameter?: 'pH' | 'Turbidity' | 'TDS' | 'Temperature';
+  parameter?: 'pH' | 'Turbidity' | 'TDS';
   granularity?: 'hour' | 'day' | 'week' | 'month';
   deviceIds?: string[];
 }
@@ -92,7 +91,7 @@ export interface TrendsQueryParams {
  * Parameter analytics query parameters
  */
 export interface ParameterQueryParams {
-  parameter?: 'pH' | 'Turbidity' | 'TDS' | 'Temperature';
+  parameter?: 'pH' | 'Turbidity' | 'TDS';
   startDate?: string;
   endDate?: string;
 }

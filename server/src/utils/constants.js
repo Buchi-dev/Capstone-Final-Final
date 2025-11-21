@@ -33,14 +33,6 @@ const SENSOR_THRESHOLDS = {
     warning: 500, // ppm
     critical: 1000, // ppm
   },
-  temperature: {
-    min: 10, // °C
-    max: 30, // °C
-    critical: {
-      min: 5, // °C
-      max: 35, // °C
-    },
-  },
 };
 
 // Alert severity levels
