@@ -20,13 +20,13 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { useThemeToken } from '../../../../theme';
-import type { DeviceWithSensorData } from '../../../../hooks_old';
+import type { Device } from '../../../../schemas';
 import type { DeviceStats } from '../hooks';
 
 const { Text } = Typography;
 
 interface DeviceStatusOverviewProps {
-  devices: DeviceWithSensorData[];
+  devices: Device[];
   deviceStats: DeviceStats;
 }
 

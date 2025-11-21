@@ -1,16 +1,17 @@
 import { Card, Statistic, Row, Col, Tag } from 'antd';
 import {
-  ArrowUpOutlined,
-  ArrowDownOutlined,
-  WarningOutlined,
-  SyncOutlined,
+  ThunderboltOutlined,
+  MailOutlined,
+  CloudServerOutlined,
+  CheckCircleOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons';
 import { memo, useMemo } from 'react';
-import type { MqttBridgeStatus } from '../../../../services/mqtt.service';
+import type { SystemHealth } from '../../../../services/health.Service';
 import { HEALTH_COLORS } from '../config';
 
 interface MetricsGridProps {
-  status: MqttBridgeStatus | null;
+  health: SystemHealth | null;
   loading: boolean;
 }
 
@@ -19,28 +20,42 @@ const cardStyle = {
   boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
 };
 
-export const MetricsGrid = memo(({ status, loading }: MetricsGridProps) => {
-  const metrics = status?.metrics;
+export const MetricsGrid = memo(({ health, loading }: MetricsGridProps) => {
+  const databaseStatus = health?.checks?.database?.status;
+  const redisStatus = health?.checks?.redis?.status;
+  const emailQueueStatus = health?.checks?.emailQueue?.status;
+  const memoryStatus = health?.checks?.memory?.status;
 
-  const failedColor = useMemo(() => 
-    metrics?.failed ? HEALTH_COLORS.ERROR : HEALTH_COLORS.UNKNOWN,
-    [metrics?.failed]
+  const databaseColor = useMemo(() => 
+    databaseStatus === 'OK' ? HEALTH_COLORS.EXCELLENT : HEALTH_COLORS.ERROR,
+    [databaseStatus]
   );
 
-  const circuitBreakerTag = useMemo(() => ({
-    color: metrics?.circuitBreakerOpen ? 'error' : 'success',
-    text: metrics?.circuitBreakerOpen ? 'Alert' : 'Normal'
-  }), [metrics?.circuitBreakerOpen]);
-
-  const circuitBreakerValue = useMemo(() => 
-    metrics?.circuitBreakerOpen ? 'OPEN' : 'CLOSED',
-    [metrics?.circuitBreakerOpen]
+  const redisColor = useMemo(() => 
+    redisStatus === 'OK' ? HEALTH_COLORS.EXCELLENT : 
+    redisStatus === 'NOT_CONFIGURED' ? HEALTH_COLORS.UNKNOWN : HEALTH_COLORS.ERROR,
+    [redisStatus]
   );
 
-  const circuitBreakerColor = useMemo(() => 
-    metrics?.circuitBreakerOpen ? HEALTH_COLORS.ERROR : HEALTH_COLORS.EXCELLENT,
-    [metrics?.circuitBreakerOpen]
+  const emailColor = useMemo(() => {
+    if (emailQueueStatus === 'OK') return HEALTH_COLORS.EXCELLENT;
+    if (emailQueueStatus === 'WARNING') return HEALTH_COLORS.WARNING;
+    if (emailQueueStatus === 'NOT_CONFIGURED') return HEALTH_COLORS.UNKNOWN;
+    return HEALTH_COLORS.ERROR;
+  }, [emailQueueStatus]);
+
+  const memoryColor = useMemo(() => 
+    memoryStatus === 'OK' ? HEALTH_COLORS.EXCELLENT : HEALTH_COLORS.WARNING,
+    [memoryStatus]
   );
+
+  const systemStatusColor = useMemo(() => {
+    if (health?.status === 'OK') return HEALTH_COLORS.EXCELLENT;
+    if (health?.status === 'DEGRADED') return HEALTH_COLORS.WARNING;
+    return HEALTH_COLORS.ERROR;
+  }, [health?.status]);
+
+  const emailQueueStats = health?.checks?.emailQueue?.stats;
 
   return (
     <Row gutter={[16, 16]}>
@@ -51,10 +66,13 @@ export const MetricsGrid = memo(({ status, loading }: MetricsGridProps) => {
           style={cardStyle}
         >
           <Statistic
-            title="Messages Received"
-            value={metrics?.received || 0}
-            prefix={<ArrowDownOutlined style={{ color: HEALTH_COLORS.EXCELLENT }} />}
-            valueStyle={{ color: HEALTH_COLORS.EXCELLENT, fontWeight: 600 }}
+            title="Database"
+            value={databaseStatus || 'UNKNOWN'}
+            prefix={databaseStatus === 'OK' ? 
+              <CheckCircleOutlined style={{ color: databaseColor }} /> : 
+              <CloseCircleOutlined style={{ color: databaseColor }} />
+            }
+            valueStyle={{ color: databaseColor, fontWeight: 600, fontSize: '16px' }}
           />
         </Card>
       </Col>
@@ -66,10 +84,13 @@ export const MetricsGrid = memo(({ status, loading }: MetricsGridProps) => {
           style={cardStyle}
         >
           <Statistic
-            title="Messages Published"
-            value={metrics?.published || 0}
-            prefix={<ArrowUpOutlined style={{ color: HEALTH_COLORS.INFO }} />}
-            valueStyle={{ color: HEALTH_COLORS.INFO, fontWeight: 600 }}
+            title="Redis Cache"
+            value={redisStatus || 'UNKNOWN'}
+            prefix={redisStatus === 'OK' ? 
+              <CheckCircleOutlined style={{ color: redisColor }} /> : 
+              <CloseCircleOutlined style={{ color: redisColor }} />
+            }
+            valueStyle={{ color: redisColor, fontWeight: 600, fontSize: '16px' }}
           />
         </Card>
       </Col>
@@ -81,13 +102,11 @@ export const MetricsGrid = memo(({ status, loading }: MetricsGridProps) => {
           style={cardStyle}
         >
           <Statistic
-            title="Failed Messages"
-            value={metrics?.failed || 0}
-            prefix={<WarningOutlined style={{ color: failedColor }} />}
-            valueStyle={{ 
-              color: failedColor,
-              fontWeight: 600 
-            }}
+            title="Email Queue"
+            value={emailQueueStats?.waiting || 0}
+            suffix="waiting"
+            prefix={<MailOutlined style={{ color: emailColor }} />}
+            valueStyle={{ color: emailColor, fontWeight: 600 }}
           />
         </Card>
       </Col>
@@ -99,10 +118,10 @@ export const MetricsGrid = memo(({ status, loading }: MetricsGridProps) => {
           style={cardStyle}
         >
           <Statistic
-            title="Buffer Flushes"
-            value={metrics?.flushes || 0}
-            prefix={<SyncOutlined style={{ color: HEALTH_COLORS.WARNING }} />}
-            valueStyle={{ color: HEALTH_COLORS.WARNING, fontWeight: 600 }}
+            title="Memory"
+            value={memoryStatus || 'UNKNOWN'}
+            prefix={<ThunderboltOutlined style={{ color: memoryColor }} />}
+            valueStyle={{ color: memoryColor, fontWeight: 600, fontSize: '16px' }}
           />
         </Card>
       </Col>
@@ -117,15 +136,17 @@ export const MetricsGrid = memo(({ status, loading }: MetricsGridProps) => {
           }}
         >
           <Statistic
-            title="Circuit Breaker Status"
-            value={circuitBreakerValue}
+            title="System Status"
+            value={health?.status || 'UNKNOWN'}
+            prefix={<CloudServerOutlined style={{ color: systemStatusColor }} />}
             valueStyle={{ 
-              color: circuitBreakerColor,
-              fontWeight: 600 
+              color: systemStatusColor,
+              fontWeight: 600,
+              fontSize: '18px'
             }}
             suffix={
-              <Tag color={circuitBreakerTag.color}>
-                {circuitBreakerTag.text}
+              <Tag color={health?.status === 'OK' ? 'success' : health?.status === 'DEGRADED' ? 'warning' : 'error'}>
+                {health?.status === 'OK' ? 'Healthy' : health?.status === 'DEGRADED' ? 'Degraded' : 'Unhealthy'}
               </Tag>
             }
           />

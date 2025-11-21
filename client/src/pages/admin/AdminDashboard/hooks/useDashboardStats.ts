@@ -12,8 +12,7 @@
  */
 
 import { useMemo } from 'react';
-import type { DeviceWithSensorData } from '../../../../hooks_old';
-import type { WaterQualityAlert } from '../../../../schemas';
+import type { Device, WaterQualityAlert } from '../../../../schemas';
 
 /**
  * Device statistics
@@ -61,12 +60,12 @@ export interface AlertStats {
  * console.log(`${deviceStats.online}/${deviceStats.total} devices online`);
  * ```
  */
-export const calculateDeviceStats = (devices: DeviceWithSensorData[]): DeviceStats => {
+export const calculateDeviceStats = (devices: Device[]): DeviceStats => {
   return {
     total: devices.length,
     online: devices.filter((d) => d.status === 'online').length,
     offline: devices.filter((d) => d.status === 'offline').length,
-    withReadings: devices.filter((d) => d.latestReading !== null).length,
+    withReadings: devices.filter((d: any) => d.latestReading !== null).length,
   };
 };
 
@@ -128,7 +127,7 @@ export const calculateAlertStats = (alerts: WaterQualityAlert[]): AlertStats => 
  * ```
  */
 export const useDashboardStats = (
-  devices: DeviceWithSensorData[],
+  devices: Device[],
   alerts: WaterQualityAlert[]
 ) => {
   const deviceStats = useMemo(() => calculateDeviceStats(devices), [devices]);

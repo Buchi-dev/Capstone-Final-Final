@@ -1,13 +1,13 @@
 import { Card, Progress, Typography, Space, Empty } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import { memo, useMemo, useCallback } from 'react';
-import type { MqttBridgeHealth } from '../../../../services/mqtt.service';
+import type { SystemHealth } from '../../../../services/health.Service';
 import { getBufferHealth } from '../config';
 
 const { Text } = Typography;
 
 interface BufferMonitorProps {
-  health: MqttBridgeHealth | null;
+  health: SystemHealth | null;
   loading: boolean;
 }
 

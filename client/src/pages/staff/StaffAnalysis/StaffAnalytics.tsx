@@ -2,7 +2,7 @@
  * StaffAnalytics - Data Analytics View for Staff Role
  * Displays water quality trends and analytics
  * 
- * Architecture: Uses global hook useRealtime_Devices()
+ * Architecture: Uses global hook useDevices()
  */
 
 import { useMemo } from 'react';
@@ -16,7 +16,7 @@ import {
 } from '@ant-design/icons';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
-import { useRealtime_Devices, useRouteContext } from '@/hooks_old';
+import { useDevices } from '../../../hooks';
 import { PageHeader, StatsCard, PageContainer, DataCard } from '../../../components/staff';
 import { Typography } from 'antd';
 import {
@@ -38,20 +38,19 @@ const { Text } = Typography;
 export const StaffAnalytics = () => {
   const token = useThemeToken();
   
-  // Get route context to enable conditional fetching
-  const { needsDevices } = useRouteContext();
-  
-  // Use global hook for real-time device data - only fetch when on analytics page
-  const { devices: realtimeDevices, isLoading, refetch } = useRealtime_Devices({ enabled: needsDevices });
+  // ✅ GLOBAL HOOK - Real-time device data with SWR polling
+  const { devices: realtimeDevices, isLoading, refetch } = useDevices({ 
+    pollInterval: 30000 // Poll every 30 seconds for analytics
+  });
 
-  const handleRefresh = () => {
-    refetch();
+  const handleRefresh = async () => {
+    await refetch();
   };
 
   // Calculate analytics data from real-time devices
   const analyticsData = useMemo(() => {
     const devicesWithReadings = realtimeDevices.filter(
-      (d: any) => d.latestReading !== null
+      (d) => (d as any).latestReading !== null
     );
 
     if (devicesWithReadings.length === 0) {

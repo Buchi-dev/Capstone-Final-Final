@@ -2,7 +2,7 @@
  * StaffReadings - Sensor Readings View for Staff Role
  * Displays real-time sensor readings from all devices
  * 
- * Architecture: Uses global hook useRealtime_Devices()
+ * Architecture: Uses global hook useDevices()
  */
 
 import { useState, useMemo } from 'react';
@@ -30,7 +30,7 @@ import {
 } from '@ant-design/icons';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
-import { useRealtime_Devices, useRouteContext } from '@/hooks_old';
+import { useDevices } from '../../../hooks';
 import { calculateReadingStatus } from '../../../utils/waterQualityUtils';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -58,18 +58,17 @@ export const StaffReadings = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [dateRange, setDateRange] = useState<any>(null);
   
-  // Get route context to enable conditional fetching
-  const { needsDevices } = useRouteContext();
-  
-  // Use global hook for real-time device data - only fetch when on readings page
-  const { devices: realtimeDevices, isLoading } = useRealtime_Devices({ enabled: needsDevices });
+  // ✅ GLOBAL HOOK - Real-time device data with SWR polling
+  const { devices: realtimeDevices, isLoading } = useDevices({ 
+    pollInterval: 10000 // Poll every 10 seconds for readings
+  });
 
   // Transform devices to readings format using utility function
   const readings: Reading[] = useMemo(() => {
     const allReadings: Reading[] = [];
     
-    realtimeDevices.forEach((device: any) => {
-      const reading = device.latestReading;
+    realtimeDevices.forEach((device) => {
+      const reading = (device as any).latestReading;
       if (!reading) return;
       
       // Use utility function to determine status

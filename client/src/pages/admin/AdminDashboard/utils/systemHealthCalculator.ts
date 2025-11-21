@@ -1,6 +1,6 @@
 /**
  * System Health Calculator
- * Provides dynamic system health calculation based on MQTT Bridge, Devices, and Alerts
+ * Provides dynamic system health calculation based on Express Server, Devices, and Alerts
  * 
  * @module utils/systemHealthCalculator
  */
@@ -18,7 +18,7 @@ export interface SystemHealthResult {
   status: 'Healthy' | 'Degraded' | 'Unhealthy';
   /** Component breakdown */
   components: {
-    mqttBridge: {
+    expressServer: {
       score: number;
       weight: number;
       contribution: number;
@@ -58,9 +58,9 @@ export interface AlertScoreBreakdown {
  * Total must equal 1.0 (100%)
  */
 export const SYSTEM_HEALTH_WEIGHTS = {
-  MQTT_BRIDGE: 0.6,  // 60%
-  DEVICES: 0.2,       // 20%
-  ALERTS: 0.2,        // 20%
+  EXPRESS_SERVER: 0.6,  // 60% - Express server health (database, redis, memory, etc.)
+  DEVICES: 0.2,         // 20% - Device connectivity
+  ALERTS: 0.2,          // 20% - Alert severity
 } as const;
 
 /**
@@ -243,44 +243,44 @@ export const calculateDeviceHealthScore = (
  * Calculate overall system health score
  * 
  * Formula:
- * SystemHealthScore = (0.6 × BridgeScore) + (0.2 × DeviceScore) + (0.2 × AlertScore)
+ * SystemHealthScore = (0.6 × ServerScore) + (0.2 × DeviceScore) + (0.2 × AlertScore)
  * 
  * Status Mapping:
  * - 90-100: Healthy
  * - 60-89: Degraded
  * - 0-59: Unhealthy
  * 
- * @param mqttBridgeScore - MQTT Bridge health score (0-100) from bridge service
+ * @param serverScore - Express server health score (0-100) from health endpoint
  * @param onlineDevices - Number of online devices
  * @param totalDevices - Total number of devices
  * @param alerts - Array of all alerts
  * @returns Complete system health result with breakdown
  */
 export const calculateSystemHealth = (
-  mqttBridgeScore: number,
+  serverScore: number,
   onlineDevices: number,
   totalDevices: number,
   alerts: WaterQualityAlert[]
 ): SystemHealthResult => {
-  // Calculate component scores
-  const deviceScore = calculateDeviceHealthScore(onlineDevices, totalDevices);
-  const alertsResult = calculateAlertsHealthScore(alerts);
-  const alertScore = alertsResult.score;
+  // 1. Clamp Express server score to valid range
+  const serverScoreClamped = Math.max(0, Math.min(100, serverScore));
 
-  // Ensure scores are within 0-100 range
-  const bridgeScoreClamped = Math.max(0, Math.min(100, mqttBridgeScore));
+  // 2. Calculate device and alert scores
+  const deviceScore = calculateDeviceHealthScore(onlineDevices, totalDevices);
+  const { score: alertScore, breakdown: alertBreakdown } = calculateAlertsHealthScore(alerts);
+
   const deviceScoreClamped = Math.max(0, Math.min(100, deviceScore));
   const alertScoreClamped = Math.max(0, Math.min(100, alertScore));
 
-  // Calculate weighted contributions
-  const bridgeContribution = bridgeScoreClamped * SYSTEM_HEALTH_WEIGHTS.MQTT_BRIDGE;
+  // 3. Calculate weighted contributions
+  const serverContribution = serverScoreClamped * SYSTEM_HEALTH_WEIGHTS.EXPRESS_SERVER;
   const deviceContribution = deviceScoreClamped * SYSTEM_HEALTH_WEIGHTS.DEVICES;
   const alertContribution = alertScoreClamped * SYSTEM_HEALTH_WEIGHTS.ALERTS;
 
-  // Calculate overall score
-  const overallScore = Math.round(bridgeContribution + deviceContribution + alertContribution);
+  // 4. Calculate total score
+  const overallScore = Math.round(serverContribution + deviceContribution + alertContribution);
 
-  // Determine categorical status
+  // 5. Determine status based on thresholds
   let status: 'Healthy' | 'Degraded' | 'Unhealthy';
   if (overallScore >= SYSTEM_HEALTH_THRESHOLDS.HEALTHY_MIN) {
     status = 'Healthy';
@@ -294,10 +294,10 @@ export const calculateSystemHealth = (
     overallScore,
     status,
     components: {
-      mqttBridge: {
-        score: bridgeScoreClamped,
-        weight: SYSTEM_HEALTH_WEIGHTS.MQTT_BRIDGE,
-        contribution: Math.round(bridgeContribution),
+      expressServer: {
+        score: serverScoreClamped,
+        weight: SYSTEM_HEALTH_WEIGHTS.EXPRESS_SERVER,
+        contribution: Math.round(serverContribution),
       },
       devices: {
         score: deviceScoreClamped,
@@ -310,7 +310,7 @@ export const calculateSystemHealth = (
         score: alertScoreClamped,
         weight: SYSTEM_HEALTH_WEIGHTS.ALERTS,
         contribution: Math.round(alertContribution),
-        breakdown: alertsResult.breakdown,
+        breakdown: alertBreakdown,
       },
     },
   };

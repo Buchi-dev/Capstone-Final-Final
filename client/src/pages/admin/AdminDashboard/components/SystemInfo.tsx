@@ -1,17 +1,17 @@
 import { Card, Descriptions, Tag, Typography, Space } from 'antd';
 import { InfoCircleOutlined, ThunderboltOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { memo, useMemo, useCallback } from 'react';
-import type { MqttBridgeStatus } from '../../../../services/mqtt.service';
+import type { SystemHealth } from '../../../../services/health.Service';
 import { HEALTH_COLORS } from '../config';
 
 const { Text } = Typography;
 
 interface SystemInfoProps {
-  status: MqttBridgeStatus | null;
+  health: SystemHealth | null;
   loading: boolean;
 }
 
-export const SystemInfo = memo(({ status, loading }: SystemInfoProps) => {
+export const SystemInfo = memo(({ health, loading }: SystemInfoProps) => {
   const formatBytes = useCallback((bytes: number): string => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -34,23 +34,19 @@ export const SystemInfo = memo(({ status, loading }: SystemInfoProps) => {
   }, []);
 
   const uptimeDisplay = useMemo(() => 
-    status ? formatUptime(status.uptime) : '--',
-    [status, formatUptime]
+    health ? formatUptime(health.uptime) : '--',
+    [health, formatUptime]
   );
 
   const memoryDisplay = useMemo(() => {
-    if (!status) return null;
+    if (!health) return null;
+    const memory = health.checks?.memory;
     return {
-      rss: formatBytes(status.memory.rss),
-      heapTotal: formatBytes(status.memory.heapTotal),
-      heapUsed: formatBytes(status.memory.heapUsed)
+      rss: formatBytes(memory?.usage?.rss ? memory.usage.rss * 1024 * 1024 : 0),
+      heapTotal: formatBytes(memory?.usage?.heapTotal ? memory.usage.heapTotal * 1024 * 1024 : 0),
+      heapUsed: formatBytes(memory?.usage?.heapUsed ? memory.usage.heapUsed * 1024 * 1024 : 0)
     };
-  }, [status, formatBytes]);
-
-  const bufferEntries = useMemo(() => 
-    status?.buffers ? Object.entries(status.buffers) : [],
-    [status?.buffers]
-  );
+  }, [health, formatBytes]);
 
   return (
     <Card 
@@ -75,9 +71,19 @@ export const SystemInfo = memo(({ status, loading }: SystemInfoProps) => {
           </Space>
         </Descriptions.Item>
         
-        <Descriptions.Item label="MQTT Status">
-          {status?.mqtt.connected ? (
+        <Descriptions.Item label="Database Status">
+          {health?.checks?.database?.status === 'OK' ? (
             <Tag icon={<CheckCircleOutlined />} color="success">Connected</Tag>
+          ) : (
+            <Tag color="error">Disconnected</Tag>
+          )}
+        </Descriptions.Item>
+
+        <Descriptions.Item label="Redis Status">
+          {health?.checks?.redis?.status === 'OK' ? (
+            <Tag icon={<CheckCircleOutlined />} color="success">Connected</Tag>
+          ) : health?.checks?.redis?.status === 'NOT_CONFIGURED' ? (
+            <Tag color="default">Not Configured</Tag>
           ) : (
             <Tag color="error">Disconnected</Tag>
           )}
@@ -101,18 +107,8 @@ export const SystemInfo = memo(({ status, loading }: SystemInfoProps) => {
           )}
         </Descriptions.Item>
 
-        <Descriptions.Item label="Active Buffers">
-          {bufferEntries.length > 0 ? (
-            <Space direction="vertical" size={4}>
-              {bufferEntries.map(([name, count]) => (
-                <Text key={name} type="secondary" style={{ fontSize: '12px' }}>
-                  {name}: <Tag color={count > 0 ? 'processing' : 'default'}>{count}</Tag>
-                </Text>
-              ))}
-            </Space>
-          ) : (
-            <Text type="secondary">--</Text>
-          )}
+        <Descriptions.Item label="Environment">
+          <Tag color="blue">{health?.environment || 'Unknown'}</Tag>
         </Descriptions.Item>
       </Descriptions>
     </Card>

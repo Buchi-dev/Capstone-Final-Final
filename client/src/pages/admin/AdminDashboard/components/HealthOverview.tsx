@@ -2,18 +2,18 @@ import { Card, Badge, Typography, Space } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { memo, useMemo } from 'react';
 import { useThemeToken } from '../../../../theme';
-import type { MqttBridgeHealth } from '../../../../services/mqtt.service';
+import type { SystemHealth } from '../../../../services/health.Service';
 
 const { Title, Text } = Typography;
 
 interface HealthOverviewProps {
-  health: MqttBridgeHealth | null;
+  health: SystemHealth | null;
   loading: boolean;
 }
 
 export const HealthOverview = memo(({ health, loading }: HealthOverviewProps) => {
   const token = useThemeToken();
-  const isHealthy = health?.status === 'healthy';
+  const isHealthy = health?.status === 'OK';
   
   const formatUptime = useMemo(() => {
     return (seconds: number): string => {
@@ -52,7 +52,7 @@ export const HealthOverview = memo(({ health, loading }: HealthOverviewProps) =>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Title level={2} style={{ margin: 0, color: '#fff' }}>
-            MQTT Bridge Status
+            Express Server Status
           </Title>
           <Badge 
             status={isHealthy ? 'success' : 'error'} 
@@ -77,19 +77,19 @@ export const HealthOverview = memo(({ health, loading }: HealthOverviewProps) =>
 
           <Space direction="vertical" size={4}>
             <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: '14px' }}>
-              {health?.checks.mqtt.connected ? (
+              {health?.checks?.database?.status === 'OK' ? (
                 <CheckCircleOutlined style={{ marginRight: 8 }} />
               ) : (
                 <CloseCircleOutlined style={{ marginRight: 8 }} />
               )}
-              MQTT Connection
+              Database Connection
             </Text>
             <Title level={3} style={{ margin: 0, color: '#fff' }}>
-              {health?.checks.mqtt.connected ? 'Connected' : 'Disconnected'}
+              {health?.checks?.database?.status === 'OK' ? 'Connected' : 'Disconnected'}
             </Title>
-            {health?.checks.mqtt.clientId && (
+            {health?.checks?.database?.name && (
               <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>
-                {health.checks.mqtt.clientId}
+                {health.checks.database.name}
               </Text>
             )}
           </Space>

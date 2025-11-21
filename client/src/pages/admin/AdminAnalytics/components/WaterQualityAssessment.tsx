@@ -6,7 +6,7 @@
 import { Card, Row, Col, Space, Typography, Tag } from 'antd';
 import { memo } from 'react';
 import type { WaterQualityMetrics } from '../hooks';
-import type { DeviceWithSensorData } from '../../../../hooks_old';
+import type { Device } from '../../../../schemas';
 import type { WaterQualityAlert } from '../../../../schemas';
 
 const { Text } = Typography;
@@ -36,7 +36,7 @@ const WATER_QUALITY_THRESHOLDS = {
 
 interface WaterQualityAssessmentProps {
   metrics: WaterQualityMetrics;
-  devices: DeviceWithSensorData[];
+  devices: Device[];
   alerts: WaterQualityAlert[];
 }
 

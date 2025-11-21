@@ -7,7 +7,7 @@
  * @module pages/admin/AdminAnalytics/hooks
  */
 import { useMemo } from 'react';
-import type { DeviceWithSensorData } from '../../../../hooks_old';
+import type { Device } from '../../../../schemas';
 
 interface TimeSeriesDataPoint {
   time: string;
@@ -43,7 +43,7 @@ interface ParameterComparisonPoint {
  * ```
  */
 export const useAnalyticsProcessing = (
-  devices: DeviceWithSensorData[]
+  devices: Device[]
 ) => {
   // Transform current readings into time series format for visualization
   const timeSeriesData = useMemo<TimeSeriesDataPoint[]>(() => {

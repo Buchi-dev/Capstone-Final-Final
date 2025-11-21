@@ -1,7 +1,8 @@
 /**
  * Health Service
  * 
- * Provides system health monitoring and MQTT bridge metrics through Express REST API.
+ * Provides system health monitoring through Express REST API.
+ * Monitors database, Redis, email queue, memory, and system uptime.
  * 
  * API Endpoints:
  * - GET /health - Comprehensive system health check

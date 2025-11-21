@@ -2,29 +2,37 @@
  * Account Completion Component
  * Allows new users to complete their profile by adding department and phone number
  * After completion, redirects to pending approval page
+ * 
+ * Architecture: Uses global hooks for authentication and user mutations
  */
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, Typography, Space, Button, Form, Input, Select, Alert, theme, Divider } from "antd";
+import { Card, Typography, Space, Button, Form, Input, Select, Alert, theme, Divider, message } from "antd";
 import { 
   UserOutlined, 
   PhoneOutlined, 
   BankOutlined,
   CheckCircleOutlined 
 } from "@ant-design/icons";
-import { useAuth } from "../../../contexts/AuthContext";
-import { usersService } from "../../../services/user.Service";
+import { useAuth } from "../../../hooks";
+import { useUserMutations } from "../../../hooks";
 
 const { Title, Text } = Typography;
 
 export const AuthAccountCompletion = () => {
   const { user, loading: authLoading, isAuthenticated, refetchUser } = useAuth();
+  const { completeUserProfile, isLoading, error: mutationError } = useUserMutations();
   const navigate = useNavigate();
   const { token } = theme.useToken();
   const [form] = Form.useForm();
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // Display mutation errors
+  useEffect(() => {
+    if (mutationError) {
+      message.error(mutationError.message || 'Failed to complete profile');
+    }
+  }, [mutationError]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -70,28 +78,34 @@ export const AuthAccountCompletion = () => {
     }
   }, [authLoading, isAuthenticated, user, navigate]);
 
-  const handleSubmit = async (values: { department: string; phoneNumber: string }) => {
+  const handleSubmit = async (values: {
+    firstName: string;
+    lastName: string;
+    middleName?: string;
+    department: string;
+    phoneNumber: string;
+  }) => {
     if (!user) return;
 
-    setSubmitting(true);
-    setError(null);
-
     try {
-      await usersService.completeUserProfile(user._id, {
+      await completeUserProfile(user._id, {
+        firstName: values.firstName,
+        lastName: values.lastName,
+        middleName: values.middleName,
         department: values.department,
         phoneNumber: values.phoneNumber,
       });
+
+      message.success('Profile completed successfully!');
 
       // Refresh user data
       await refetchUser();
 
       // Navigate to pending approval
       navigate("/auth/pending-approval");
-    } catch (err: any) {
+    } catch (err) {
+      // Error is already handled by useUserMutations hook
       console.error("Error completing profile:", err);
-      setError(err.message || "Failed to complete profile. Please try again.");
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -142,18 +156,6 @@ export const AuthAccountCompletion = () => {
 
           <Divider style={{ margin: "8px 0" }} />
 
-          {/* Error Alert */}
-          {error && (
-            <Alert
-              message="Error"
-              description={error}
-              type="error"
-              showIcon
-              closable
-              onClose={() => setError(null)}
-            />
-          )}
-
           {/* Info Alert */}
           <Alert
             message="Account Setup"
@@ -169,6 +171,45 @@ export const AuthAccountCompletion = () => {
             onFinish={handleSubmit}
             requiredMark="optional"
           >
+            <Form.Item
+              name="firstName"
+              label="First Name"
+              rules={[
+                { required: true, message: "Please enter your first name" },
+              ]}
+            >
+              <Input
+                size="large"
+                prefix={<UserOutlined />}
+                placeholder="John"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="lastName"
+              label="Last Name"
+              rules={[
+                { required: true, message: "Please enter your last name" },
+              ]}
+            >
+              <Input
+                size="large"
+                prefix={<UserOutlined />}
+                placeholder="Doe"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="middleName"
+              label="Middle Name (Optional)"
+            >
+              <Input
+                size="large"
+                prefix={<UserOutlined />}
+                placeholder="Middle name"
+              />
+            </Form.Item>
+
             <Form.Item
               name="department"
               label="Department"
@@ -217,7 +258,7 @@ export const AuthAccountCompletion = () => {
                 type="primary"
                 size="large"
                 htmlType="submit"
-                loading={submitting}
+                loading={isLoading}
                 icon={<CheckCircleOutlined />}
                 block
                 style={{

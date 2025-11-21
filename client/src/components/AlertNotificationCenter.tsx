@@ -22,7 +22,7 @@ import {
   EyeOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import { useRealtime_Alerts } from '../hooks_old/reads/useRealtime_Alerts';
+import { useAlerts } from '../hooks';
 import { getSeverityColor } from '../schemas';
 
 const { Text } = Typography;
@@ -33,9 +33,8 @@ export default function AlertNotificationCenter() {
 
   // Use the SWR-based hook for real-time alerts
   // Poll every 30 seconds for global notifications (less aggressive than page-level polling)
-  const { alerts: allAlerts, isLoading } = useRealtime_Alerts({
-    limit: 50,
-    refreshInterval: 30000, // 30 seconds - less frequent for background notifications
+  const { alerts: allAlerts, isLoading } = useAlerts({
+    pollInterval: 30000, // 30 seconds - less frequent for background notifications
   });
 
   // Filter for active/acknowledged alerts and limit to 10

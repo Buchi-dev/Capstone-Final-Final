@@ -24,10 +24,10 @@ import {
 import { AdminLayout } from '../../../components/layouts';
 import { PageHeader } from '../../../components/PageHeader';
 import { 
-  useRealtime_Devices, 
-  useRealtime_Alerts,
-  useRealtime_MQTTMetrics 
-} from '../../../hooks_old';
+  useDevices,
+  useAlerts,
+  useSystemHealth
+} from '../../../hooks';
 import { useAnalyticsProcessing, useAnalyticsStats } from './hooks';
 import {
   KeyMetrics,
@@ -49,18 +49,17 @@ export const AdminAnalytics = memo(() => {
   const {
     devices,
     isLoading: devicesLoading,
-  } = useRealtime_Devices({ includeMetadata: true });
+  } = useDevices({ pollInterval: 15000 });
 
   const {
     alerts,
     isLoading: alertsLoading,
-  } = useRealtime_Alerts({ maxAlerts: 100 });
+  } = useAlerts({ pollInterval: 5000 });
 
   const {
-    health: mqttHealth,
-    status: mqttStatus,
-    isLoading: mqttLoading,
-  } = useRealtime_MQTTMetrics({ pollInterval: 3000 });
+    health: systemHealthData,
+    isLoading: healthLoading,
+  } = useSystemHealth({ pollInterval: 30000 });
 
   // ✅ LOCAL HOOK - Calculate analytics statistics (UI logic only)
   const { 
@@ -71,7 +70,7 @@ export const AdminAnalytics = memo(() => {
     complianceStatus,
     devicePerformance,
     aggregatedMetrics,
-  } = useAnalyticsStats(devices, alerts, mqttHealth, mqttStatus);
+  } = useAnalyticsStats(devices, alerts, systemHealthData);
 
   // ✅ LOCAL HOOK - Process data for charts (UI logic only)
   const { 
@@ -81,7 +80,7 @@ export const AdminAnalytics = memo(() => {
   } = useAnalyticsProcessing(devices);
 
   // Combined loading state
-  const loading = devicesLoading || alertsLoading || mqttLoading;
+  const loading = devicesLoading || alertsLoading || healthLoading;
 
   // Initial loading state
   if (loading && devices.length === 0) {

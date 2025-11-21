@@ -250,7 +250,7 @@ const deleteDevice = async (req, res) => {
 };
 
 /**
- * Process sensor data (called by MQTT Bridge or PubSub replacement)
+ * Process sensor data (called by IoT devices via HTTP POST)
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */

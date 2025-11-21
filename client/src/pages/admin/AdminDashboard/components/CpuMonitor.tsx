@@ -1,14 +1,13 @@
 import { Card, Progress, Typography, Space, Row, Col, Statistic } from 'antd';
 import { ThunderboltOutlined } from '@ant-design/icons';
 import { memo, useMemo } from 'react';
-import type { MqttBridgeHealth, MqttBridgeStatus } from '../../../../services/mqtt.service';
+import type { SystemHealth } from '../../../../services/health.Service';
 import { HEALTH_COLORS } from '../config';
 
 const { Text } = Typography;
 
 interface CpuMonitorProps {
-  health: MqttBridgeHealth | null;
-  status: MqttBridgeStatus | null;
+  health: SystemHealth | null;
   loading: boolean;
 }
 

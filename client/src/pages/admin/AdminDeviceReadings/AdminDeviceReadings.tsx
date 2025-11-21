@@ -23,7 +23,7 @@ import {
 } from '@ant-design/icons';
 import { AdminLayout } from '../../../components/layouts';
 import { PageHeader } from '../../../components/PageHeader';
-import { useRealtime_Devices, useRealtime_Alerts } from '../../../hooks_old';
+import { useDevices, useAlerts } from '../../../hooks';
 import { useDeviceSeverityCalculator } from './hooks/useDeviceSeverityCalculator';
 import { StatsOverview, DeviceCard, DeviceListItem, FilterControls } from './components';
 
@@ -31,9 +31,9 @@ const { Content } = Layout;
 const { Text, Title } = Typography;
 
 export const AdminDeviceReadings = () => {
-  // ✅ GLOBAL HOOKS: Real-time data from Firestore/RTDB
-  const { devices: devicesData, isLoading: devicesLoading, error: devicesError, refetch: refetchDevices } = useRealtime_Devices({ includeMetadata: true });
-  const { alerts, isLoading: alertsLoading, error: alertsError, refetch: refetchAlerts } = useRealtime_Alerts({ maxAlerts: 100 });
+  // ✅ GLOBAL HOOKS: Real-time data
+  const { devices: devicesData, isLoading: devicesLoading, error: devicesError, refetch: refetchDevices } = useDevices({ pollInterval: 10000 });
+  const { alerts, isLoading: alertsLoading, error: alertsError, refetch: refetchAlerts } = useAlerts({ pollInterval: 5000 });
   
   // ✅ LOCAL UI HOOK: Severity calculation logic only
   const { enrichDeviceWithSeverity, sortBySeverity } = useDeviceSeverityCalculator();

@@ -192,26 +192,26 @@ export const getProgressStatus = (status: HealthStatus): 'success' | 'normal' | 
 };
 
 // ============================================================================
-// MQTT BRIDGE SPECIFIC HEALTH
+// EXPRESS SERVER SPECIFIC HEALTH
 // ============================================================================
 
 /**
- * Calculate MQTT Bridge health score based on RSS memory and CPU usage
+ * Calculate Express server health score based on RSS memory and CPU usage
  * Uses RSS (Resident Set Size) instead of heap as it reflects actual RAM usage
  * 
  * @param rss - Resident Set Size in bytes (actual RAM used)
  * @param cpuPercent - Current CPU usage percentage
- * @param connected - Whether MQTT is connected
- * @param status - MQTT health status from server
+ * @param connected - Whether database is connected
+ * @param status - Server health status from health endpoint
  * @returns Health score (0-100) where higher is better
  */
-export const calculateMqttBridgeHealthScore = (
+export const calculateServerHealthScore = (
   rss: number,
   cpuPercent: number,
   connected: boolean,
   status: 'healthy' | 'unhealthy' | 'degraded'
 ): number => {
-  // If not connected, health is 0
+  // If database not connected, health is 0
   if (!connected) return 0;
 
   const RAM_LIMIT_BYTES = 256 * 1024 * 1024; // 256MB Cloud Run limit

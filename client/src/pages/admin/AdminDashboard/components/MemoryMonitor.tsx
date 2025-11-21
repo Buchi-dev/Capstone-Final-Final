@@ -1,25 +1,24 @@
 import { Card, Progress, Typography, Space, Row, Col } from 'antd';
 import { DatabaseOutlined } from '@ant-design/icons';
 import { memo, useMemo } from 'react';
-import type { MqttBridgeHealth, MqttBridgeStatus } from '../../../../services/mqtt.service';
+import type { SystemHealth } from '../../../../services/health.Service';
 import { getMemoryHealth, getProgressStatus } from '../config';
 
 const { Text } = Typography;
 
 interface MemoryMonitorProps {
-  health: MqttBridgeHealth | null;
-  status: MqttBridgeStatus | null;
+  health: SystemHealth | null;
   loading: boolean;
 }
 
-export const MemoryMonitor = memo(({ health, status, loading }: MemoryMonitorProps) => {
+export const MemoryMonitor = memo(({ health, loading }: MemoryMonitorProps) => {
   const memory = health?.checks?.memory;
   
   // Use RSS percent from health endpoint (already calculated against 256MB limit)
-  const rssPercent = memory?.rssPercent || memory?.percent || 0;
+  const rssPercent = memory?.usage?.rss ? Math.round((memory.usage.rss / 256) * 100) : 0;
 
   // Get RSS bytes for formatting
-  const rssBytes = status?.memory?.rss || 0;
+  const rssBytes = memory?.usage?.rss ? memory.usage.rss * 1024 * 1024 : 0;
 
   // Format RSS in MB
   const rssMB = useMemo(() => {
@@ -27,8 +26,8 @@ export const MemoryMonitor = memo(({ health, status, loading }: MemoryMonitorPro
   }, [rssBytes]);
 
   // Format Heap in MB
-  const heapUsedBytes = status?.memory?.heapUsed || 0;
-  const heapTotalBytes = status?.memory?.heapTotal || 0;
+  const heapUsedBytes = memory?.usage?.heapUsed ? memory.usage.heapUsed * 1024 * 1024 : 0;
+  const heapTotalBytes = memory?.usage?.heapTotal ? memory.usage.heapTotal * 1024 * 1024 : 0;
   const heapUsedMB = useMemo(() => {
     return (heapUsedBytes / 1024 / 1024).toFixed(2);
   }, [heapUsedBytes]);
@@ -46,13 +45,13 @@ export const MemoryMonitor = memo(({ health, status, loading }: MemoryMonitorPro
   );
 
   const heapHealthData = useMemo(() => {
-    const heapUsedBytes = status?.memory?.heapUsed || 0;
-    const heapTotalBytes = status?.memory?.heapTotal || 0;
+    const heapUsedBytes = memory?.usage?.heapUsed ? memory.usage.heapUsed * 1024 * 1024 : 0;
+    const heapTotalBytes = memory?.usage?.heapTotal ? memory.usage.heapTotal * 1024 * 1024 : 0;
     const heapPercent = heapTotalBytes > 0 
       ? Math.round((heapUsedBytes / heapTotalBytes) * 100) 
       : 0;
     return getMemoryHealth(heapPercent);
-  }, [status?.memory?.heapUsed, status?.memory?.heapTotal]);
+  }, [memory?.usage?.heapUsed, memory?.usage?.heapTotal]);
 
   const primaryMemoryStatus = useMemo(() => 
     getProgressStatus(primaryMemoryHealthData.status),

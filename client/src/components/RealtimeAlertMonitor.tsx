@@ -20,7 +20,7 @@ import {
   RiseOutlined,
   EnvironmentOutlined,
 } from '@ant-design/icons';
-import { useRealtime_Alerts } from '../hooks_old/reads/useRealtime_Alerts';
+import { useAlerts } from '../hooks';
 import { useThemeToken } from '../theme';
 
 const { Text } = Typography;
@@ -49,9 +49,9 @@ interface DeviceBySeverity {
 export const RealtimeAlertMonitor = () => {
   const token = useThemeToken();
   
-  // Use the SWR-based hook for real-time alerts (fetch all, filter client-side)
-  const { alerts: rawAlerts, isLoading } = useRealtime_Alerts({
-    limit: 100,
+  // Use the SWR-based hook for real-time alerts
+  const { alerts: rawAlerts, isLoading } = useAlerts({
+    pollInterval: 5000,
   });
 
   const [devicesBySeverity, setDevicesBySeverity] = useState<{

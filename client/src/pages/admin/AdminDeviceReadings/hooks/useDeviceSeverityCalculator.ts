@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import type { Device, SensorReading, DeviceWithReadings } from '../../../../schemas/deviceManagement.schema';
 import type { WaterQualityAlert } from '../../../../schemas/alerts.schema';
-import type { DeviceWithSensorData } from '../../../../hooks_old/reads/useRealtime_Devices';
+import type { Device } from '../../../../schemas';
 
 /**
  * UI-specific hook for device severity calculation and sorting
@@ -105,13 +105,13 @@ export const useDeviceSeverityCalculator = () => {
    * @returns Enriched device with severity information
    */
   const enrichDeviceWithSeverity = useCallback(
-    (deviceData: DeviceWithSensorData, allAlerts: WaterQualityAlert[]): DeviceWithReadings => {
+    (deviceData: Device, allAlerts: WaterQualityAlert[]): DeviceWithReadings => {
       // Find active alerts for this device
       const deviceAlerts = allAlerts.filter(
         (a) => a.deviceId === deviceData.deviceId && a.status === 'Active'
       );
 
-      // Use metadata if available, otherwise create Device from DeviceWithSensorData
+      // Use metadata if available, otherwise create Device from Device
       const deviceInfo: Device = deviceData.metadata || {
         id: deviceData.deviceId,
         deviceId: deviceData.deviceId,

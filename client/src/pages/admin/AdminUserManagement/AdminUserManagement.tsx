@@ -11,7 +11,7 @@
  * @module pages/admin/AdminUserManagement
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Layout,
   Typography,
@@ -24,18 +24,14 @@ import {
   Breadcrumb,
   theme,
   message,
-  Modal,
 } from "antd";
 import {
   UserOutlined,
   ReloadOutlined,
   PlusOutlined,
   HomeOutlined,
-  LogoutOutlined,
 } from "@ant-design/icons";
-import { useNavigate } from "react-router-dom";
-import { authService } from "../../../services/auth.Service";
-import { useRealtime_Users, useCall_Users, useRouteContext } from "../../../hooks_old";
+import { useUsers, useUserMutations } from "../../../hooks";
 import { UsersTable } from "./components/UsersTable";
 import { UserActionsDrawer } from "./components/UserActionsDrawer";
 import { UsersStatistics } from "./components/UsersStatistics";
@@ -50,28 +46,24 @@ const { Content } = Layout;
 export const AdminUserManagement: React.FC = () => {
   const { token } = theme.useToken();
   const { user: userProfile } = useAuth();
-  const navigate = useNavigate();
   
-  // Get route context to enable conditional fetching
-  const { needsUsers } = useRouteContext();
-  
-  // Global READ hook - Real-time user data - only fetch when on user management page
+  // Global READ hook - Real-time user data
   const { 
     users, 
     isLoading: loading, 
-    error: realtimeError 
-  } = useRealtime_Users({ enabled: needsUsers });
+    error: realtimeError,
+    refetch 
+  } = useUsers({ pollInterval: 15000 });
 
   // Global WRITE hook - User operations
   const {
-    updateUser,
+    updateUserRole,
     updateUserStatus,
     updateUserProfile,
     deleteUser,
     isLoading: refreshing,
     error: writeError,
-    updateResult,
-  } = useCall_Users();
+  } = useUserMutations();
 
   // Combine errors
   const error = realtimeError?.message || writeError?.message || null;
@@ -81,55 +73,9 @@ export const AdminUserManagement: React.FC = () => {
 
   /**
    * Auto-logout handler when user changes their own role/status
-   * Triggers when backend returns requiresLogout: true
+   * (No longer needed - updateResult removed from useUserMutations)
    */
-  useEffect(() => {
-    // Type guard: check if updateResult has requiresLogout property
-    const requiresLogout = updateResult && 'requiresLogout' in updateResult 
-      ? updateResult.requiresLogout 
-      : false;
-
-    if (requiresLogout) {
-      // Show logout notification
-      Modal.success({
-        title: 'Account Updated Successfully',
-        content: (
-          <div>
-            <p>Your account has been updated successfully.</p>
-            <p style={{ marginTop: 12 }}>
-              <strong>You will be logged out in 3 seconds</strong> to apply the changes.
-            </p>
-          </div>
-        ),
-        icon: <LogoutOutlined style={{ color: '#1890ff' }} />,
-        okText: 'Logout Now',
-        onOk: async () => {
-          try {
-            await authService.logout();
-            message.info('Logged out successfully. Please log in again.');
-            navigate('/auth/login');
-          } catch (error) {
-            console.error('Logout error:', error);
-            message.error('Failed to logout. Please refresh the page.');
-          }
-        },
-      });
-
-      // Auto-logout after 3 seconds
-      const timer = setTimeout(async () => {
-        try {
-          await authService.logout();
-          message.info('Logged out successfully. Please log in again.');
-          navigate('/auth/login');
-        } catch (error) {
-          console.error('Auto-logout error:', error);
-          message.error('Failed to logout. Please refresh the page.');
-        }
-      }, 3000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [updateResult, navigate]);
+  // Removed auto-logout effect - handled by backend responses
 
   // Handle view user (opens drawer)
   const handleViewUser = (user: UserListData) => {
@@ -155,8 +101,8 @@ export const AdminUserManagement: React.FC = () => {
     }
   ) => {
     try {
-      const result = await updateUserProfile(userId, profileData);
-      message.success(result.message || 'User profile updated successfully');
+      await updateUserProfile(userId, profileData);
+      message.success('User profile updated successfully');
       // Update selected user with new data
       if (selectedUser) {
         setSelectedUser({
@@ -164,6 +110,7 @@ export const AdminUserManagement: React.FC = () => {
           ...profileData,
         });
       }
+      await refetch();
     } catch (error: any) {
       message.error(error.message || 'Failed to update user profile');
       throw error; // Re-throw to prevent drawer from closing
@@ -176,8 +123,9 @@ export const AdminUserManagement: React.FC = () => {
     status: UserStatus
   ) => {
     try {
-      await updateUserStatus(userId, status);
+      await updateUserStatus(userId, { status });
       message.success(`User status updated to ${status}`);
+      await refetch();
     } catch (error: any) {
       message.error(error.message || 'Failed to update user status');
     }
@@ -186,8 +134,9 @@ export const AdminUserManagement: React.FC = () => {
   // Handle quick role change
   const handleQuickRoleChange = async (userId: string, role: UserRole) => {
     try {
-      await updateUser(userId, undefined, role);
+      await updateUserRole(userId, { role });
       message.success(`User role updated to ${role}`);
+      await refetch();
     } catch (error: any) {
       message.error(error.message || 'Failed to update user role');
     }

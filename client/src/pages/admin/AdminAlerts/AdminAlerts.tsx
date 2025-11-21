@@ -7,8 +7,8 @@
  * ✅ Service Layer → Global Hooks → UI Components
  * 
  * Data Flow:
- * - READ: useRealtime_Alerts() - Real-time Firestore subscription for alerts
- * - WRITE: useCall_Alerts() - Alert operations (acknowledge, resolve)
+ * - READ: useAlerts() - Real-time alerts with SWR polling
+ * - WRITE: useAlertMutations() - Alert operations (acknowledge, resolve)
  * - UI Logic: Local hooks for filtering and statistics (useAlertFilters, useAlertStats)
  * 
  * @module pages/admin/AdminAlerts
@@ -20,7 +20,7 @@ import { BellOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { WaterQualityAlert } from '../../../schemas';
 import { AdminLayout } from '../../../components/layouts/AdminLayout';
 import { PageHeader } from '../../../components/PageHeader';
-import { useRealtime_Alerts, useCall_Alerts } from '../../../hooks_old';
+import { useAlerts, useAlertMutations } from '../../../hooks';
 import { useAlertStats, useAlertFilters } from './hooks';
 import {
   AlertStatistics,
@@ -35,8 +35,11 @@ export const AdminAlerts = () => {
   const [selectedAlert, setSelectedAlert] = useState<WaterQualityAlert | null>(null);
   const [detailsVisible, setDetailsVisible] = useState(false);
 
-  // ✅ GLOBAL READ HOOK - Real-time alerts subscription
-  const { alerts, isLoading: loading, error: alertsError } = useRealtime_Alerts({ maxAlerts: 100 });
+  // ✅ GLOBAL READ HOOK - Real-time alerts with SWR polling
+  const { alerts, isLoading: loading, error: alertsError, refetch } = useAlerts({ 
+    filters: { limit: 100 },
+    pollInterval: 5000 // Poll every 5 seconds
+  });
 
   // ✅ GLOBAL WRITE HOOK - Alert operations (acknowledge, resolve)
   const { 
@@ -44,9 +47,7 @@ export const AdminAlerts = () => {
     resolveAlert, 
     isLoading: isOperating,
     error: operationError,
-    isSuccess,
-    reset: resetOperation 
-  } = useCall_Alerts();
+  } = useAlertMutations();
 
   // ✅ LOCAL UI HOOKS - UI-specific filtering and statistics
   const { filteredAlerts, filters, setFilters, clearFilters } = useAlertFilters(alerts);
@@ -64,17 +65,8 @@ export const AdminAlerts = () => {
     if (operationError) {
       console.error('Alert operation error:', operationError);
       message.error(operationError.message);
-      resetOperation();
     }
-  }, [operationError, resetOperation]);
-
-  // Handle successful operations
-  useEffect(() => {
-    if (isSuccess) {
-      message.success('Alert operation completed successfully');
-      resetOperation();
-    }
-  }, [isSuccess, resetOperation]);
+  }, [operationError]);
 
   const handleClearFilters = () => {
     clearFilters();
@@ -88,22 +80,29 @@ export const AdminAlerts = () => {
 
   // ✅ Use global write hook for batch operations
   const handleBatchAcknowledge = async (alertIds: string[]) => {
-    const results = await Promise.allSettled(
-      alertIds.map((id) => acknowledgeAlert(id))
-    );
-    
-    const failed = results
-      .map((result, idx) => (result.status === 'rejected' ? alertIds[idx] : null))
-      .filter((id): id is string => id !== null);
-    
-    if (failed.length === 0) {
-      message.success(`All ${alertIds.length} alerts acknowledged successfully`);
-    } else if (failed.length === alertIds.length) {
-      message.error('Failed to acknowledge any selected alerts');
-    } else {
-      message.warning(
-        `Acknowledged ${alertIds.length - failed.length} of ${alertIds.length} alerts. ${failed.length} failed.`
+    try {
+      const results = await Promise.allSettled(
+        alertIds.map((id) => acknowledgeAlert(id))
       );
+      
+      const failed = results
+        .map((result, idx) => (result.status === 'rejected' ? alertIds[idx] : null))
+        .filter((id): id is string => id !== null);
+      
+      if (failed.length === 0) {
+        message.success(`All ${alertIds.length} alerts acknowledged successfully`);
+      } else if (failed.length === alertIds.length) {
+        message.error('Failed to acknowledge any selected alerts');
+      } else {
+        message.warning(
+          `Acknowledged ${alertIds.length - failed.length} of ${alertIds.length} alerts. ${failed.length} failed.`
+        );
+      }
+      
+      // Refresh data
+      await refetch();
+    } catch (error) {
+      message.error('Failed to acknowledge alerts');
     }
   };
 

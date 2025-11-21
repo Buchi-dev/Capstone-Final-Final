@@ -1,30 +1,22 @@
-import { Space, Alert, Tabs, Row, Col, Layout, Typography } from 'antd';
+import { Space, Alert, Tabs, Layout } from 'antd';
 import { 
   DashboardOutlined, 
-  CloudServerOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
 import { memo, useState } from 'react';
 import { AdminLayout } from "../../../components/layouts";
 import { PageHeader } from "../../../components/PageHeader";
 import { 
-  useRealtime_MQTTMetrics, 
-  useRealtime_Devices, 
-  useRealtime_Alerts 
-} from '../../../hooks_old';
+  useSystemHealth,
+  useDevices, 
+  useAlerts 
+} from '../../../hooks';
 import { useDashboardStats } from './hooks';
 import {
-  HealthOverview,
-  MetricsGrid,
-  MemoryMonitor,
-  CpuMonitor,
-  BufferMonitor,
-  SystemInfo,
   DashboardSummary,
 } from './components';
 
 const { Content } = Layout;
-const { Title } = Typography;
 
 /**
  * AdminDashboard - Admin Dashboard Page
@@ -32,7 +24,7 @@ const { Title } = Typography;
  * Displays comprehensive system overview including:
  * - Device status and sensor readings
  * - Water quality alerts
- * - MQTT Bridge health metrics
+ * - System health metrics
  * - Real-time monitoring charts
  * 
  * Architecture: Uses GLOBAL hooks only for data fetching
@@ -42,39 +34,43 @@ export const AdminDashboard = memo(() => {
   
   // ✅ GLOBAL HOOKS - Real-time data from service layer
   const {
-    health: mqttHealth,
-    status: mqttStatus,
-    isLoading: mqttLoading,
-    error: mqttError,
-    refetch: mqttRefetch,
-  } = useRealtime_MQTTMetrics({ pollInterval: 2000 });
+    health: systemHealth,
+    isLoading: healthLoading,
+    error: healthError,
+    refetch: healthRefetch,
+  } = useSystemHealth({ pollInterval: 10000 });
 
   const {
     devices,
     isLoading: devicesLoading,
     error: devicesError,
     refetch: devicesRefetch,
-  } = useRealtime_Devices({ includeMetadata: true });
+  } = useDevices({ pollInterval: 15000 });
 
   const {
     alerts,
     isLoading: alertsLoading,
     error: alertsError,
     refetch: alertsRefetch,
-  } = useRealtime_Alerts({ maxAlerts: 50 });
+  } = useAlerts({ 
+    filters: { limit: 50 },
+    pollInterval: 10000 
+  });
 
   // ✅ LOCAL HOOK - UI-specific statistics calculation
   const { deviceStats, alertStats } = useDashboardStats(devices, alerts);
 
   // Refresh all data sources
-  const handleRefreshAll = () => {
-    mqttRefetch();
-    devicesRefetch();
-    alertsRefetch();
+  const handleRefreshAll = async () => {
+    await Promise.all([
+      healthRefetch(),
+      devicesRefetch(),
+      alertsRefetch()
+    ]);
   };
 
   // Combined loading state
-  const isLoading = mqttLoading || devicesLoading || alertsLoading;
+  const isLoading = healthLoading || devicesLoading || alertsLoading;
 
   // Tab items
   const tabItems = [
@@ -88,10 +84,10 @@ export const AdminDashboard = memo(() => {
       children: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           {/* Error Alerts */}
-          {mqttError && (
+          {healthError && (
             <Alert
-              message="MQTT Bridge Connection Error"
-              description={mqttError.message}
+              message="System Health Connection Error"
+              description={healthError.message}
               type="error"
               showIcon
               closable
@@ -121,77 +117,9 @@ export const AdminDashboard = memo(() => {
             deviceStats={deviceStats}
             alertStats={alertStats}
             alerts={alerts}
-            mqttHealth={mqttHealth ? {
-              status: mqttHealth.status,
-              connected: mqttHealth.checks.mqtt.connected,
-              metrics: mqttHealth.metrics,
-            } : null}
-            mqttMemory={mqttStatus?.memory || null}
-            mqttFullHealth={mqttHealth}
+            systemHealth={systemHealth}
             loading={isLoading}
           />
-        </Space>
-      ),
-    },
-    {
-      key: 'mqtt',
-      label: (
-        <span>
-          <CloudServerOutlined /> MQTT Bridge
-        </span>
-      ),
-      children: (
-        <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          {/* Error Alert */}
-          {mqttError && (
-            <Alert
-              message="Connection Error"
-              description={mqttError.message}
-              type="error"
-              showIcon
-              closable
-            />
-          )}
-
-          {/* Health Overview */}
-          <HealthOverview health={mqttHealth} loading={mqttLoading} />
-
-          {/* Metrics Grid */}
-          <div>
-            <Title level={4} style={{ marginBottom: '16px' }}>
-              Real-time Metrics
-            </Title>
-            <MetricsGrid status={mqttStatus} loading={mqttLoading} />
-          </div>
-
-          {/* Detailed Monitoring Section */}
-          <div>
-            <Title level={4} style={{ marginBottom: '16px' }}>
-              System Monitoring
-            </Title>
-            <Row gutter={[16, 16]}>
-              <Col xs={24} lg={12}>
-                <MemoryMonitor 
-                  health={mqttHealth} 
-                  status={mqttStatus} 
-                  loading={mqttLoading} 
-                />
-              </Col>
-              <Col xs={24} lg={12}>
-                <CpuMonitor 
-                  health={mqttHealth} 
-                  status={mqttStatus} 
-                  loading={mqttLoading} 
-                />
-              </Col>
-              <Col xs={24} lg={12}>
-                <SystemInfo status={mqttStatus} loading={mqttLoading} />
-              </Col>
-              <Col xs={24} lg={12}>
-                <BufferMonitor health={mqttHealth} loading={mqttLoading} />
-              </Col>
-            </Row>
-          </div>
         </Space>
       ),
     },
