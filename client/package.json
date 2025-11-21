@@ -10,13 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ant-design/plots": "^2.6.5",
     "@ant-design/v5-patch-for-react-19": "^1.0.3",
     "antd": "^5.27.5",
     "axios": "^1.12.2",
-    "cors": "^2.8.5",
     "dayjs": "^1.11.18",
-    "firebase": "^12.4.0",
     "jspdf": "^3.0.3",
     "jspdf-autotable": "^5.0.2",
     "react": "^19.1.1",
