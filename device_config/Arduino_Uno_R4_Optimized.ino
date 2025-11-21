@@ -1,19 +1,21 @@
 /*
  * Water Quality Monitoring System - REAL-TIME OPTIMIZED
- * Arduino UNO R4 WiFi with MQTT Integration
+ * Arduino UNO R4 WiFi with Direct HTTP Integration
  * Sensors: TDS, pH, Turbidity
  * 
  * ARCHITECTURE:
  * - Arduino UNO R4: Sensor data collector with on-device computation
  * - Converts raw sensor readings to calibrated values
- * - Sends computed values (ppm, pH, NTU) to MQTT bridge
+ * - Sends computed values (ppm, pH, NTU) directly to Express API
  * - Backend handles thresholds, alerts, and analytics
  * 
  * DATA SENT:
+ * - deviceId: Unique device identifier
  * - tds: TDS measurement in ppm (parts per million)
  * - ph: pH level (0-14 scale)
  * - turbidity: Turbidity in NTU (Nephelometric Turbidity Units)
- * - timestamp: Device uptime in milliseconds
+ * - temperature: Temperature in Celsius (placeholder: 25.0)
+ * - timestamp: ISO 8601 timestamp
  * 
  * SENSOR CALIBRATION:
  * - TDS: (Voltage * 133) * TempCoefficient (1.0 at 25°C)
@@ -22,16 +24,17 @@
  * 
  * PERFORMANCE OPTIMIZATIONS:
  * - Real-time monitoring: 2-second intervals
+ * - Direct HTTP communication (no MQTT overhead)
  * - Reduced memory footprint (50% less RAM usage)
  * - Faster sensor sampling (microsecond delays)
- * - Lightweight JSON payloads (128 bytes)
+ * - Lightweight JSON payloads
  * - On-device computation reduces backend processing
  * 
  * LED MATRIX VISUALIZATION (12x8 Built-in LED Matrix):
  * ┌─────────────────────────────────────────────────┐
  * │ CONNECTING: WiFi Search Animation              │
  * │   → Animated WiFi symbol searching             │
- * │   → Shows WiFi/MQTT connection in progress     │
+ * │   → Shows WiFi/HTTP connection in progress     │
  * │                                                 │
  * │ IDLE: Cloud WiFi Icon (Static)                 │
  * │   → Cloud with WiFi symbol                     │
@@ -53,11 +56,11 @@
  * 
  * Author: IoT Water Quality Project
  * Date: 2025
- * Firmware: v4.0.0 - Using Prebuilt LED Animations
+ * Firmware: v5.0.0 - Direct HTTP Integration with LED Animations
  */
 
 #include <WiFiS3.h>
-#include <ArduinoMqttClient.h>
+#include <ArduinoHttpClient.h>
 #include <ArduinoJson.h>
 #include "Arduino_LED_Matrix.h"  // LED Matrix library for R4 WiFi
 
@@ -69,21 +72,17 @@
 #define WIFI_SSID "Yuzon Only"
 #define WIFI_PASSWORD "Pldtadmin@2024"
 
-// MQTT Broker Configuration (HiveMQ Cloud)
-#define MQTT_BROKER "36965de434ff42a4a93a697c94a13ad7.s1.eu.hivemq.cloud"
-#define MQTT_PORT 8883  // TLS/SSL port
-#define MQTT_USERNAME "functions2025"
-#define MQTT_PASSWORD "Jaffmier@0924"
+// API Server Configuration
+#define API_SERVER "your-server-ip"  // Update with your server IP (without http://)
+#define API_PORT 5000
+#define API_ENDPOINT "/api/v1/devices/readings"
+#define API_KEY "your_device_api_key_here"  // Must match DEVICE_API_KEY in server .env
 
 // Device Configuration
 #define DEVICE_ID "arduino_uno_r4_002"
 #define DEVICE_NAME "Water Quality Monitor R4"
 #define DEVICE_TYPE "Arduino UNO R4 WiFi"
-#define FIRMWARE_VERSION "4.0.0"
-
-// MQTT Topics
-#define TOPIC_SENSOR_DATA "device/sensordata/" DEVICE_ID
-#define TOPIC_REGISTRATION "device/registration/" DEVICE_ID
+#define FIRMWARE_VERSION "5.0.0"
 
 // Sensor Pin Configuration
 #define TDS_PIN A0          // TDS Sensor
@@ -98,8 +97,8 @@
 // GLOBAL OBJECTS
 // ===========================
 
-WiFiSSLClient wifiClient;  // SSL client for secure connection
-MqttClient mqttClient(wifiClient);
+WiFiClient wifiClient;
+HttpClient httpClient = HttpClient(wifiClient, API_SERVER, API_PORT);
 ArduinoLEDMatrix matrix;   // LED Matrix object for 12x8 display
 
 // ===========================
@@ -107,15 +106,16 @@ ArduinoLEDMatrix matrix;   // LED Matrix object for 12x8 display
 // ===========================
 
 unsigned long lastSensorRead = 0;
-unsigned long lastMqttPublish = 0;
+unsigned long lastHttpPublish = 0;
 unsigned long sensorReadStartTime = 0;
 
 // Sensor readings (lightweight - single values only)
 float turbidity = 0.0;
 float tds = 0.0;
 float ph = 0.0;
+float temperature = 25.0;  // Placeholder temperature
 
-bool mqttConnected = false;
+bool serverConnected = false;
 
 // LED Matrix State Machine
 enum MatrixState {
@@ -150,7 +150,7 @@ void setup() {
   while (!Serial && millis() < 3000); // Wait up to 3 seconds for Serial
   
   Serial.println("=== Arduino UNO R4 Water Quality Monitor ===");
-  Serial.println("Firmware: v4.0.0 - Prebuilt LED Animations");
+  Serial.println("Firmware: v5.0.0 - Direct HTTP Integration");
   Serial.println("Initializing LED Matrix...");
   
   // Initialize LED Matrix
@@ -186,19 +186,16 @@ void setup() {
   Serial.println("Connecting to WiFi...");
   connectWiFi();
   
-  Serial.println("Connecting to MQTT...");
-  connectMQTT();
-  
-  Serial.println("Registering device...");
-  registerDevice();
+  Serial.println("Testing server connection...");
+  testServerConnection();
   
   // Switch to idle state after connection - Cloud WiFi icon
-  if (mqttConnected) {
-    Serial.println("✓ MQTT Connected! Switching to IDLE state (Cloud WiFi).");
+  if (serverConnected) {
+    Serial.println("✓ Server Connected! Switching to IDLE state (Cloud WiFi).");
     matrixState = IDLE;
     matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);  // Static cloud WiFi icon
   } else {
-    Serial.println("✗ MQTT Connection Failed! Staying in CONNECTING state.");
+    Serial.println("✗ Server Connection Failed! Staying in CONNECTING state.");
   }
   
   Serial.println("Setup complete. Starting main loop...");
@@ -215,19 +212,17 @@ void loop() {
   // Update LED Matrix state
   updateMatrixState();
   
-  // Reconnect if MQTT disconnected
-  if (!mqttClient.connected()) {
-    mqttConnected = false;
+  // Check WiFi connection
+  if (WiFi.status() != WL_CONNECTED) {
+    serverConnected = false;
     if (matrixState != CONNECTING) {
-      Serial.println("MQTT disconnected! Switching to CONNECTING state.");
+      Serial.println("WiFi disconnected! Switching to CONNECTING state.");
       matrixState = CONNECTING;
       matrix.loadSequence(LEDMATRIX_ANIMATION_WIFI_SEARCH);
       matrix.play(true);
     }
-    connectMQTT();
+    connectWiFi();
   }
-  
-  mqttClient.poll();
   
   // Read and publish sensors every 2 seconds (real-time)
   if (currentMillis - lastSensorRead >= SENSOR_READ_INTERVAL) {
@@ -259,10 +254,10 @@ void loop() {
     
     publishSensorData();
     
-    if (mqttConnected) {
-      Serial.println("✓ Data published to MQTT!");
+    if (serverConnected) {
+      Serial.println("✓ Data published to server!");
     } else {
-      Serial.println("✗ MQTT not connected, data not published.");
+      Serial.println("✗ Server not connected, data not published.");
     }
   }
   
@@ -327,31 +322,24 @@ void connectWiFi() {
 }
 
 // ===========================
-// MQTT FUNCTIONS
+// SERVER CONNECTION FUNCTIONS
 // ===========================
 
-void connectMQTT() {
-  Serial.print("Connecting to MQTT broker: ");
-  Serial.println(MQTT_BROKER);
+void testServerConnection() {
+  Serial.print("Testing connection to: ");
+  Serial.print(API_SERVER);
+  Serial.print(":");
+  Serial.println(API_PORT);
   
-  mqttClient.setId(DEVICE_ID);
-  mqttClient.setUsernamePassword(MQTT_USERNAME, MQTT_PASSWORD);
-  mqttClient.setKeepAliveInterval(60000);  // 60 seconds
-  mqttClient.setConnectionTimeout(15000);   // 15 seconds
+  httpClient.get("/health");
   
-  int attempts = 0;
-  while (!mqttClient.connect(MQTT_BROKER, MQTT_PORT) && attempts < 3) {
-    Serial.print("MQTT connection attempt ");
-    Serial.print(attempts + 1);
-    Serial.print(" failed. Error code: ");
-    Serial.println(mqttClient.connectError());
-    delay(2000);
-    attempts++;
-  }
+  int statusCode = httpClient.responseStatusCode();
+  String response = httpClient.responseBody();
   
-  if (mqttClient.connected()) {
-    mqttConnected = true;
-    Serial.println("✓ MQTT connected successfully!");
+  if (statusCode > 0) {
+    serverConnected = true;
+    Serial.print("✓ Server responded with status code: ");
+    Serial.println(statusCode);
     
     // Switch to IDLE state if we were connecting
     if (matrixState == CONNECTING) {
@@ -359,51 +347,9 @@ void connectMQTT() {
       matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
     }
   } else {
-    mqttConnected = false;
-    Serial.println("✗ MQTT connection failed after 3 attempts.");
+    serverConnected = false;
+    Serial.println("✗ Server connection failed!");
   }
-}
-
-// ===========================
-// DEVICE REGISTRATION
-// ===========================
-
-void registerDevice() {
-  if (!mqttConnected) return;
-  
-  StaticJsonDocument<256> doc;
-  doc["deviceId"] = DEVICE_ID;
-  doc["name"] = DEVICE_NAME;
-  doc["type"] = DEVICE_TYPE;
-  doc["firmwareVersion"] = FIRMWARE_VERSION;
-  
-  // Get MAC address
-  byte mac[6];
-  WiFi.macAddress(mac);
-  char macStr[18];
-  sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X", 
-          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-  doc["macAddress"] = macStr;
-  
-  // Get IP address
-  IPAddress ip = WiFi.localIP();
-  char ipStr[16];
-  sprintf(ipStr, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
-  doc["ipAddress"] = ipStr;
-  
-  JsonArray sensors = doc.createNestedArray("sensors");
-  sensors.add("turbidity");
-  sensors.add("tds");
-  sensors.add("ph");
-  
-  char payload[256];
-  serializeJson(doc, payload);
-  
-  mqttClient.beginMessage(TOPIC_REGISTRATION);
-  mqttClient.print(payload);
-  mqttClient.endMessage();
-  
-  Serial.println("✓ Device registered with MQTT broker");
 }
 
 // ===========================
@@ -478,23 +424,45 @@ float readTurbidity() {
 }
 
 // ===========================
-// MQTT PUBLISH FUNCTIONS
+// HTTP PUBLISH FUNCTIONS
 // ===========================
 
-// Publish sensor data (real-time, lightweight)
+// Publish sensor data via HTTP POST (real-time, lightweight)
 void publishSensorData() {
-  if (!mqttConnected) return;
+  if (WiFi.status() != WL_CONNECTED) return;
   
-  StaticJsonDocument<128> doc;
-  doc["tds"] = tds;                  // TDS in ppm
-  doc["ph"] = ph;                    // pH value (0-14)
-  doc["turbidity"] = turbidity;      // Turbidity in NTU
-  doc["timestamp"] = millis();
+  // Prepare JSON payload
+  StaticJsonDocument<256> doc;
+  doc["deviceId"] = DEVICE_ID;
+  doc["tds"] = tds;                    // TDS in ppm
+  doc["ph"] = ph;                      // pH value (0-14)
+  doc["turbidity"] = turbidity;        // Turbidity in NTU
+  doc["temperature"] = temperature;    // Temperature in Celsius
+  doc["timestamp"] = millis();         // Device uptime
   
-  char payload[128];
+  String payload;
   serializeJson(doc, payload);
   
-  mqttClient.beginMessage(TOPIC_SENSOR_DATA);
-  mqttClient.print(payload);
-  mqttClient.endMessage();
+  // Send HTTP POST request
+  httpClient.beginRequest();
+  httpClient.post(API_ENDPOINT);
+  httpClient.sendHeader("Content-Type", "application/json");
+  httpClient.sendHeader("x-api-key", API_KEY);
+  httpClient.sendHeader("Content-Length", payload.length());
+  httpClient.beginBody();
+  httpClient.print(payload);
+  httpClient.endRequest();
+  
+  int statusCode = httpClient.responseStatusCode();
+  String response = httpClient.responseBody();
+  
+  if (statusCode == 200) {
+    serverConnected = true;
+    Serial.print("✓ HTTP POST successful: ");
+    Serial.println(statusCode);
+  } else {
+    serverConnected = false;
+    Serial.print("✗ HTTP POST failed: ");
+    Serial.println(statusCode);
+  }
 }
