@@ -86,7 +86,7 @@ export const AdminReports = () => {
 
   // Transform devices to Device type for component compatibility
   const devices: Device[] = useMemo(() => {
-    return devicesWithReadings.map((d: any) => ({
+    return devicesWithReadings.map((d) => ({
       id: d.deviceId,
       deviceId: d.deviceId,
       name: d.name || d.deviceName,
@@ -111,7 +111,16 @@ export const AdminReports = () => {
     });
   }, [form]);
 
-  const handleGenerateReport = async (values: any) => {
+  interface ReportFormValues {
+    dateRange?: [dayjs.Dayjs, dayjs.Dayjs];
+    devices?: string[];
+    title?: string;
+    notes?: string;
+    includeStatistics?: boolean;
+    includeCharts?: boolean;
+  }
+
+  const handleGenerateReport = async (values: ReportFormValues) => {
     try {
       const { dateRange, devices: deviceIds, title, notes, includeStatistics, includeCharts } = values;
       const startDate = dateRange?.[0]?.format('YYYY-MM-DD') || '';

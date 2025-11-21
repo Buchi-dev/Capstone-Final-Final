@@ -302,7 +302,7 @@ export function unsubscribe(room: SocketRoom): void {
  * @param {Function} handler - Event handler function
  * @returns {Function} Cleanup function to remove listener
  */
-export function on(event: SocketEvent, handler: (...args: any[]) => void): () => void {
+export function on(event: SocketEvent, handler: (...args: unknown[]) => void): () => void {
   if (!socket) {
     console.warn('[Socket.IO] Cannot add listener: socket not initialized');
     return () => {};
@@ -324,7 +324,7 @@ export function on(event: SocketEvent, handler: (...args: any[]) => void): () =>
  * @param {SocketEvent} event - Event name
  * @param {Function} handler - Event handler function
  */
-export function off(event: SocketEvent, handler: (...args: any[]) => void): void {
+export function off(event: SocketEvent, handler: (...args: unknown[]) => void): void {
   if (!socket) return;
   socket.off(event, handler);
 }

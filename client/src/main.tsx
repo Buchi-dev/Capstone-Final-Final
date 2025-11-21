@@ -11,11 +11,11 @@ import { registerSW } from 'virtual:pwa-register'
 import PWAInstallButton from './components/PWAInstallButton'
 
 registerSW({
-  onRegistered(r: any) {
+  onRegistered(r: ServiceWorkerRegistration | undefined) {
     // r is equivalent to ServiceWorkerRegistration (or undefined in dev)
     console.log('[PWA] Service worker registered:', r)
   },
-  onRegisterError(err: any) {
+  onRegisterError(err: Error) {
     console.error('[PWA] Service worker registration error:', err)
   }
 })

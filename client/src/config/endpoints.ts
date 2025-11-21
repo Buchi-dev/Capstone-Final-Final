@@ -73,7 +73,7 @@ export const ANALYTICS_ENDPOINTS = {
 /**
  * Build query string from object
  */
-export const buildQuery = (params: Record<string, any>): string => {
+export const buildQuery = (params: Record<string, string | number | boolean | string[] | undefined | null>): string => {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {

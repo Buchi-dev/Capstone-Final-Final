@@ -16,7 +16,6 @@ import {
   Avatar,
 } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
-import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import {
   SearchOutlined,
   CheckCircleOutlined,
@@ -243,8 +242,6 @@ export const UsersTable: React.FC<UsersTableProps> = ({
 
   const handleTableChange = (
     newPagination: TablePaginationConfig,
-    _filters: Record<string, FilterValue | null>,
-    _sorter: SorterResult<UserListData> | SorterResult<UserListData>[]
   ) => {
     setPagination(newPagination);
   };

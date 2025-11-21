@@ -26,7 +26,7 @@ import {
   type DeviceStats,
   type UpdateDevicePayload,
 } from '../services/devices.Service';
-import type { Device, SensorReading } from '../schemas';
+import type { DeviceWithReadings, SensorReading } from '../schemas';
 import { useVisibilityPolling } from './useVisibilityPolling';
 import { getSocket, subscribe } from '../utils/socket';
 
@@ -42,7 +42,7 @@ export interface UseDevicesOptions {
 }
 
 export interface UseDevicesReturn {
-  devices: Device[];
+  devices: DeviceWithReadings[];
   stats: DeviceStats | null;
   isLoading: boolean;
   error: Error | null;
@@ -146,7 +146,7 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
     }
 
     // Handle device updates
-    const handleDeviceUpdated = (data: any) => {
+    const handleDeviceUpdated = (data: { deviceId?: string }) => {
       if (import.meta.env.DEV) {
         console.log('[useDevices] Device updated:', data.deviceId);
       }
@@ -154,7 +154,7 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
     };
 
     // Handle new readings
-    const handleNewReading = (data: any) => {
+    const handleNewReading = (data: { reading?: { deviceId?: string } }) => {
       if (import.meta.env.DEV) {
         console.log('[useDevices] New reading:', data.reading?.deviceId);
       }
@@ -162,7 +162,7 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
     };
 
     // Handle new devices
-    const handleNewDevice = (data: any) => {
+    const handleNewDevice = (data: { device?: { deviceId?: string } }) => {
       if (import.meta.env.DEV) {
         console.log('[useDevices] New device registered:', data.device?.deviceId);
       }
@@ -208,7 +208,7 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
   }, [mutate]);
 
   return {
-    devices: devicesData || [],
+    devices: (devicesData || []) as DeviceWithReadings[],
     stats: statsData || null,
     isLoading: devicesLoading || statsLoading,
     error: devicesError || statsError || null,

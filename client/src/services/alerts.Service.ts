@@ -100,7 +100,7 @@ export class AlertsService {
         ALERT_ENDPOINTS.ACKNOWLEDGE(alertId)
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AlertsService] Acknowledge error:', message);
       throw new Error(message);
@@ -124,7 +124,7 @@ export class AlertsService {
         { notes }
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AlertsService] Resolve error:', message);
       throw new Error(message);
@@ -145,7 +145,7 @@ export class AlertsService {
         ALERT_ENDPOINTS.DELETE(alertId)
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AlertsService] Delete error:', message);
       throw new Error(message);
@@ -170,7 +170,7 @@ export class AlertsService {
       const url = buildAlertsUrl(filters);
       const response = await apiClient.get<AlertListResponse>(url);
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AlertsService] Get alerts error:', message);
       throw new Error(message);
@@ -191,7 +191,7 @@ export class AlertsService {
         ALERT_ENDPOINTS.BY_ID(alertId)
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AlertsService] Get alert error:', message);
       throw new Error(message);
@@ -213,7 +213,7 @@ export class AlertsService {
         ALERT_ENDPOINTS.STATS
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AlertsService] Get stats error:', message);
       throw new Error(message);

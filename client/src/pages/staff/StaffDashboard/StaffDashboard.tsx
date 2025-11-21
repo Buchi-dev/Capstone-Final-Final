@@ -84,7 +84,7 @@ export const StaffDashboard = () => {
   // Calculate device statistics using utility function
   const deviceStats = useMemo(() => {
     const devicesWithStatus = devices.map((device) => {
-      const reading = (device as any).latestReading;
+      const reading = device.latestReading;
       const status = calculateDeviceStatus(device.status, reading);
       return { ...device, computedStatus: status };
     });
@@ -100,7 +100,7 @@ export const StaffDashboard = () => {
   // Transform devices for table display using utility function
   const deviceStatusData: DeviceStatus[] = useMemo(() => {
     return devices.map((device) => {
-      const reading = (device as any).latestReading;
+      const reading = device.latestReading;
       const status = calculateDeviceStatus(device.status, reading);
 
       const lastUpdate = reading?.timestamp 

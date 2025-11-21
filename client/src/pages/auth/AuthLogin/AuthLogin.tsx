@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Card, Alert, Typography, Space, theme, Divider } from "antd";
 import { GoogleOutlined, InfoCircleOutlined } from "@ant-design/icons";
-import { useAuth } from "../../../contexts/AuthContext";
+import { useAuth } from "../../../contexts";
 import { authService } from "../../../services/auth.Service";
 import { auth } from "../../../config/firebase.config";
 import { onAuthStateChanged } from "firebase/auth";
@@ -134,9 +134,9 @@ export default function AuthLogin() {
       }
       // Otherwise, useEffect will handle navigation and stop loading
       
-    } catch (err: any) {
+    } catch (err) {
       console.error('[AuthLogin] Login failed:', err);
-      setError(err.message || 'Failed to sign in. Please try again.');
+      setError((err as Error).message || 'Failed to sign in. Please try again.');
       setIsLoggingIn(false);
     }
   };

@@ -3,6 +3,5 @@ export { useAnalyticsStats } from './useAnalyticsStats';
 export type { 
   DeviceStats, 
   AlertStats, 
-  WaterQualityMetrics, 
-  SystemHealth 
+  WaterQualityMetrics 
 } from './useAnalyticsStats';

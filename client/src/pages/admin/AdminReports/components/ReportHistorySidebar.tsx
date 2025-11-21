@@ -38,7 +38,7 @@ const { Text, Paragraph } = Typography;
 
 interface ReportHistorySidebarProps {
   reportHistory: ReportHistory[];
-  token: any;
+  token: Record<string, string | number>;
   title?: string;
   showViewAll?: boolean;
   onViewAll?: () => void;
@@ -63,11 +63,11 @@ export const ReportHistorySidebar = ({
   onViewAll,
   fullView = false,
 }: ReportHistorySidebarProps) => {
-  const getReportTypeColor = (_type: string) => {
+  const getReportTypeColor = () => {
     return 'blue';
   };
 
-  const getReportTypeLabel = (_type: string) => {
+  const getReportTypeLabel = () => {
     return 'Water Quality';
   };
 

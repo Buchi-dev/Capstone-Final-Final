@@ -250,15 +250,18 @@ apiClient.interceptors.response.use(
 /**
  * Helper function to extract error message from API error
  */
-export const getErrorMessage = (error: any): string => {
-  if (error.response?.data?.message) {
-    return error.response.data.message;
-  }
-  if (error.response?.data?.error) {
-    return error.response.data.error;
-  }
-  if (error.message) {
-    return error.message;
+export const getErrorMessage = (error: unknown): string => {
+  if (typeof error === 'object' && error !== null) {
+    const err = error as { response?: { data?: { message?: string; error?: string } }; message?: string };
+    if (err.response?.data?.message) {
+      return err.response.data.message;
+    }
+    if (err.response?.data?.error) {
+      return err.response.data.error;
+    }
+    if (err.message) {
+      return err.message;
+    }
   }
   return 'An unexpected error occurred';
 };

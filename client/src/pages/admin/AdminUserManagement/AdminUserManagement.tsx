@@ -117,7 +117,7 @@ export const AdminUserManagement: React.FC = () => {
         });
       }
       await refetch();
-    } catch (error: any) {
+    } catch (error) {
       const errorMsg = getErrorMessage(error);
       message.error(errorMsg);
       console.error('[AdminUserManagement] Update profile error:', errorMsg);
@@ -141,7 +141,7 @@ export const AdminUserManagement: React.FC = () => {
       }
       
       await refetch();
-    } catch (error: any) {
+    } catch (error) {
       const errorMsg = getErrorMessage(error);
       message.error(errorMsg);
       console.error('[AdminUserManagement] Update status error:', errorMsg);
@@ -162,7 +162,7 @@ export const AdminUserManagement: React.FC = () => {
       }
       
       await refetch();
-    } catch (error: any) {
+    } catch (error) {
       const errorMsg = getErrorMessage(error);
       message.error(errorMsg);
       console.error('[AdminUserManagement] Update role error:', errorMsg);
@@ -176,7 +176,7 @@ export const AdminUserManagement: React.FC = () => {
       await deleteUser(userId);
       message.success(`User "${userName}" deleted successfully`);
       await refetch(); // Refetch to update the list
-    } catch (error: any) {
+    } catch (error) {
       const errorMsg = getErrorMessage(error);
       message.error(errorMsg);
       console.error('[AdminUserManagement] Delete user error:', errorMsg);

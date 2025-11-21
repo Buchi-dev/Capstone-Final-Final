@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Account Completion Component
  * Allows new users to complete their profile by adding department and phone number
  * After completion, redirects to pending approval page

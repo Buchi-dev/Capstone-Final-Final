@@ -92,7 +92,7 @@ export class AuthService {
         }
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AuthService] Token verification error:', message);
       throw new Error(message);
@@ -114,7 +114,7 @@ export class AuthService {
         AUTH_ENDPOINTS.CURRENT_USER
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AuthService] Get current user error:', message);
       throw new Error(message);
@@ -135,7 +135,7 @@ export class AuthService {
         AUTH_ENDPOINTS.STATUS
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       console.error('[AuthService] Check status error:', error);
       return { authenticated: false, user: null };
     }
@@ -174,7 +174,7 @@ export class AuthService {
       const response = await this.verifyToken(idToken);
       
       return response;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AuthService] Google login error:', message);
       throw new Error(message);
@@ -200,7 +200,7 @@ export class AuthService {
       );
       
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AuthService] Logout error:', message);
       throw new Error(message);

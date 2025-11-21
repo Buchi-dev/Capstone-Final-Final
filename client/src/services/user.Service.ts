@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Users Service
  * 
  * Manages user accounts, roles, permissions via Express REST API.
@@ -117,7 +117,7 @@ export class UserService {
         lastLogin: user.lastLogin ? new Date(user.lastLogin) : undefined,
       }));
       return { ...response.data, data: users };
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[UserService] Get all users error:', message);
       throw new Error(message);
@@ -137,7 +137,7 @@ export class UserService {
           lastLogin: user.lastLogin ? new Date(user.lastLogin) : undefined,
         },
       };
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[UserService] Get user error:', message);
       throw new Error(message);
@@ -148,7 +148,7 @@ export class UserService {
     try {
       const response = await apiClient.get<UserPreferencesResponse>(USER_ENDPOINTS.PREFERENCES(userId));
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[UserService] Get preferences error:', message);
       throw new Error(message);
@@ -160,7 +160,7 @@ export class UserService {
       const response = await apiClient.patch<UserResponse>(USER_ENDPOINTS.UPDATE_ROLE(userId), { role });
       console.log('[UserService] User role updated:', { userId, role });
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[UserService] Update role error:', message);
       throw new Error(message);
@@ -172,7 +172,7 @@ export class UserService {
       const response = await apiClient.patch<UserResponse>(USER_ENDPOINTS.UPDATE_STATUS(userId), { status });
       console.log('[UserService] User status updated:', { userId, status });
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[UserService] Update status error:', message);
       throw new Error(message);
@@ -184,7 +184,7 @@ export class UserService {
       const response = await apiClient.patch<UserResponse>(USER_ENDPOINTS.UPDATE_PROFILE(userId), data);
       console.log('[UserService] User profile updated:', { userId });
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[UserService] Update profile error:', message);
       throw new Error(message);
@@ -196,7 +196,7 @@ export class UserService {
       const response = await apiClient.patch<UserResponse>(USER_ENDPOINTS.COMPLETE_PROFILE(userId), data);
       console.log('[UserService] Profile completed:', { userId });
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[UserService] Complete profile error:', message);
       throw new Error(message);
@@ -208,7 +208,7 @@ export class UserService {
       const response = await apiClient.put<UserPreferencesResponse>(USER_ENDPOINTS.PREFERENCES(userId), preferences);
       console.log('[UserService] Preferences updated:', { userId });
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[UserService] Update preferences error:', message);
       throw new Error(message);
@@ -220,7 +220,7 @@ export class UserService {
       const response = await apiClient.delete<UserPreferencesResponse>(USER_ENDPOINTS.PREFERENCES(userId));
       console.log('[UserService] Preferences reset:', { userId });
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[UserService] Reset preferences error:', message);
       throw new Error(message);
@@ -232,7 +232,7 @@ export class UserService {
       const response = await apiClient.delete<DeleteUserResponse>(USER_ENDPOINTS.DELETE(userId));
       console.log('[UserService] User deleted:', { userId });
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[UserService] Delete user error:', message);
       throw new Error(message);

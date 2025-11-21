@@ -1,6 +1,4 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import { Result, Button, theme } from 'antd';
-import { HomeOutlined } from '@ant-design/icons';
 
 // Protected Route Components
 import { PublicRoute, ApprovedRoute, AdminRoute } from '../components/ProtectedRoute';
@@ -35,38 +33,8 @@ import {
   AuthAccountSuspended
 } from '../pages/auth';
 
-/**
- * 404 Not Found Component with Theme Support
- */
-const NotFoundPage = () => {
-  const { token } = theme.useToken();
-  
-  return (
-    <div style={{ 
-      display: 'flex', 
-      justifyContent: 'center', 
-      alignItems: 'center', 
-      height: '100vh',
-      backgroundColor: token.colorBgLayout,
-      padding: token.paddingLG,
-    }}>
-      <Result
-        status="404"
-        title="404"
-        subTitle="Sorry, the page you visited does not exist."
-        extra={
-          <Button 
-            type="primary" 
-            icon={<HomeOutlined />}
-            onClick={() => window.location.href = '/'}
-          >
-            Back to Home
-          </Button>
-        }
-      />
-    </div>
-  );
-};
+// 404 Page
+import { NotFoundPage } from '../pages/NotFoundPage';
 
 /**
  * Application Routes Configuration
@@ -77,7 +45,7 @@ const NotFoundPage = () => {
  * - ApprovedRoute: Requires authentication AND approved status
  * - AdminRoute: Requires authentication, approved status, AND admin role
  */
-export const router = createBrowserRouter([
+const router = createBrowserRouter([
   // Root redirect - smart redirect based on user role
   {
     path: '/',
@@ -264,34 +232,4 @@ export const router = createBrowserRouter([
   },
 ]);
 
-/**
- * Route Paths - Use these constants for navigation
- */
-export const ROUTES = {
-  HOME: '/',
-  ADMIN: {
-    BASE: '/admin',
-    DASHBOARD: '/admin/dashboard',
-    DEVICES: '/admin/devices',
-    READINGS: '/admin/readings',
-    ANALYTICS: '/admin/analytics',
-    USERS: '/admin/users',
-    REPORTS: '/admin/reports',
-    ALERTS: '/admin/alerts',
-    SETTINGS: '/admin/settings',
-  },
-  STAFF: {
-    BASE: '/staff',
-    DASHBOARD: '/staff/dashboard',
-    DEVICES: '/staff/devices',
-    READINGS: '/staff/readings',
-    ANALYTICS: '/staff/analytics',
-    SETTINGS: '/staff/settings',
-  },
-  AUTH: {
-    LOGIN: '/auth/login',
-    COMPLETE_ACCOUNT: '/auth/complete-account',
-    PENDING_APPROVAL: '/auth/pending-approval',
-    ACCOUNT_SUSPENDED: '/auth/account-suspended',
-  },
-} as const;
+export { router };

@@ -20,7 +20,11 @@ export function getErrorMessage(error: unknown): string {
 
   // Handle Axios errors (with response.data.message)
   if (typeof error === 'object' && error !== null) {
-    const err = error as any;
+    const err = error as {
+      response?: { data?: { message?: string } };
+      request?: unknown;
+      message?: string;
+    };
     
     // Axios error with response
     if (err.response?.data?.message) {
@@ -70,12 +74,17 @@ export function formatUserError(error: unknown, context?: string): string {
  */
 export function isNetworkError(error: unknown): boolean {
   if (typeof error === 'object' && error !== null) {
-    const err = error as any;
+    const err = error as {
+      code?: string;
+      request?: unknown;
+      response?: unknown;
+      message?: string;
+    };
     return (
       err.code === 'ECONNABORTED' ||
       err.code === 'ERR_NETWORK' ||
-      (err.request && !err.response) ||
-      err.message?.toLowerCase().includes('network')
+      (!!err.request && !err.response) ||
+      (err.message?.toLowerCase().includes('network') ?? false)
     );
   }
   return false;
@@ -88,13 +97,17 @@ export function isNetworkError(error: unknown): boolean {
  */
 export function isAuthError(error: unknown): boolean {
   if (typeof error === 'object' && error !== null) {
-    const err = error as any;
+    const err = error as {
+      response?: { status?: number };
+      code?: string;
+      message?: string;
+    };
     return (
       err.response?.status === 401 ||
       err.response?.status === 403 ||
       err.code === 'UNAUTHORIZED' ||
-      err.message?.toLowerCase().includes('unauthorized') ||
-      err.message?.toLowerCase().includes('authentication')
+      (err.message?.toLowerCase().includes('unauthorized') ?? false) ||
+      (err.message?.toLowerCase().includes('authentication') ?? false)
     );
   }
   return false;

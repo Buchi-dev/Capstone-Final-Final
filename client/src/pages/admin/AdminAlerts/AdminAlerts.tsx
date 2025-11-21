@@ -78,7 +78,7 @@ export const AdminAlerts = () => {
     try {
       await refetch();
       message.success('Alerts refreshed successfully');
-    } catch (error) {
+    } catch {
       message.error('Failed to refresh alerts');
     } finally {
       setIsRefreshing(false);
@@ -113,7 +113,7 @@ export const AdminAlerts = () => {
       
       // Refresh data
       await refetch();
-    } catch (error) {
+    } catch {
       message.error('Failed to acknowledge alerts');
     }
   };

@@ -53,9 +53,9 @@ export interface Report {
   startDate: string;
   endDate: string;
   status: 'generating' | 'completed' | 'failed';
-  data: any;
-  summary?: any;
-  metadata?: any;
+  data: Record<string, unknown>;
+  summary?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   error?: string;
   createdAt: string;
   updatedAt: string;
@@ -110,7 +110,7 @@ export class ReportsService {
         request
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[ReportsService] Water quality report error:', message);
       throw new Error(message);
@@ -138,7 +138,7 @@ export class ReportsService {
         request
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[ReportsService] Device status report error:', message);
       throw new Error(message);
@@ -165,7 +165,7 @@ export class ReportsService {
       const url = buildReportsUrl(filters);
       const response = await apiClient.get<ReportListResponse>(url);
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[ReportsService] Get reports error:', message);
       throw new Error(message);
@@ -186,7 +186,7 @@ export class ReportsService {
         REPORT_ENDPOINTS.BY_ID(reportId)
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[ReportsService] Get report error:', message);
       throw new Error(message);
@@ -207,7 +207,7 @@ export class ReportsService {
         REPORT_ENDPOINTS.DELETE(reportId)
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[ReportsService] Delete report error:', message);
       throw new Error(message);
@@ -222,35 +222,35 @@ export class ReportsService {
    * @deprecated Use generateWaterQualityReport() with proper request format
    * Legacy method for backwards compatibility with timestamp parameters
    */
-  async generateReport(request: any): Promise<any> {
+  async generateReport(request: Record<string, unknown>): Promise<ReportResponse> {
     // Convert old format to new format
     if (request.reportType === 'water_quality' || !request.reportType) {
       return this.generateWaterQualityReport({
-        startDate: request.startDate || new Date(request.startDate || Date.now()).toISOString(),
-        endDate: request.endDate || new Date(request.endDate || Date.now()).toISOString(),
-        deviceIds: request.deviceIds,
+        startDate: (request.startDate as string) || new Date(Date.now()).toISOString(),
+        endDate: (request.endDate as string) || new Date(Date.now()).toISOString(),
+        deviceIds: request.deviceIds as string[] | undefined,
       });
     } else if (request.reportType === 'device_status') {
       return this.generateDeviceStatusReport({
-        startDate: request.startDate || new Date(request.startDate || Date.now()).toISOString(),
-        endDate: request.endDate || new Date(request.endDate || Date.now()).toISOString(),
-        deviceIds: request.deviceIds,
+        startDate: (request.startDate as string) || new Date(Date.now()).toISOString(),
+        endDate: (request.endDate as string) || new Date(Date.now()).toISOString(),
+        deviceIds: request.deviceIds as string[] | undefined,
       });
     }
-    throw new Error(`Unsupported report type: ${request.reportType}`);
+    throw new Error(`Unsupported report type: ${request.reportType as string}`);
   }
 
   /**
    * @deprecated Use generateDataSummaryReport() - not yet implemented on server
    */
-  async generateDataSummaryReport(): Promise<any> {
+  async generateDataSummaryReport(): Promise<ReportResponse> {
     throw new Error('Data summary reports not yet implemented on Express server');
   }
 
   /**
    * @deprecated Use generateComplianceReport() - not yet implemented on server
    */
-  async generateComplianceReport(): Promise<any> {
+  async generateComplianceReport(): Promise<ReportResponse> {
     throw new Error('Compliance reports not yet implemented on Express server');
   }
 }

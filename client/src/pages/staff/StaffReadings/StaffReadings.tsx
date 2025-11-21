@@ -56,7 +56,7 @@ export const StaffReadings = () => {
   const token = useThemeToken();
   const [deviceFilter, setDeviceFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [dateRange, setDateRange] = useState<any>(null);
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   
   // ✅ GLOBAL HOOK - Real-time device data with SWR polling
   const { devices: realtimeDevices, isLoading } = useDevices({ 
@@ -68,7 +68,7 @@ export const StaffReadings = () => {
     const allReadings: Reading[] = [];
     
     realtimeDevices.forEach((device) => {
-      const reading = (device as any).latestReading;
+      const reading = device.latestReading;
       if (!reading) return;
       
       // Use utility function to determine status
@@ -338,7 +338,7 @@ export const StaffReadings = () => {
               <Text strong>Date Range: </Text>
               <RangePicker
                 value={dateRange}
-                onChange={setDateRange}
+                onChange={(dates) => setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs] | null)}
                 showTime
                 format="YYYY-MM-DD HH:mm"
               />

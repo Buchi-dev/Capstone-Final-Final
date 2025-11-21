@@ -185,7 +185,7 @@ export class HealthService {
     try {
       const response = await apiClient.get<SystemHealth>('/health');
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[HealthService] Failed to fetch system health:', message);
       throw new Error(message);
@@ -205,7 +205,7 @@ export class HealthService {
     try {
       const response = await apiClient.get<LivenessResponse>('/health/liveness');
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[HealthService] Liveness check failed:', message);
       throw new Error(message);
@@ -225,7 +225,7 @@ export class HealthService {
     try {
       const response = await apiClient.get<ReadinessResponse>('/health/readiness');
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[HealthService] Readiness check failed:', message);
       throw new Error(message);

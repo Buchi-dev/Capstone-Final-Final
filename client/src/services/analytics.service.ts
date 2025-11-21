@@ -187,7 +187,7 @@ export class AnalyticsService {
         ANALYTICS_ENDPOINTS.SUMMARY
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AnalyticsService] Get summary error:', message);
       throw new Error(message);
@@ -213,7 +213,7 @@ export class AnalyticsService {
       const url = buildAnalyticsTrendsUrl(params);
       const response = await apiClient.get<TrendsResponse>(url);
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AnalyticsService] Get trends error:', message);
       throw new Error(message);
@@ -238,7 +238,7 @@ export class AnalyticsService {
       const url = buildAnalyticsParametersUrl(params);
       const response = await apiClient.get<ParameterAnalyticsResponse>(url);
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AnalyticsService] Get parameter analytics error:', message);
       throw new Error(message);

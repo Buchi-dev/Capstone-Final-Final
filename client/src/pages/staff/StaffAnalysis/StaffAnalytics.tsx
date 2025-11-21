@@ -50,7 +50,7 @@ export const StaffAnalytics = () => {
   // Calculate analytics data from real-time devices
   const analyticsData = useMemo(() => {
     const devicesWithReadings = realtimeDevices.filter(
-      (d) => (d as any).latestReading !== null
+      (d) => d.latestReading !== null
     );
 
     if (devicesWithReadings.length === 0) {
@@ -62,11 +62,16 @@ export const StaffAnalytics = () => {
       };
     }
 
-    const deviceStats: any[] = [];
+    const deviceStats: Array<{
+      device: string;
+      ph: number;
+      turbidity: number;
+      tds: number;
+    }> = [];
     let totalPh = 0, totalTurbidity = 0, totalTds = 0;
     let count = 0;
 
-    devicesWithReadings.forEach((device: any) => {
+    devicesWithReadings.forEach((device) => {
       const reading = device.latestReading;
       if (!reading) return;
 

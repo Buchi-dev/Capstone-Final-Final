@@ -4,32 +4,17 @@
  * Uses Express/Passport.js session-based authentication
  */
 
-import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import type { ReactNode } from "react";
 import { authService, type AuthUser } from "../services/auth.Service";
 import { auth } from "../config/firebase.config";
 import { onAuthStateChanged } from "firebase/auth";
 import { initializeSocket, disconnectSocket } from "../utils/socket";
+import { AuthContext, type AuthContextType } from "./auth.context";
 
 // User status types (mapped from MongoDB model)
 export type UserStatus = "active" | "pending" | "suspended";
 export type UserRole = "admin" | "staff";
-
-// Auth context state
-interface AuthContextType {
-  user: AuthUser | null;
-  loading: boolean;
-  isAuthenticated: boolean;
-  isActive: boolean;
-  isPending: boolean;
-  isSuspended: boolean;
-  isAdmin: boolean;
-  isStaff: boolean;
-  refetchUser: () => Promise<void>;
-}
-
-// Create context with undefined default
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 /**
  * Auth Provider Component
@@ -135,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       unsubscribe();
       listenerInitialized.current = false;
     };
-  }, []); // Empty dependency array - initialize ONCE
+  }, [fetchUser]); // fetchUser is stable due to useCallback
 
   // Set up periodic auth check (every 5 minutes)
   useEffect(() => {
@@ -183,16 +168,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-/**
- * Custom hook to use auth context
- * Throws error if used outside AuthProvider
- */
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
 }

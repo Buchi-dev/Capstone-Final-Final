@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import type { Device, SensorReading, DeviceWithReadings } from '../../../../schemas/deviceManagement.schema';
 import type { WaterQualityAlert } from '../../../../schemas/alerts.schema';
-import type { Device } from '../../../../schemas';
 
 /**
  * UI-specific hook for device severity calculation and sorting
@@ -100,8 +99,8 @@ export const useDeviceSeverityCalculator = () => {
    * Combines device metadata from Firestore with sensor readings from RTDB
    * and calculates severity based on alerts and parameter thresholds.
    * 
-   * @param deviceData - Device data from useRealtime_Devices
-   * @param allAlerts - All alerts from useRealtime_Alerts
+   * @param deviceData - Device data from useDevices
+   * @param allAlerts - All alerts from useAlerts
    * @returns Enriched device with severity information
    */
   const enrichDeviceWithSeverity = useCallback(
@@ -111,33 +110,24 @@ export const useDeviceSeverityCalculator = () => {
         (a) => a.deviceId === deviceData.deviceId && a.status === 'Active'
       );
 
-      // Use metadata if available, otherwise create Device from Device
-      const deviceInfo: Device = deviceData.metadata || {
-        id: deviceData.deviceId,
-        deviceId: deviceData.deviceId,
-        name: deviceData.deviceName,
-        type: 'ESP32',
-        firmwareVersion: 'unknown',
-        macAddress: 'unknown',
-        ipAddress: 'unknown',
-        sensors: ['ph', 'tds', 'turbidity'],
-        status: deviceData.status,
-        registeredAt: null,
-        lastSeen: null,
-        metadata: deviceData.metadata,
-      };
+      // Device info is just the device data itself
+      const deviceInfo: Device = deviceData;
+
+      // Since Device doesn't have latestReading, we set it to null
+      // The parent component should handle fetching readings separately if needed
+      const latestReading: SensorReading | null = null;
 
       // Calculate severity
       const { score, level } = calculateSeverity(
         deviceInfo,
-        deviceData.latestReading,
+        latestReading,
         allAlerts
       );
 
       // Return enriched device
       return {
         ...deviceInfo,
-        latestReading: deviceData.latestReading,
+        latestReading,
         activeAlerts: deviceAlerts,
         severityScore: score,
         severityLevel: level,

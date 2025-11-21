@@ -33,7 +33,14 @@ const { Text, Paragraph } = Typography;
 
 interface ReportPreviewPanelProps {
   selectedType: ReportType;
-  formValues: any;
+  formValues: {
+    dateRange?: [dayjs.Dayjs, dayjs.Dayjs];
+    devices?: string[];
+    title?: string;
+    notes?: string;
+    includeStatistics?: boolean;
+    includeCharts?: boolean;
+  };
   devices: Device[];
   onGenerate: () => void;
   onBack: () => void;
@@ -54,18 +61,17 @@ interface ReportPreviewPanelProps {
  * />
  */
 export const ReportPreviewPanel = ({
-  selectedType,
   formValues,
   devices,
   onGenerate,
   onBack,
   generating,
 }: ReportPreviewPanelProps) => {
-  const getReportTypeLabel = (_type: ReportType) => {
+  const getReportTypeLabel = () => {
     return 'Water Quality Report';
   };
 
-  const getReportTypeColor = (_type: ReportType) => {
+  const getReportTypeColor = () => {
     return 'blue';
   };
 

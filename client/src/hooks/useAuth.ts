@@ -7,7 +7,7 @@
  * @module hooks/useAuth
  */
 
-import { useAuth as useAuthContext } from '../contexts/AuthContext';
+import { useAuth as useAuthContext } from '../contexts';
 
 /**
  * Access authentication state and operations

@@ -87,7 +87,11 @@ export interface SystemHealthSummary {
       score: number;
       weight: number;
       contribution: number;
-      breakdown: any;
+      breakdown: {
+        critical: number;
+        warning: number;
+        advisory: number;
+      };
     };
   };
 }
@@ -307,7 +311,7 @@ const calculateDevicePerformance = (devices: DeviceWithReadings[], alerts: Water
     const uptimePercentage = device.status === 'online' ? 95 : 20; // Simplified for now
     
     // Get location string - metadata is a flexible record type
-    const metadata = device.metadata as any;
+    const metadata = device.metadata as Record<string, { building?: string; floor?: string | number }> | undefined;
     const location = metadata?.location 
       ? `${metadata.location.building} - Floor ${metadata.location.floor}`
       : undefined;

@@ -28,7 +28,7 @@ export async function refreshUserToken(): Promise<string> {
 /**
  * @deprecated Use AuthContext.userProfile to access user data instead
  */
-export async function getUserTokenClaims(): Promise<any> {
+export async function getUserTokenClaims(): Promise<Record<string, unknown>> {
   throw new Error(
     'getUserTokenClaims() is deprecated. Use AuthContext.userProfile to access user data.'
   );

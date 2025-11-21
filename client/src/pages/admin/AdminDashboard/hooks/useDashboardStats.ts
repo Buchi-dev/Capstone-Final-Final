@@ -65,7 +65,7 @@ export const calculateDeviceStats = (devices: Device[]): DeviceStats => {
     total: devices.length,
     online: devices.filter((d) => d.status === 'online').length,
     offline: devices.filter((d) => d.status === 'offline').length,
-    withReadings: devices.filter((d: any) => d.latestReading !== null).length,
+    withReadings: devices.filter((d) => d.latestReading !== null).length,
   };
 };
 

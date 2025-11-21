@@ -7,7 +7,7 @@
  * @module pages/admin/AdminAnalytics/hooks
  */
 import { useMemo } from 'react';
-import type { Device } from '../../../../schemas';
+import type { DeviceWithReadings } from '../../../../schemas';
 
 interface TimeSeriesDataPoint {
   time: string;
@@ -43,7 +43,7 @@ interface ParameterComparisonPoint {
  * ```
  */
 export const useAnalyticsProcessing = (
-  devices: Device[]
+  devices: DeviceWithReadings[]
 ) => {
   // Transform current readings into time series format for visualization
   const timeSeriesData = useMemo<TimeSeriesDataPoint[]>(() => {
@@ -53,7 +53,7 @@ export const useAnalyticsProcessing = (
     return devices
       .filter(device => device.latestReading !== null)
       .map(device => ({
-        time: device.deviceName || device.deviceId,
+        time: device.name || device.deviceId,
         pH: device.latestReading?.ph || 0,
         TDS: device.latestReading?.tds || 0,
         Turbidity: device.latestReading?.turbidity || 0,

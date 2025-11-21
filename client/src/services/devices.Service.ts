@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Devices Service
  * 
  * Manages IoT devices and their sensor readings through Express REST API.
@@ -122,7 +122,7 @@ export class DevicesService {
         data
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[DevicesService] Update error:', message);
       throw new Error(message);
@@ -160,7 +160,7 @@ export class DevicesService {
         DEVICE_ENDPOINTS.DELETE(deviceId)
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[DevicesService] Delete error:', message);
       throw new Error(message);
@@ -185,7 +185,7 @@ export class DevicesService {
       const url = buildDevicesUrl(filters);
       const response = await apiClient.get<DeviceListResponse>(url);
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[DevicesService] Get devices error:', message);
       throw new Error(message);
@@ -206,7 +206,7 @@ export class DevicesService {
         DEVICE_ENDPOINTS.BY_ID(deviceId)
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[DevicesService] Get device error:', message);
       throw new Error(message);
@@ -235,7 +235,7 @@ export class DevicesService {
       const url = buildDeviceReadingsUrl(deviceId, filters);
       const response = await apiClient.get<DeviceReadingsResponse>(url);
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[DevicesService] Get readings error:', message);
       throw new Error(message);
@@ -271,7 +271,7 @@ export class DevicesService {
         DEVICE_ENDPOINTS.STATS
       );
       return response.data;
-    } catch (error: any) {
+    } catch (error) {
       const message = getErrorMessage(error);
       console.error('[DevicesService] Get stats error:', message);
       throw new Error(message);

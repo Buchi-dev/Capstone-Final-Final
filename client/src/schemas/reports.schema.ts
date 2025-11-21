@@ -302,4 +302,4 @@ export type ComplianceReportData = z.infer<typeof ComplianceReportDataSchema>;
 export type GenerateReportRequest = z.infer<typeof GenerateReportRequestSchema>;
 export type ReportConfig = z.infer<typeof ReportConfigSchema>;
 export type ReportHistory = z.infer<typeof ReportHistorySchema>;
-export type ReportResponse<T = any> = Omit<z.infer<typeof ReportResponseSchema>, 'data'> & { data: T };
+export type ReportResponse<T = Record<string, unknown>> = Omit<z.infer<typeof ReportResponseSchema>, 'data'> & { data: T };

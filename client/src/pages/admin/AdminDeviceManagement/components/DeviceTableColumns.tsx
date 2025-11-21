@@ -27,7 +27,7 @@ const statusConfig: Record<DeviceStatus, { color: string; icon: ReactNode }> = {
 
 interface UseDeviceColumnsProps {
   activeTab: 'registered' | 'unregistered';
-  token: any;
+  token: Record<string, string | number>;
   onView: (device: Device) => void;
   onDelete: (device: Device) => void;
   onRegister: (device: Device) => void;

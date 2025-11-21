@@ -13,7 +13,7 @@ import {
   SettingOutlined,
   IdcardOutlined,
 } from "@ant-design/icons";
-import { useAuth } from "../contexts/AuthContext";
+import { useAuth } from "../contexts";
 import { authService } from "../services/auth.Service";
 
 function getUserDisplayName(profile: { firstName?: string; lastName?: string; displayName?: string } | null): string {
@@ -81,7 +81,7 @@ export default function UserMenu() {
           </Text>
           <Space size={4} style={{ marginTop: 4 }}>
             <Badge
-              status={getStatusColor(userProfile?.status || "pending") as any}
+              status={getStatusColor(userProfile?.status || "pending") as "success" | "processing" | "default" | "error" | "warning"}
               text={userProfile?.status}
             />
             <Text type="secondary" style={{ fontSize: "12px" }}>

@@ -101,7 +101,7 @@ export async function runAuthDiagnostics(): Promise<DiagnosticsResponse> {
     );
 
     return response.data;
-  } catch (error: any) {
+  } catch (error) {
     console.error('[Diagnostics] Error running diagnostics:', error);
     
     return {
@@ -114,12 +114,12 @@ export async function runAuthDiagnostics(): Promise<DiagnosticsResponse> {
         errors: [
           {
             step: 'Diagnostic Request',
-            error: error.message || 'Unknown error',
+            error: (error as Error).message || 'Unknown error',
           },
         ],
         summary: { canAuthenticate: false, issues: 1 },
       },
-      error: error.message,
+      error: (error as Error).message,
     };
   }
 }
@@ -204,7 +204,13 @@ export async function diagnoseAndPrint(): Promise<DiagnosticsResponse> {
 
 // Make available in window for easy debugging
 if (typeof window !== 'undefined' && import.meta.env.DEV) {
-  (window as any).authDiagnostics = {
+  interface WindowWithAuthDiagnostics extends Window {
+    authDiagnostics?: {
+      run: typeof runAuthDiagnostics;
+      print: typeof diagnoseAndPrint;
+    };
+  }
+  (window as WindowWithAuthDiagnostics).authDiagnostics = {
     run: runAuthDiagnostics,
     print: diagnoseAndPrint,
   };

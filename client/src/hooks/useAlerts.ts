@@ -28,6 +28,7 @@ import type { WaterQualityAlert } from '../schemas';
 export interface UseAlertsOptions {
   filters?: AlertFilters;
   enabled?: boolean;
+  pollInterval?: number;
 }
 
 export interface UseAlertsReturn {

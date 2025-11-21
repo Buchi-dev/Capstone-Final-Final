@@ -5,7 +5,7 @@
  * Uses global hooks for all data operations.
  * Components extracted following "One Component Per File" architecture rule.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   Form,
@@ -67,7 +67,7 @@ const NotificationSettings: React.FC = () => {
   } = useUserPreferences({ 
     userId: user?._id || '',
     enabled: !!user?._id 
-  }) as any; // Type cast to bypass schema mismatch between frontend/backend
+  }) as { preferences: Record<string, unknown> | null; isLoading: boolean; refetch: () => Promise<void> }; // Type cast to bypass schema mismatch between frontend/backend
   
   const { 
     updateUserPreferences, 
@@ -75,7 +75,7 @@ const NotificationSettings: React.FC = () => {
   } = useUserMutations();
 
   // Transform devices for select component
-  const devices = devicesWithReadings.map((d: any) => ({
+  const devices = devicesWithReadings.map((d) => ({
     deviceId: d.deviceId,
     name: d.name,
     status: d.status,
@@ -84,11 +84,7 @@ const NotificationSettings: React.FC = () => {
       : 'Unknown'
   }));
 
-  useEffect(() => {
-    loadPreferences();
-  }, [user, userPrefs]);
-
-  const loadPreferences = async () => {
+  const loadPreferences = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -101,10 +97,10 @@ const NotificationSettings: React.FC = () => {
         console.log('[NotificationSettings] Loaded preferences:', userPrefs);
         
         // Set preferences (type cast to bypass schema mismatch)
-        setPreferences(userPrefs as any);
+        setPreferences(userPrefs as unknown as NotificationPreferences);
         
         // Extract notification settings (use type assertion for backend schema)
-        const prefs = userPrefs as any;
+        const prefs = userPrefs as Record<string, unknown>;
         const formValues = {
           emailNotifications: prefs.emailNotifications ?? true,
           pushNotifications: prefs.pushNotifications ?? false,
@@ -114,8 +110,8 @@ const NotificationSettings: React.FC = () => {
           devices: prefs.devices || [],
           quietHoursEnabled: prefs.quietHoursEnabled ?? false,
           quietHours: prefs.quietHoursStart && prefs.quietHoursEnd ? [
-            dayjs(prefs.quietHoursStart, 'HH:mm'),
-            dayjs(prefs.quietHoursEnd, 'HH:mm'),
+            dayjs(prefs.quietHoursStart as string, 'HH:mm'),
+            dayjs(prefs.quietHoursEnd as string, 'HH:mm'),
           ] : undefined,
         };
         
@@ -132,36 +128,53 @@ const NotificationSettings: React.FC = () => {
           quietHoursEnabled: false,
         });
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('[NotificationSettings] Error loading preferences:', error);
-      message.error(error.message || 'Failed to load notification preferences');
+      message.error((error as Error).message || 'Failed to load notification preferences');
     } finally {
       setLoading(false);
     }
-  };
+  }, [user, userPrefs, form, message]);
 
-  const handleSave = async (values: any) => {
+  useEffect(() => {
+    loadPreferences();
+  }, [loadPreferences]);
+
+
+  const handleSave = async (values: Record<string, unknown>) => {
     if (!user || !user.email) return;
 
     try {
-      const quietHoursStart = values.quietHoursEnabled && values.quietHours?.[0]
-        ? values.quietHours[0].format('HH:mm')
+      interface FormValues {
+        quietHoursEnabled?: boolean;
+        quietHours?: Array<{ format: (fmt: string) => string }>;
+        emailNotifications?: boolean;
+        pushNotifications?: boolean;
+        sendScheduledAlerts?: boolean;
+        alertSeverities?: string[];
+        parameters?: string[];
+        devices?: string[];
+      }
+      const formValues = values as FormValues;
+      
+      const quietHoursStart = formValues.quietHoursEnabled && formValues.quietHours?.[0]
+        ? formValues.quietHours[0].format('HH:mm')
         : undefined;
 
-      const quietHoursEnd = values.quietHoursEnabled && values.quietHours?.[1]
-        ? values.quietHours[1].format('HH:mm')
+      const quietHoursEnd = formValues.quietHoursEnabled && formValues.quietHours?.[1]
+        ? formValues.quietHours[1].format('HH:mm')
         : undefined;
 
       const preferencesPayload = {
         userId: user.id,
         email: user.email,
-        emailNotifications: values.emailNotifications ?? false,
-        pushNotifications: values.pushNotifications ?? false,
-        sendScheduledAlerts: values.sendScheduledAlerts ?? true,
-        alertSeverities: values.alertSeverities || ['Critical', 'Warning', 'Advisory'],
-        parameters: values.parameters || [],
-        devices: values.devices || [],
-        quietHoursEnabled: values.quietHoursEnabled ?? false,
+        emailNotifications: formValues.emailNotifications ?? false,
+        pushNotifications: formValues.pushNotifications ?? false,
+        sendScheduledAlerts: formValues.sendScheduledAlerts ?? true,
+        alertSeverities: formValues.alertSeverities || ['Critical', 'Warning', 'Advisory'],
+        parameters: formValues.parameters || [],
+        devices: formValues.devices || [],
+        quietHoursEnabled: formValues.quietHoursEnabled ?? false,
         quietHoursStart,
         quietHoursEnd,
       };
@@ -169,16 +182,16 @@ const NotificationSettings: React.FC = () => {
       console.log('[NotificationSettings] Saving preferences:', preferencesPayload);
 
       // Use type cast to bypass schema mismatch
-      await updateUserPreferences(user._id || user.id, preferencesPayload as any);
+      await updateUserPreferences(user._id || user.id, preferencesPayload as Record<string, unknown>);
 
       console.log('[NotificationSettings] Preferences saved successfully');
       
       message.success('Notification preferences saved successfully');
       
       await refetchPreferences();
-    } catch (error: any) {
+    } catch (error) {
       console.error('[NotificationSettings] Error saving preferences:', error);
-      message.error(error.message || 'Failed to save notification preferences');
+      message.error((error as Error).message || 'Failed to save notification preferences');
     }
   };
 

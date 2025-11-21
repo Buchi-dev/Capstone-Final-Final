@@ -66,7 +66,7 @@ export const StaffDevices = () => {
   // Transform devices for display using utility function
   const devices: Device[] = useMemo(() => {
     return realtimeDevices.map((device) => {
-      const reading = (device as any).latestReading;
+      const reading = device.latestReading;
       const status = calculateDeviceStatus(device.status, reading);
       
       const uptime = status === 'online' ? '99.5%' : status === 'warning' ? '95.0%' : '0%';
