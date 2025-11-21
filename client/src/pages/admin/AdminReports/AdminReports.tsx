@@ -89,7 +89,7 @@ export const AdminReports = () => {
     return devicesWithReadings.map((d) => ({
       id: d.deviceId,
       deviceId: d.deviceId,
-      name: d.name || d.deviceName,
+      name: d.name,
       type: d.type || 'ESP32',
       firmwareVersion: d.firmwareVersion || '1.0.0',
       macAddress: d.macAddress || 'N/A',

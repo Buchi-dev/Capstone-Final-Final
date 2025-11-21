@@ -13,7 +13,7 @@ export default function PWAInstallButton() {
     function onBeforeInstallPrompt(e: Event) {
       // Prevent the mini-infobar from appearing on mobile
       e.preventDefault()
-      setDeferredPrompt(e)
+      setDeferredPrompt(e as BeforeInstallPromptEvent)
       setIsVisible(true)
     }
 

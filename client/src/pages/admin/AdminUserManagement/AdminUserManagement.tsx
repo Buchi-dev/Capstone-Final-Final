@@ -39,7 +39,7 @@ import { UsersStatistics } from "./components/UsersStatistics";
 import type { UserListData, UserRole, UserStatus } from "../../../schemas";
 
 import { AdminLayout } from "../../../components/layouts/AdminLayout";
-import { useAuth } from "../../../contexts/AuthContext";
+import { useAuth } from "../../../contexts";
 import { diagnoseAndPrint } from "../../../utils/authDiagnostics";
 import { getErrorMessage } from "../../../utils/errorHelpers";
 

@@ -40,6 +40,7 @@ interface ReportPreviewPanelProps {
     notes?: string;
     includeStatistics?: boolean;
     includeCharts?: boolean;
+    includeRawData?: boolean;
   };
   devices: Device[];
   onGenerate: () => void;
@@ -67,11 +68,11 @@ export const ReportPreviewPanel = ({
   onBack,
   generating,
 }: ReportPreviewPanelProps) => {
-  const getReportTypeLabel = () => {
+  const getReportTypeLabel = (/* _type?: ReportType */) => {
     return 'Water Quality Report';
   };
 
-  const getReportTypeColor = () => {
+  const getReportTypeColor = (/* _type?: ReportType */) => {
     return 'blue';
   };
 
@@ -114,8 +115,8 @@ export const ReportPreviewPanel = ({
                   </Space>
                 }
               >
-                <Tag color={getReportTypeColor(selectedType)} style={{ fontSize: 14, padding: '4px 12px' }}>
-                  {getReportTypeLabel(selectedType)}
+                <Tag color={getReportTypeColor()} style={{ fontSize: 14, padding: '4px 12px' }}>
+                  {getReportTypeLabel()}
                 </Tag>
               </Descriptions.Item>
 

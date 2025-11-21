@@ -14,7 +14,7 @@ import {
   WarningOutlined,
   InfoCircleOutlined 
 } from "@ant-design/icons";
-import { useAuth } from "../../../contexts/AuthContext";
+import { useAuth } from "../../../contexts";
 import { authService } from "../../../services/auth.Service";
 
 const { Title, Text } = Typography;

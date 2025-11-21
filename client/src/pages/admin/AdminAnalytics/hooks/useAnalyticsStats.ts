@@ -15,7 +15,7 @@ import { useMemo } from 'react';
 import type { DeviceWithReadings } from '../../../../schemas';
 import type { WaterQualityAlert } from '../../../../schemas';
 import type { SystemHealth } from '../../../../services/health.Service';
-import { calculateSystemHealth } from '../../AdminDashboard/utils';
+import { calculateSystemHealth, type AlertScoreBreakdown } from '../../AdminDashboard/utils';
 import { 
   HEALTH_COLORS,
   calculateServerHealthScore 
@@ -87,11 +87,7 @@ export interface SystemHealthSummary {
       score: number;
       weight: number;
       contribution: number;
-      breakdown: {
-        critical: number;
-        warning: number;
-        advisory: number;
-      };
+      breakdown: AlertScoreBreakdown;
     };
   };
 }

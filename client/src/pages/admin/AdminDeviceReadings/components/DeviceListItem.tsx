@@ -183,11 +183,11 @@ export const DeviceListItem = memo(({ device }: DeviceListItemProps) => {
                 <Space size={4} wrap>
                   {activeAlerts.slice(0, 3).map((alert) => (
                     <Tag
-                      key={alert.alertId}
-                      color={alert.severity === 'Critical' ? 'red' : 'orange'}
+                      key={alert.alertId as string}
+                      color={(alert.severity as string) === 'Critical' ? 'red' : 'orange'}
                       style={{ fontSize: '11px', margin: 0 }}
                     >
-                      {alert.parameter.toUpperCase()}: {alert.message || 'Alert'}
+                      {(alert.parameter as string).toUpperCase()}: {(alert.message as string) || 'Alert'}
                     </Tag>
                   ))}
                   {activeAlerts.length > 3 && (

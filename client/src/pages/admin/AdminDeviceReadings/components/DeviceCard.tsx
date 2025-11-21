@@ -295,11 +295,11 @@ export const DeviceCard = memo(({ device }: DeviceCardProps) => {
                     <Text strong>Active Alerts:</Text>
                   </div>
                   {activeAlerts.slice(0, 2).map((alert) => (
-                    <div key={alert.alertId} style={{ marginBottom: 4 }}>
-                      <Tag color={alert.severity === 'Critical' ? 'red' : 'orange'} style={{ marginBottom: 4 }}>
-                        {alert.severity}
+                    <div key={alert.alertId as string} style={{ marginBottom: 4 }}>
+                      <Tag color={(alert.severity as string) === 'Critical' ? 'red' : 'orange'} style={{ marginBottom: 4 }}>
+                        {alert.severity as string}
                       </Tag>
-                      <Text style={{ fontSize: '12px' }}>{alert.message || 'Alert detected'}</Text>
+                      <Text style={{ fontSize: '12px' }}>{(alert.message as string) || 'Alert detected'}</Text>
                     </div>
                   ))}
                   {activeAlerts.length > 2 && (
