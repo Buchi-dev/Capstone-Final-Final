@@ -347,51 +347,51 @@ function checkForAnomalies(reading) {
         severity: 'Critical',
         threshold: SENSOR_THRESHOLDS.pH.critical,
       });
-    } else if (reading.pH < SENSOR_THRESHOLDS.pH.warning.min || 
-               reading.pH > SENSOR_THRESHOLDS.pH.warning.max) {
+    } else if (reading.pH < SENSOR_THRESHOLDS.pH.min || 
+               reading.pH > SENSOR_THRESHOLDS.pH.max) {
       anomalies.push({
         parameter: 'pH',
         value: reading.pH,
         severity: 'Warning',
-        threshold: SENSOR_THRESHOLDS.pH.warning,
+        threshold: { min: SENSOR_THRESHOLDS.pH.min, max: SENSOR_THRESHOLDS.pH.max },
       });
     }
   }
 
   // Turbidity anomalies
   if (reading.turbidity !== undefined) {
-    if (reading.turbidity > SENSOR_THRESHOLDS.turbidity.critical.max) {
+    if (reading.turbidity > SENSOR_THRESHOLDS.turbidity.critical) {
       anomalies.push({
         parameter: 'turbidity',
         value: reading.turbidity,
         severity: 'Critical',
-        threshold: SENSOR_THRESHOLDS.turbidity.critical,
+        threshold: { max: SENSOR_THRESHOLDS.turbidity.critical },
       });
-    } else if (reading.turbidity > SENSOR_THRESHOLDS.turbidity.warning.max) {
+    } else if (reading.turbidity > SENSOR_THRESHOLDS.turbidity.warning) {
       anomalies.push({
         parameter: 'turbidity',
         value: reading.turbidity,
         severity: 'Warning',
-        threshold: SENSOR_THRESHOLDS.turbidity.warning,
+        threshold: { max: SENSOR_THRESHOLDS.turbidity.warning },
       });
     }
   }
 
   // TDS anomalies
   if (reading.tds !== undefined) {
-    if (reading.tds > SENSOR_THRESHOLDS.tds.critical.max) {
+    if (reading.tds > SENSOR_THRESHOLDS.tds.critical) {
       anomalies.push({
         parameter: 'tds',
         value: reading.tds,
         severity: 'Critical',
-        threshold: SENSOR_THRESHOLDS.tds.critical,
+        threshold: { max: SENSOR_THRESHOLDS.tds.critical },
       });
-    } else if (reading.tds > SENSOR_THRESHOLDS.tds.warning.max) {
+    } else if (reading.tds > SENSOR_THRESHOLDS.tds.warning) {
       anomalies.push({
         parameter: 'tds',
         value: reading.tds,
         severity: 'Warning',
-        threshold: SENSOR_THRESHOLDS.tds.warning,
+        threshold: { max: SENSOR_THRESHOLDS.tds.warning },
       });
     }
   }
