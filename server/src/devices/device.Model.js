@@ -56,9 +56,17 @@ const deviceSchema = new mongoose.Schema(
       default: Date.now,
     },
     metadata: {
-      firmware: String,
-      hardware: String,
-      ipAddress: String,
+      type: {
+        location: {
+          building: String,
+          floor: String,
+          notes: String,
+        },
+        firmware: String,
+        hardware: String,
+        ipAddress: String,
+      },
+      default: {},
     },
   },
   {

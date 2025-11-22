@@ -76,6 +76,24 @@ const validateDeviceUpdate = [
   body('metadata')
     .optional()
     .isObject().withMessage('Metadata must be an object'),
+  body('metadata.location')
+    .optional()
+    .isObject().withMessage('Metadata location must be an object'),
+  body('metadata.location.building')
+    .optional()
+    .isString().withMessage('Building must be a string')
+    .trim()
+    .isLength({ min: 2, max: 100 }).withMessage('Building must be between 2 and 100 characters'),
+  body('metadata.location.floor')
+    .optional()
+    .isString().withMessage('Floor must be a string')
+    .trim()
+    .isLength({ min: 1, max: 50 }).withMessage('Floor must be between 1 and 50 characters'),
+  body('metadata.location.notes')
+    .optional()
+    .isString().withMessage('Notes must be a string')
+    .trim()
+    .isLength({ max: 500 }).withMessage('Notes must be less than 500 characters'),
   handleValidationErrors,
 ];
 

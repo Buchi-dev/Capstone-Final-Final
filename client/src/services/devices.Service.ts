@@ -87,6 +87,17 @@ export interface UpdateDevicePayload {
   registrationStatus?: 'registered' | 'pending';
   status?: 'online' | 'offline';
   deviceName?: string;
+  metadata?: {
+    location?: {
+      building: string;
+      floor: string;
+      notes?: string;
+    };
+    firmware?: string;
+    hardware?: string;
+    ipAddress?: string;
+    [key: string]: any; // Allow additional properties
+  };
 }
 
 // ============================================================================

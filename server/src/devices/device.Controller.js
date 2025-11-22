@@ -132,7 +132,29 @@ const updateDevice = asyncHandler(async (req, res) => {
   const updates = {};
   if (location !== undefined) updates.location = location;
   if (registrationStatus !== undefined) updates.registrationStatus = registrationStatus;
-  if (metadata !== undefined) updates.metadata = metadata;
+  
+  // Handle metadata updates - merge with existing metadata
+  if (metadata !== undefined) {
+    // Get the current device to merge metadata
+    const currentDevice = await Device.findById(req.params.id);
+    if (!currentDevice) {
+      throw new NotFoundError('Device', req.params.id);
+    }
+    
+    // Merge metadata - preserve existing fields and update/add new ones
+    updates.metadata = {
+      ...currentDevice.metadata?.toObject?.() || currentDevice.metadata || {},
+      ...metadata,
+    };
+    
+    // Handle nested metadata.location separately to merge it properly
+    if (metadata.location) {
+      updates.metadata.location = {
+        ...currentDevice.metadata?.location || {},
+        ...metadata.location,
+      };
+    }
+  }
 
   if (Object.keys(updates).length === 0) {
     throw new ValidationError('No valid fields to update');

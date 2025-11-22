@@ -327,8 +327,24 @@ export function useDeviceMutations(): UseDeviceMutationsReturn {
       setIsLoading(true);
       setError(null);
       try {
+        // Build structured location metadata
+        const metadata = {
+          location: {
+            building,
+            floor,
+            ...(notes && { notes }),
+          },
+        };
+        
+        // Also set the location string for backward compatibility
         const location = `${building} - ${floor}${notes ? ` (${notes})` : ''}`;
-        await devicesService.registerDevice(deviceId, location);
+        
+        // Update device with both location string and structured metadata
+        await devicesService.updateDevice(deviceId, {
+          location,
+          registrationStatus: 'registered',
+          metadata,
+        });
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Failed to register device');
         setError(error);
