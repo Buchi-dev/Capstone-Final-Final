@@ -18,7 +18,7 @@ export class DeviceSimulator {
     // --------------------------
     // Fixed sensor list
     // --------------------------
-    this.sensors = ["tds", "ph", "turbidity"];
+    this.sensors = ["tds", "pH", "turbidity"];
 
     // --------------------------
     // Backend config (real API key)
@@ -40,7 +40,7 @@ export class DeviceSimulator {
     // --------------------------
     this.sensorConfig = {
       tds: { baseline: 350, variance: 80, min: 100, max: 800, drift: 0.5, noise: 15 },
-      ph: { baseline: 7.2, variance: 0.4, min: 6.0, max: 8.5, drift: 0.02, noise: 0.1 },
+      pH: { baseline: 7.2, variance: 0.4, min: 6.0, max: 8.5, drift: 0.02, noise: 0.1 },
       turbidity: { baseline: 12, variance: 5, min: 0, max: 100, drift: 0.3, noise: 2 }
     };
 
@@ -125,7 +125,7 @@ export class DeviceSimulator {
 
       console.log(`\n[${now}] 📊 Reading`);
       console.log(`   💧 TDS: ${d.tds} ppm`);
-      console.log(`   🧪 pH: ${d.ph}`);
+      console.log(`   🧪 pH: ${d.pH}`);
       console.log(`   🌫️ Turbidity: ${d.turbidity} NTU`);
       console.log(`   ⏰ Timestamp: ${d.timestamp}`);
 
