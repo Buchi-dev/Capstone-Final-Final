@@ -100,7 +100,13 @@ export const buildAlertsUrl = (filters?: {
   page?: number;
   limit?: number;
 }): string => {
-  return ALERT_ENDPOINTS.LIST + (filters ? buildQuery(filters) : '');
+  // Map client 'Active' status to server 'Unacknowledged' status
+  const mappedFilters = filters ? {
+    ...filters,
+    status: filters.status === 'Active' ? 'Unacknowledged' : filters.status,
+  } : undefined;
+  
+  return ALERT_ENDPOINTS.LIST + (mappedFilters ? buildQuery(mappedFilters) : '');
 };
 
 /**

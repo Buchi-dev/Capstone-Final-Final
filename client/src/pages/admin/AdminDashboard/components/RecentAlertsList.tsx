@@ -37,9 +37,21 @@ export const RecentAlertsList = memo<RecentAlertsListProps>(({
   const recentAlerts = useMemo(() => {
     return [...alerts]
       .sort((a, b) => {
-        const timeA = a.createdAt?.toMillis?.() || a.createdAt || 0;
-        const timeB = b.createdAt?.toMillis?.() || b.createdAt || 0;
-        return (timeB as number) - (timeA as number);
+        // Handle both Firestore Timestamp and ISO date strings
+        const getTime = (alert: WaterQualityAlert) => {
+          if (alert.createdAt?.toMillis && typeof alert.createdAt.toMillis === 'function') {
+            return alert.createdAt.toMillis();
+          } else if (alert.createdAt) {
+            return new Date(alert.createdAt as any).getTime();
+          } else if (alert.timestamp) {
+            return new Date(alert.timestamp as any).getTime();
+          }
+          return 0;
+        };
+        
+        const timeA = getTime(a);
+        const timeB = getTime(b);
+        return timeB - timeA;
       })
       .slice(0, maxItems);
   }, [alerts, maxItems]);

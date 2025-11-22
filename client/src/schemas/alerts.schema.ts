@@ -64,6 +64,7 @@ export const WaterQualityAlertSchema = z.object({
   trendDirection: TrendDirectionSchema.optional(),
   message: z.string().optional(), // Some alerts may not have message
   recommendedAction: z.string().optional(), // Some alerts may not have recommendations
+  timestamp: z.any().optional(), // Server timestamp field
   createdAt: z.any(), // Firestore Timestamp
   updatedAt: z.any().optional(), // Firestore Timestamp
   acknowledgedAt: z.any().optional(), // Firestore Timestamp

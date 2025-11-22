@@ -153,7 +153,7 @@ export const DeviceCard = memo(({ device }: DeviceCardProps) => {
           )}
 
           {/* Readings */}
-          {latestReading ? (
+          {latestReading && typeof latestReading.ph === 'number' && typeof latestReading.tds === 'number' && typeof latestReading.turbidity === 'number' ? (
             <>
               <Row gutter={[8, 12]}>
                 {/* pH Level */}

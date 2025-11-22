@@ -8,6 +8,16 @@ import { auth } from './firebase.config';
 // API Base URL from environment variables
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
+// Log API configuration on startup
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log('🌐 API Configuration');
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+console.log(`Environment: ${import.meta.env.MODE}`);
+console.log(`API Base URL: ${API_BASE_URL}`);
+console.log(`Development Mode: ${import.meta.env.DEV}`);
+console.log(`Production Mode: ${import.meta.env.PROD}`);
+console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
 /**
  * Create axios instance with default configuration
  * - withCredentials: true enables session cookies

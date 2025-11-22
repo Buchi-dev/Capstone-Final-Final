@@ -37,6 +37,25 @@ import { getColorValue } from './utils';
 const { Text } = Typography;
 const { TextArea } = Input;
 
+/**
+ * Format timestamp - handles both Firestore Timestamp and ISO date strings
+ */
+const formatTimestamp = (timestamp: any): string => {
+  try {
+    if (!timestamp) return 'N/A';
+    
+    if (timestamp.toDate && typeof timestamp.toDate === 'function') {
+      return timestamp.toDate().toLocaleString();
+    } else {
+      const date = new Date(timestamp);
+      return !isNaN(date.getTime()) ? date.toLocaleString() : 'N/A';
+    }
+  } catch (error) {
+    console.error('Error formatting timestamp:', error);
+    return 'N/A';
+  }
+};
+
 interface AlertDetailsDrawerProps {
   visible: boolean;
   alert: WaterQualityAlert | null;
@@ -315,9 +334,7 @@ const AlertDetailsDrawer: React.FC<AlertDetailsDrawerProps> = ({
                           <Text type="secondary">Created</Text>
                         </Space>
                         <Text strong>
-                          {alert.createdAt?.toDate ? 
-                            alert.createdAt.toDate().toLocaleString() : 
-                            'N/A'}
+                          {formatTimestamp(alert.createdAt || alert.timestamp)}
                         </Text>
                       </div>
                       {alert.acknowledgedAt && (
@@ -329,9 +346,7 @@ const AlertDetailsDrawer: React.FC<AlertDetailsDrawerProps> = ({
                               <Text type="secondary">Acknowledged</Text>
                             </Space>
                             <Text>
-                              {alert.acknowledgedAt.toDate ? 
-                                alert.acknowledgedAt.toDate().toLocaleString() : 
-                                'N/A'}
+                              {formatTimestamp(alert.acknowledgedAt)}
                             </Text>
                           </div>
                           {alert.acknowledgedBy && (
@@ -350,9 +365,7 @@ const AlertDetailsDrawer: React.FC<AlertDetailsDrawerProps> = ({
                               <Text type="secondary">Resolved</Text>
                             </Space>
                             <Text style={{ color: token.colorSuccess }}>
-                              {alert.resolvedAt.toDate ? 
-                                alert.resolvedAt.toDate().toLocaleString() : 
-                                'N/A'}
+                              {formatTimestamp(alert.resolvedAt)}
                             </Text>
                           </div>
                           {alert.resolvedBy && (

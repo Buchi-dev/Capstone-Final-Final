@@ -29,11 +29,32 @@ const getAllDevices = asyncHandler(async (req, res) => {
     {
       $lookup: {
         from: 'sensorreadings',
-        let: { deviceId: '$deviceId' },
+        let: { deviceId: { $trim: { input: { $toString: '$deviceId' } } } }, // Trim whitespace and ensure string type
         pipeline: [
-          { $match: { $expr: { $eq: ['$deviceId', '$$deviceId'] } } },
+          { 
+            $match: { 
+              $expr: { 
+                $eq: [
+                  { $trim: { input: { $toString: '$deviceId' } } }, // Trim sensor reading deviceId
+                  '$$deviceId'
+                ] 
+              } 
+            } 
+          },
           { $sort: { timestamp: -1 } },
           { $limit: 1 },
+          // Map field names for client compatibility
+          {
+            $project: {
+              _id: 1,
+              deviceId: 1,
+              ph: '$pH', // Map pH to ph for client
+              turbidity: 1,
+              tds: 1,
+              timestamp: { $toLong: '$timestamp' }, // Convert Date to timestamp (milliseconds)
+              receivedAt: { $toLong: '$receivedAt' },
+            },
+          },
         ],
         as: 'readings',
       },
@@ -50,6 +71,15 @@ const getAllDevices = asyncHandler(async (req, res) => {
       },
     },
   ]);
+
+  // Log for debugging - can be removed after verification
+  if (devicesAggregation.length > 0 && process.env.NODE_ENV === 'development') {
+    logger.debug('[Device Controller] Sample device with readings', {
+      deviceId: devicesAggregation[0].deviceId,
+      hasLatestReading: !!devicesAggregation[0].latestReading,
+      latestReading: devicesAggregation[0].latestReading,
+    });
+  }
 
   const count = await Device.countDocuments(filter);
 
@@ -78,9 +108,19 @@ const getDeviceById = asyncHandler(async (req, res) => {
     .sort({ timestamp: -1 })
     .limit(1);
 
+  // Map pH to ph for client compatibility
+  const mappedReading = latestReading ? {
+    deviceId: latestReading.deviceId,
+    ph: latestReading.pH,
+    turbidity: latestReading.turbidity,
+    tds: latestReading.tds,
+    timestamp: latestReading.timestamp.getTime(),
+    receivedAt: latestReading.receivedAt.getTime(),
+  } : null;
+
   ResponseHelper.success(res, {
     ...device.toPublicProfile(),
-    latestReading: latestReading || null,
+    latestReading: mappedReading,
   });
 });
 
@@ -114,7 +154,17 @@ const getDeviceReadings = asyncHandler(async (req, res) => {
 
   const count = await SensorReading.countDocuments(filter);
 
-  ResponseHelper.paginated(res, readings, {
+  // Map pH to ph for client compatibility
+  const mappedReadings = readings.map(reading => ({
+    deviceId: reading.deviceId,
+    ph: reading.pH,
+    turbidity: reading.turbidity,
+    tds: reading.tds,
+    timestamp: reading.timestamp.getTime(),
+    receivedAt: reading.receivedAt.getTime(),
+  }));
+
+  ResponseHelper.paginated(res, mappedReadings, {
     total: count,
     page: parseInt(page),
     pages: Math.ceil(count / limit),
@@ -220,14 +270,21 @@ const processSensorData = asyncHandler(async (req, res) => {
     sensors
   } = req.body;
 
+  // Trim deviceId to prevent whitespace issues
+  const trimmedDeviceId = deviceId?.trim();
+  
+  if (!trimmedDeviceId) {
+    throw new ValidationError('deviceId is required');
+  }
+
   // Check if device exists, create if not (auto-registration)
-  let device = await Device.findOne({ deviceId });
+  let device = await Device.findOne({ deviceId: trimmedDeviceId });
 
   if (!device) {
-    logger.info('[Device Controller] Auto-registering new device', { deviceId });
+    logger.info('[Device Controller] Auto-registering new device', { deviceId: trimmedDeviceId });
     device = new Device({
-      deviceId,
-      name: name || `Device-${deviceId}`,
+      deviceId: trimmedDeviceId,
+      name: name || `Device-${trimmedDeviceId}`,
       type: type || 'water-quality-sensor',
       firmwareVersion: firmwareVersion || 'unknown',
       macAddress: macAddress || '',
@@ -238,6 +295,10 @@ const processSensorData = asyncHandler(async (req, res) => {
       lastSeen: new Date(),
     });
     await device.save();
+    logger.info('[Device Controller] Device auto-registered successfully', { 
+      deviceId: trimmedDeviceId,
+      id: device._id 
+    });
   } else {
     // Update device status and last seen
     device.status = 'online';
@@ -256,9 +317,9 @@ const processSensorData = asyncHandler(async (req, res) => {
     await device.save();
   }
 
-  // Save sensor reading
+  // Save sensor reading with trimmed deviceId
   const reading = new SensorReading({
-    deviceId,
+    deviceId: trimmedDeviceId,
     pH,
     turbidity,
     tds,
@@ -266,6 +327,14 @@ const processSensorData = asyncHandler(async (req, res) => {
   });
 
   await reading.save();
+  
+  logger.debug('[Device Controller] Sensor reading saved', {
+    deviceId: trimmedDeviceId,
+    readingId: reading._id,
+    pH,
+    turbidity,
+    tds,
+  });
 
   // Check thresholds and create alerts if needed
   const alerts = await checkThresholdsAndCreateAlerts(device, reading);

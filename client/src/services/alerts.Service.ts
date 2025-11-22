@@ -96,10 +96,24 @@ export class AlertsService {
    */
   async acknowledgeAlert(alertId: string): Promise<AlertResponse> {
     try {
-      const response = await apiClient.patch<AlertResponse>(
+      const response = await apiClient.patch<any>(
         ALERT_ENDPOINTS.ACKNOWLEDGE(alertId)
       );
-      return response.data;
+      
+      // Map server field names to client schema
+      const alert = response.data.data;
+      const mappedAlert = {
+        ...alert,
+        currentValue: alert.value ?? alert.currentValue,
+        thresholdValue: alert.threshold ?? alert.thresholdValue,
+        parameter: alert.parameter?.toLowerCase(),
+        status: alert.status === 'Unacknowledged' ? 'Active' : alert.status,
+      } as WaterQualityAlert;
+      
+      return {
+        ...response.data,
+        data: mappedAlert,
+      };
     } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AlertsService] Acknowledge error:', message);
@@ -119,11 +133,25 @@ export class AlertsService {
    */
   async resolveAlert(alertId: string, notes?: string): Promise<AlertResponse> {
     try {
-      const response = await apiClient.patch<AlertResponse>(
+      const response = await apiClient.patch<any>(
         ALERT_ENDPOINTS.RESOLVE(alertId),
         { notes }
       );
-      return response.data;
+      
+      // Map server field names to client schema
+      const alert = response.data.data;
+      const mappedAlert = {
+        ...alert,
+        currentValue: alert.value ?? alert.currentValue,
+        thresholdValue: alert.threshold ?? alert.thresholdValue,
+        parameter: alert.parameter?.toLowerCase(),
+        status: alert.status === 'Unacknowledged' ? 'Active' : alert.status,
+      } as WaterQualityAlert;
+      
+      return {
+        ...response.data,
+        data: mappedAlert,
+      };
     } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AlertsService] Resolve error:', message);
@@ -168,8 +196,21 @@ export class AlertsService {
   async getAlerts(filters?: AlertFilters): Promise<AlertListResponse> {
     try {
       const url = buildAlertsUrl(filters);
-      const response = await apiClient.get<AlertListResponse>(url);
-      return response.data;
+      const response = await apiClient.get<any>(url);
+      
+      // Map server field names to client schema
+      const mappedData = response.data.data.map((alert: any) => ({
+        ...alert,
+        currentValue: alert.value ?? alert.currentValue, // Map 'value' to 'currentValue'
+        thresholdValue: alert.threshold ?? alert.thresholdValue, // Map 'threshold' to 'thresholdValue'
+        parameter: alert.parameter?.toLowerCase(), // Normalize parameter to lowercase
+        status: alert.status === 'Unacknowledged' ? 'Active' : alert.status, // Map 'Unacknowledged' to 'Active'
+      })) as WaterQualityAlert[];
+      
+      return {
+        ...response.data,
+        data: mappedData,
+      };
     } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AlertsService] Get alerts error:', message);
@@ -187,10 +228,24 @@ export class AlertsService {
    */
   async getAlertById(alertId: string): Promise<AlertResponse> {
     try {
-      const response = await apiClient.get<AlertResponse>(
+      const response = await apiClient.get<any>(
         ALERT_ENDPOINTS.BY_ID(alertId)
       );
-      return response.data;
+      
+      // Map server field names to client schema
+      const alert = response.data.data;
+      const mappedAlert = {
+        ...alert,
+        currentValue: alert.value ?? alert.currentValue,
+        thresholdValue: alert.threshold ?? alert.thresholdValue,
+        parameter: alert.parameter?.toLowerCase(),
+        status: alert.status === 'Unacknowledged' ? 'Active' : alert.status,
+      } as WaterQualityAlert;
+      
+      return {
+        ...response.data,
+        data: mappedAlert,
+      };
     } catch (error) {
       const message = getErrorMessage(error);
       console.error('[AlertsService] Get alert error:', message);

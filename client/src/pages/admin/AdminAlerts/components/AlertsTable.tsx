@@ -117,13 +117,34 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
       key: 'deviceLocation',
       width: 220,
       render: (_, record) => {
-        const locationText = [record.deviceBuilding, record.deviceFloor]
-          .filter(Boolean)
-          .join(', ');
+        // Try to extract location from deviceName or use deviceBuilding/Floor if available
+        let deviceDisplayName = record.deviceName || record.deviceId;
+        let locationText = '';
+        
+        // Check if we have separate building/floor fields
+        if (record.deviceBuilding || record.deviceFloor) {
+          locationText = [record.deviceBuilding, record.deviceFloor]
+            .filter(Boolean)
+            .join(', ');
+        } else if (deviceDisplayName) {
+          // Try to parse location from deviceName
+          // Pattern: "NAME - LOCATION" or "NAME (LOCATION)"
+          const dashMatch = deviceDisplayName.match(/^(.+?)\s*-\s*(.+)$/);
+          const parenMatch = deviceDisplayName.match(/^(.+?)\s*\((.+)\)$/);
+          
+          if (dashMatch) {
+            deviceDisplayName = dashMatch[1].trim();
+            locationText = dashMatch[2].trim();
+          } else if (parenMatch) {
+            deviceDisplayName = parenMatch[1].trim();
+            locationText = parenMatch[2].trim();
+          }
+        }
+        
         return (
           <Space direction="vertical" size={2}>
             <Tooltip title={record.deviceId}>
-              <Text strong ellipsis>{record.deviceName || record.deviceId}</Text>
+              <Text strong ellipsis>{deviceDisplayName}</Text>
             </Tooltip>
             {locationText ? (
               <Space size={4}>
@@ -145,13 +166,25 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
       ellipsis: true,
       render: (_, record) => {
         let timeStr = 'N/A';
-        if (record.createdAt?.toDate) {
-          try {
+        try {
+          // Handle both Firestore Timestamp and ISO date strings
+          if (record.createdAt?.toDate) {
             const date = record.createdAt.toDate();
             timeStr = date.toLocaleString();
-          } catch (error) {
-            console.error('Error formatting timestamp:', error);
+          } else if (record.createdAt) {
+            const date = new Date(record.createdAt);
+            if (!isNaN(date.getTime())) {
+              timeStr = date.toLocaleString();
+            }
+          } else if (record.timestamp) {
+            // Fallback to timestamp field if createdAt is missing
+            const date = new Date(record.timestamp);
+            if (!isNaN(date.getTime())) {
+              timeStr = date.toLocaleString();
+            }
           }
+        } catch (error) {
+          console.error('Error formatting timestamp:', error);
         }
         return (
           <Space direction="vertical" size={2} style={{ width: '100%' }}>
@@ -166,8 +199,20 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
         );
       },
       sorter: (a, b) => {
-        const timeA = a.createdAt?.toMillis?.() || 0;
-        const timeB = b.createdAt?.toMillis?.() || 0;
+        // Handle both Firestore Timestamp and ISO date strings
+        const getTime = (record: WaterQualityAlert) => {
+          if (record.createdAt?.toMillis) {
+            return record.createdAt.toMillis();
+          } else if (record.createdAt) {
+            return new Date(record.createdAt).getTime();
+          } else if (record.timestamp) {
+            return new Date(record.timestamp).getTime();
+          }
+          return 0;
+        };
+        
+        const timeA = getTime(a);
+        const timeB = getTime(b);
         return timeB - timeA;
       },
     },

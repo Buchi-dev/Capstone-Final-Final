@@ -113,9 +113,9 @@ export const useDeviceSeverityCalculator = () => {
       // Device info is just the device data itself
       const deviceInfo: Device = deviceData;
 
-      // Since Device doesn't have latestReading, we set it to null
-      // The parent component should handle fetching readings separately if needed
-      const latestReading: SensorReading | null = null;
+      // Extract latestReading from deviceData (server includes it via aggregation)
+      // Cast to any first to access the property that exists at runtime but not in the Device type
+      const latestReading: SensorReading | null = (deviceData as any).latestReading || null;
 
       // Calculate severity
       const { score, level } = calculateSeverity(

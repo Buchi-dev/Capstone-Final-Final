@@ -119,7 +119,7 @@ export const DeviceListItem = memo(({ device }: DeviceListItemProps) => {
               )}
             </Space>
 
-            {latestReading ? (
+            {latestReading && typeof latestReading.ph === 'number' && typeof latestReading.tds === 'number' && typeof latestReading.turbidity === 'number' ? (
               <Row gutter={24} style={{ marginTop: 8 }}>
                 <Col xs={8} sm={8} md={6} lg={4}>
                   <Statistic
