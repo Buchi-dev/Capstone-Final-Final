@@ -7,13 +7,15 @@ export class DeviceSimulator {
   constructor() {
     // --------------------------
     // Device identity
+    // NOTE: Use the EXACT deviceId from your registered device in the database
+    // To register a new device, change this ID and register it in the admin panel first
     // --------------------------
-    this.deviceId = "DEV-" + Math.random().toString(36).substring(2, 10).toUpperCase();
+    this.deviceId = "DEV-BDZBLWRN"; // 👈 CHANGE THIS to match your registered device
     this.name = "WaterSense-X";
     this.type = "water-quality-sensor";
     this.firmwareVersion = "4.0.0-SIM";
-    this.macAddress = "AA:BB:CC:" + Math.random().toString(16).substring(2, 8).toUpperCase();
-    this.ipAddress = "192.168.0." + Math.floor(Math.random() * 200 + 20);
+    this.macAddress = "AA:BB:CC:DD:EE:FF"; // Fixed MAC address
+    this.ipAddress = "192.168.0.100"; // Fixed IP address
 
     // --------------------------
     // Fixed sensor list

@@ -10,7 +10,6 @@ const {
 } = require('./device.Controller');
 const { ensureAuthenticated, ensureAdmin } = require('../auth/auth.Middleware');
 const { ensureApiKey } = require('../middleware/apiKey.middleware');
-const { sensorDataLimiter } = require('../middleware/rate-limit.middleware');
 const {
   validateSensorData,
   validateDeviceUpdate,
@@ -65,10 +64,11 @@ router.delete('/:id', ensureAdmin, validateMongoId, deleteDevice);
 
 /**
  * @route   POST /api/v1/devices/readings
- * @desc    Process sensor data from IoT devices
+ * @desc    Process sensor data from IoT devices (real-time, no rate limit)
  * @access  Requires API key authentication
  * @security ApiKeyAuth
+ * @note    No rate limiting - this endpoint receives real-time sensor data
  */
-router.post('/readings', sensorDataLimiter, ensureApiKey, validateSensorData, processSensorData);
+router.post('/readings', ensureApiKey, validateSensorData, processSensorData);
 
 module.exports = router;

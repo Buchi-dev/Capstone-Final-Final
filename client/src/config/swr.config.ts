@@ -21,20 +21,21 @@ export const fetcher = async (url: string) => {
  * Base SWR configuration
  * Applied to all SWR hooks unless overridden
  * 
- * OPTIMIZED FOR DEDUPLICATION:
+ * OPTIMIZED FOR RATE LIMIT COMPLIANCE:
  * - Long deduping interval prevents duplicate requests
  * - Cache-first strategy reduces unnecessary network calls
  * - Shared cache across all components
+ * - Aggressive deduplication to stay under 20 req/min limit
  */
 export const swrConfig: SWRConfiguration = {
   fetcher,
-  revalidateOnFocus: false,    // Disabled to prevent refetch on tab switch (use manual refresh instead)
+  revalidateOnFocus: false,    // Disabled to prevent refetch on tab switch
   revalidateOnReconnect: true, // Refetch when network reconnects
   shouldRetryOnError: true,    // Retry failed requests
   errorRetryCount: 3,          // Max retry attempts
-  errorRetryInterval: 5000,    // 5 seconds between retries
-  dedupingInterval: 10000,     // Increased from 2s to 10s - prevent duplicate requests for 10 seconds
-  focusThrottleInterval: 30000, // Throttle focus revalidation to max once per 30 seconds
+  errorRetryInterval: 10000,   // 10 seconds between retries (was 5s)
+  dedupingInterval: 60000,     // 1 minute - prevent duplicate requests (was 10s)
+  focusThrottleInterval: 60000, // Throttle focus revalidation to max once per minute (was 30s)
   provider: () => new Map(),   // Use global cache provider
   onError: (error: Error) => {
     console.error('[SWR Error]', error);
@@ -44,23 +45,22 @@ export const swrConfig: SWRConfiguration = {
 /**
  * Real-time polling configuration
  * For critical data that needs frequent updates (alerts, sensor readings)
- * Optimized from 5 seconds to 30 seconds - rely on WebSocket for real-time updates
+ * NOTE: Should rely on WebSocket for real-time updates, HTTP polling is fallback only
  */
 export const swrRealtimeConfig: SWRConfiguration = {
   ...swrConfig,
-  refreshInterval: 30000, // Changed from 15000 to 30000 (30 seconds)
-  dedupingInterval: 15000, // Increased from 1000 to 15000
+  refreshInterval: 60000, // 1 minute fallback polling (WebSocket is primary)
+  dedupingInterval: 30000, // 30 second deduplication
 };
 
 /**
  * Important data polling configuration
  * For important but less critical data (device list, analytics)
- * Optimized from 10 seconds to 30 seconds
  */
 export const swrImportantConfig: SWRConfiguration = {
   ...swrConfig,
-  refreshInterval: 30000, // Changed from 10000 to 30000
-  dedupingInterval: 2000,
+  refreshInterval: 120000, // 2 minutes
+  dedupingInterval: 60000, // 1 minute deduplication
 };
 
 /**
@@ -76,9 +76,9 @@ export const swrStaticConfig: SWRConfiguration = {
 
 /**
  * Analytics polling configuration
- * Poll every 30 seconds for dashboard analytics
+ * Poll every 2 minutes for dashboard analytics
  */
 export const swrAnalyticsConfig: SWRConfiguration = {
   ...swrConfig,
-  refreshInterval: 30000, // Poll every 30 seconds
+  refreshInterval: 120000, // Poll every 2 minutes (was 30s)
 };

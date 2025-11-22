@@ -93,7 +93,7 @@ export interface UseDeviceMutationsReturn {
 export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
   const {
     filters = {},
-    pollInterval = 60000, // Changed from 30000 to 60000 (1 minute) - rely on WebSocket for updates
+    pollInterval = 300000, // 5 minutes - only used as fallback when WebSocket unavailable
     enabled = true,
     realtime = true, // Enable WebSocket by default
   } = options;
@@ -119,10 +119,10 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
       return response.data;
     },
     {
-      refreshInterval: realtime ? 0 : adjustedPollInterval, // Disable polling if realtime
-      revalidateOnFocus: false, // Rely on WebSocket updates
-      revalidateOnReconnect: true,
-      dedupingInterval: 15000, // Increased from 2000 to 15000
+      refreshInterval: realtime ? 0 : adjustedPollInterval, // Disable HTTP polling when WebSocket is active
+      revalidateOnFocus: false, // Don't refetch on tab focus - rely on WebSocket
+      revalidateOnReconnect: true, // Only refetch when network reconnects
+      dedupingInterval: 30000, // Prevent duplicate requests for 30 seconds
     }
   );
 
@@ -197,9 +197,9 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
       return response.data;
     },
     {
-      refreshInterval: pollInterval * 4, // Poll stats much less frequently (4 minutes)
+      refreshInterval: 600000, // Poll stats every 10 minutes (less critical data)
       revalidateOnFocus: false,
-      dedupingInterval: 20000, // Increased deduping interval
+      dedupingInterval: 60000, // Prevent duplicate requests for 1 minute
     }
   );
 

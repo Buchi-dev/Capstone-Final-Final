@@ -3,12 +3,18 @@ const logger = require('../utils/logger');
 
 /**
  * General API rate limiter
- * Increased from 100 to 300 requests per 15 minutes
- * Temporary measure while transitioning to WebSocket architecture
+ * Balanced for real-time monitoring with WebSocket fallback
+ * 
+ * Rate: 500 requests per 15 minutes = ~33 requests/minute
+ * This allows for:
+ * - Multiple users/tabs accessing the dashboard
+ * - WebSocket fallback HTTP polling (when WS disconnected)
+ * - Manual refreshes and interactions
+ * - Still protects against abuse
  */
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // Changed from 100
+  max: 500, // Increased from 300 to 500
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.',
