@@ -1,6 +1,6 @@
 const Alert = require('./alert.Model');
 const logger = require('../utils/logger');
-const { NotFoundError, ConflictError } = require('../errors');
+const { NotFoundError, ConflictError, ValidationError } = require('../errors');
 const ResponseHelper = require('../utils/responses');
 const asyncHandler = require('../middleware/asyncHandler');
 
@@ -140,139 +140,92 @@ const resolveAlert = asyncHandler(async (req, res) => {
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const createAlert = async (req, res) => {
-  try {
-    const {
-      alertId,
-      deviceId,
-      deviceName,
-      severity,
-      parameter,
-      value,
-      threshold,
-      message,
-      timestamp,
-    } = req.body;
+const createAlert = asyncHandler(async (req, res) => {
+  const {
+    alertId,
+    deviceId,
+    deviceName,
+    severity,
+    parameter,
+    value,
+    threshold,
+    message,
+    timestamp,
+  } = req.body;
 
-    // Validate required fields
-    if (!alertId || !deviceId || !deviceName || !severity || !parameter || value === undefined || !threshold || !message || !timestamp) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required fields',
-      });
-    }
-
-    // Check if alert already exists
-    const existingAlert = await Alert.findOne({ alertId });
-    if (existingAlert) {
-      return res.status(409).json({
-        success: false,
-        message: 'Alert already exists',
-        data: existingAlert.toPublicProfile(),
-      });
-    }
-
-    // Create new alert
-    const alert = new Alert({
-      alertId,
-      deviceId,
-      deviceName,
-      severity,
-      parameter,
-      value,
-      threshold,
-      message,
-      timestamp: new Date(timestamp),
-    });
-
-    await alert.save();
-
-    res.status(201).json({
-      success: true,
-      message: 'Alert created successfully',
-      data: alert.toPublicProfile(),
-    });
-  } catch (error) {
-    console.error('[Alert Controller] Error creating alert:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error creating alert',
-      error: error.message,
-    });
+  // Validate required fields
+  if (!alertId || !deviceId || !deviceName || !severity || !parameter || value === undefined || !threshold || !message || !timestamp) {
+    throw new ValidationError('Missing required fields for alert creation');
   }
-};
+
+  // Check if alert already exists
+  const existingAlert = await Alert.findOne({ alertId });
+  if (existingAlert) {
+    throw ConflictError.alertAlreadyExists(alertId);
+  }
+
+  // Create new alert
+  const alert = new Alert({
+    alertId,
+    deviceId,
+    deviceName,
+    severity,
+    parameter,
+    value,
+    threshold,
+    message,
+    timestamp: new Date(timestamp),
+  });
+
+  await alert.save();
+
+  ResponseHelper.created(res, alert.toPublicProfile(), 'Alert created successfully');
+});
 
 /**
  * Delete alert (Admin only)
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const deleteAlert = async (req, res) => {
-  try {
-    const alert = await Alert.findByIdAndDelete(req.params.id);
+const deleteAlert = asyncHandler(async (req, res) => {
+  const alert = await Alert.findByIdAndDelete(req.params.id);
 
-    if (!alert) {
-      return res.status(404).json({
-        success: false,
-        message: 'Alert not found',
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Alert deleted successfully',
-    });
-  } catch (error) {
-    console.error('[Alert Controller] Error deleting alert:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting alert',
-      error: error.message,
-    });
+  if (!alert) {
+    throw new NotFoundError('Alert', req.params.id);
   }
-};
+
+  ResponseHelper.success(res, null, 'Alert deleted successfully');
+});
 
 /**
  * Get alert statistics
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const getAlertStats = async (req, res) => {
-  try {
-    const stats = await Alert.aggregate([
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-        },
+const getAlertStats = asyncHandler(async (req, res) => {
+  const stats = await Alert.aggregate([
+    {
+      $group: {
+        _id: '$status',
+        count: { $sum: 1 },
       },
-    ]);
+    },
+  ]);
 
-    const severityStats = await Alert.aggregate([
-      {
-        $group: {
-          _id: '$severity',
-          count: { $sum: 1 },
-        },
+  const severityStats = await Alert.aggregate([
+    {
+      $group: {
+        _id: '$severity',
+        count: { $sum: 1 },
       },
-    ]);
+    },
+  ]);
 
-    res.json({
-      success: true,
-      data: {
-        byStatus: stats,
-        bySeverity: severityStats,
-      },
-    });
-  } catch (error) {
-    console.error('[Alert Controller] Error fetching alert stats:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching alert statistics',
-      error: error.message,
-    });
-  }
-};
+  ResponseHelper.success(res, {
+    byStatus: stats,
+    bySeverity: severityStats,
+  });
+});
 
 module.exports = {
   getAllAlerts,

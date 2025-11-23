@@ -1,5 +1,8 @@
 const User = require('./user.Model');
 const logger = require('../utils/logger');
+const { NotFoundError, ValidationError } = require('../errors');
+const ResponseHelper = require('../utils/responses');
+const asyncHandler = require('../middleware/asyncHandler');
 
 /**
  * Get user by ID
@@ -8,7 +11,9 @@ const logger = require('../utils/logger');
  */
 const getUserById = async (req, res) => {
   try {
-    const user = await User.findById(req.params.id).select('-googleId');
+    const user = await User.findById(req.params.id)
+      .select('-googleId')
+      .lean(); // Use lean() for better performance when not modifying data
     
     if (!user) {
       return res.status(404).json({
@@ -19,7 +24,10 @@ const getUserById = async (req, res) => {
 
     res.json({
       success: true,
-      data: user.toPublicProfile(),
+      data: {
+        ...user,
+        id: user._id,
+      },
     });
   } catch (error) {
     res.status(500).json({
@@ -43,17 +51,25 @@ const getAllUsers = async (req, res) => {
     if (role) filter.role = role;
     if (status) filter.status = status;
 
+    // Use lean() and select to optimize query
     const users = await User.find(filter)
-      .select('-googleId')
+      .select('-googleId -firebaseUid') // Exclude sensitive fields
       .limit(limit * 1)
       .skip((page - 1) * limit)
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean(); // Better performance for read-only data
 
     const count = await User.countDocuments(filter);
 
+    // Add id field mapping
+    const usersWithId = users.map(user => ({
+      ...user,
+      id: user._id,
+    }));
+
     res.json({
       success: true,
-      data: users.map(user => user.toPublicProfile()),
+      data: usersWithId,
       pagination: {
         total: count,
         page: parseInt(page),
@@ -280,205 +296,131 @@ const completeUserProfile = async (req, res) => {
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const deleteUser = async (req, res) => {
-  try {
-    const user = await User.findByIdAndDelete(req.params.id);
+const deleteUser = asyncHandler(async (req, res) => {
+  const user = await User.findByIdAndDelete(req.params.id);
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'User deleted successfully',
-      userId: req.params.id,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting user',
-      error: error.message,
-    });
+  if (!user) {
+    throw new NotFoundError('User', req.params.id);
   }
-};
+
+  ResponseHelper.success(res, { userId: req.params.id }, 'User deleted successfully');
+});
 
 /**
  * Get user notification preferences
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const getUserPreferences = async (req, res) => {
-  try {
-    const user = await User.findById(req.params.id);
+const getUserPreferences = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.params.id);
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
+  if (!user) {
+    throw new NotFoundError('User', req.params.id);
+  }
 
-    // Only allow users to view their own preferences unless admin
-    if (req.user.role !== 'admin' && req.user._id.toString() !== req.params.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Forbidden: You can only view your own preferences',
-      });
-    }
-
-    res.json({
-      success: true,
-      data: user.notificationPreferences || {},
-    });
-  } catch (error) {
-    logger.error('[User Controller] Error fetching preferences', {
-      error: error.message,
-      userId: req.params.id,
-    });
-    res.status(500).json({
+  // Only allow users to view their own preferences unless admin
+  if (req.user.role !== 'admin' && req.user._id.toString() !== req.params.id) {
+    return res.status(403).json({
       success: false,
-      message: 'Error fetching notification preferences',
-      error: error.message,
+      message: 'Forbidden: You can only view your own preferences',
     });
   }
-};
+
+  ResponseHelper.success(res, user.notificationPreferences || {});
+});
 
 /**
  * Update user notification preferences
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const updateUserPreferences = async (req, res) => {
-  try {
-    const {
-      emailNotifications,
-      pushNotifications,
-      sendScheduledAlerts,
-      alertSeverities,
-      parameters,
-      devices,
-      quietHoursEnabled,
-      quietHoursStart,
-      quietHoursEnd,
-    } = req.body;
+const updateUserPreferences = asyncHandler(async (req, res) => {
+  const {
+    emailNotifications,
+    pushNotifications,
+    sendScheduledAlerts,
+    alertSeverities,
+    parameters,
+    devices,
+    quietHoursEnabled,
+    quietHoursStart,
+    quietHoursEnd,
+  } = req.body;
 
-    // Only allow users to update their own preferences unless admin
-    if (req.user.role !== 'admin' && req.user._id.toString() !== req.params.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Forbidden: You can only update your own preferences',
-      });
-    }
-
-    const updates = {};
-    if (emailNotifications !== undefined) updates['notificationPreferences.emailNotifications'] = emailNotifications;
-    if (pushNotifications !== undefined) updates['notificationPreferences.pushNotifications'] = pushNotifications;
-    if (sendScheduledAlerts !== undefined) updates['notificationPreferences.sendScheduledAlerts'] = sendScheduledAlerts;
-    if (alertSeverities !== undefined) updates['notificationPreferences.alertSeverities'] = alertSeverities;
-    if (parameters !== undefined) updates['notificationPreferences.parameters'] = parameters;
-    if (devices !== undefined) updates['notificationPreferences.devices'] = devices;
-    if (quietHoursEnabled !== undefined) updates['notificationPreferences.quietHoursEnabled'] = quietHoursEnabled;
-    if (quietHoursStart !== undefined) updates['notificationPreferences.quietHoursStart'] = quietHoursStart;
-    if (quietHoursEnd !== undefined) updates['notificationPreferences.quietHoursEnd'] = quietHoursEnd;
-
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No valid preference fields to update',
-      });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      { new: true, runValidators: true }
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Notification preferences updated successfully',
-      data: user.notificationPreferences,
-    });
-  } catch (error) {
-    logger.error('[User Controller] Error updating preferences', {
-      error: error.message,
-      userId: req.params.id,
-    });
-    res.status(500).json({
+  // Only allow users to update their own preferences unless admin
+  if (req.user.role !== 'admin' && req.user._id.toString() !== req.params.id) {
+    return res.status(403).json({
       success: false,
-      message: 'Error updating notification preferences',
-      error: error.message,
+      message: 'Forbidden: You can only update your own preferences',
     });
   }
-};
+
+  const updates = {};
+  if (emailNotifications !== undefined) updates['notificationPreferences.emailNotifications'] = emailNotifications;
+  if (pushNotifications !== undefined) updates['notificationPreferences.pushNotifications'] = pushNotifications;
+  if (sendScheduledAlerts !== undefined) updates['notificationPreferences.sendScheduledAlerts'] = sendScheduledAlerts;
+  if (alertSeverities !== undefined) updates['notificationPreferences.alertSeverities'] = alertSeverities;
+  if (parameters !== undefined) updates['notificationPreferences.parameters'] = parameters;
+  if (devices !== undefined) updates['notificationPreferences.devices'] = devices;
+  if (quietHoursEnabled !== undefined) updates['notificationPreferences.quietHoursEnabled'] = quietHoursEnabled;
+  if (quietHoursStart !== undefined) updates['notificationPreferences.quietHoursStart'] = quietHoursStart;
+  if (quietHoursEnd !== undefined) updates['notificationPreferences.quietHoursEnd'] = quietHoursEnd;
+
+  if (Object.keys(updates).length === 0) {
+    throw new ValidationError('No valid preference fields to update');
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.params.id,
+    updates,
+    { new: true, runValidators: true }
+  );
+
+  if (!user) {
+    throw new NotFoundError('User', req.params.id);
+  }
+
+  ResponseHelper.success(res, user.notificationPreferences, 'Notification preferences updated successfully');
+});
 
 /**
  * Reset user notification preferences to defaults
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const resetUserPreferences = async (req, res) => {
-  try {
-    // Only allow users to reset their own preferences unless admin
-    if (req.user.role !== 'admin' && req.user._id.toString() !== req.params.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'Forbidden: You can only reset your own preferences',
-      });
-    }
-
-    const defaultPreferences = {
-      emailNotifications: true,
-      pushNotifications: false,
-      sendScheduledAlerts: true,
-      alertSeverities: ['Critical', 'Warning'],
-      parameters: ['pH', 'Turbidity', 'TDS'],
-      devices: [],
-      quietHoursEnabled: false,
-      quietHoursStart: '22:00',
-      quietHoursEnd: '08:00',
-    };
-
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { notificationPreferences: defaultPreferences },
-      { new: true }
-    );
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Notification preferences reset to defaults',
-      data: user.notificationPreferences,
-    });
-  } catch (error) {
-    logger.error('[User Controller] Error resetting preferences', {
-      error: error.message,
-      userId: req.params.id,
-    });
-    res.status(500).json({
+const resetUserPreferences = asyncHandler(async (req, res) => {
+  // Only allow users to reset their own preferences unless admin
+  if (req.user.role !== 'admin' && req.user._id.toString() !== req.params.id) {
+    return res.status(403).json({
       success: false,
-      message: 'Error resetting notification preferences',
-      error: error.message,
+      message: 'Forbidden: You can only reset your own preferences',
     });
   }
-};
+
+  const defaultPreferences = {
+    emailNotifications: true,
+    pushNotifications: false,
+    sendScheduledAlerts: true,
+    alertSeverities: ['Critical', 'Warning'],
+    parameters: ['pH', 'Turbidity', 'TDS'],
+    devices: [],
+    quietHoursEnabled: false,
+    quietHoursStart: '22:00',
+    quietHoursEnd: '08:00',
+  };
+
+  const user = await User.findByIdAndUpdate(
+    req.params.id,
+    { notificationPreferences: defaultPreferences },
+    { new: true }
+  );
+
+  if (!user) {
+    throw new NotFoundError('User', req.params.id);
+  }
+
+  ResponseHelper.success(res, user.notificationPreferences, 'Notification preferences reset to defaults');
+});
 
 module.exports = {
   getUserById,

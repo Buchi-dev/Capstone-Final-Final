@@ -41,6 +41,17 @@ class ConflictError extends AppError {
       ERROR_CODES.ALERT_ALREADY_RESOLVED
     );
   }
+
+  /**
+   * Create error for alert that already exists
+   */
+  static alertAlreadyExists(alertId) {
+    return new ConflictError(
+      `Alert with ID ${alertId} already exists`,
+      ERROR_CODES.RESOURCE_ALREADY_EXISTS,
+      { alertId }
+    );
+  }
 }
 
 module.exports = ConflictError;

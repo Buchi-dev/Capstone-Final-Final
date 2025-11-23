@@ -24,6 +24,7 @@ const { API_VERSION, SESSION } = require('./utils/constants');
 const { setupSocketIO } = require('./utils/socketConfig');
 const { initializeChangeStreams, closeChangeStreams } = require('./utils/changeStreams');
 const { errorHandler, notFoundHandler } = require('./errors/errorHandler');
+const { getSupportedVersions } = require('./middleware/apiVersion.middleware');
 
 // Import middleware
 const { addCorrelationId, addUserContext } = require('./middleware/correlation.middleware');
@@ -134,6 +135,15 @@ async function initializeApp() {
       documentation: '/api-docs',
       health: '/health',
       authenticated: !!req.user,
+    });
+  });
+
+  // API versions endpoint
+  app.get('/api/versions', (req, res) => {
+    res.json({
+      success: true,
+      versions: getSupportedVersions(),
+      current: API_VERSION.CURRENT,
     });
   });
 
