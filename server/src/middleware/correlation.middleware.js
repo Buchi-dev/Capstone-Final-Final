@@ -27,17 +27,32 @@ const addCorrelationId = (req, res, next) => {
   res.on('finish', () => {
     const duration = Date.now() - req.startTime;
     
+    // Skip logging for OPTIONS requests (CORS preflight) unless verbose
+    if (req.method === 'OPTIONS' && process.env.VERBOSE_LOGGING !== 'true') {
+      return;
+    }
+    
+    // Skip logging 304 (Not Modified) responses unless verbose
+    if (res.statusCode === 304 && process.env.VERBOSE_LOGGING !== 'true') {
+      return;
+    }
+    
     // This will be picked up by the logger if available
     if (global.logger) {
-      global.logger.info('Request completed', {
-        correlationId: req.correlationId,
-        method: req.method,
-        path: req.path,
-        statusCode: res.statusCode,
-        duration: `${duration}ms`,
-        ip: req.ip,
-        userAgent: req.headers['user-agent'],
-      });
+      const logLevel = res.statusCode >= 400 ? 'warn' : 'info';
+      
+      // Only log info level if shouldLog says so
+      if (logLevel === 'warn' || global.shouldLog?.('info')) {
+        global.logger[logLevel]('Request completed', {
+          correlationId: req.correlationId,
+          method: req.method,
+          path: req.path,
+          statusCode: res.statusCode,
+          duration: `${duration}ms`,
+          ip: req.ip,
+          userAgent: req.headers['user-agent'],
+        });
+      }
     }
   });
   

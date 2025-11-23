@@ -54,28 +54,30 @@ const verifyIdToken = async (idToken) => {
       throw new Error('Invalid token: Token must be a non-empty string');
     }
     
-    // Log verification attempt
-    logger.info('[Firebase] Verifying ID token', {
-      tokenLength: idToken.length,
-      tokenPrefix: idToken.substring(0, 20) + '...',
-    });
+    // Only log verification attempts in verbose mode
+    if (process.env.VERBOSE_LOGGING === 'true') {
+      logger.info('[Firebase] Verifying ID token', {
+        tokenLength: idToken.length,
+        tokenPrefix: idToken.substring(0, 20) + '...',
+      });
+    }
     
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     
-    logger.info('[Firebase] Token verified successfully', {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      aud: decodedToken.aud,
-      iss: decodedToken.iss,
-    });
+    // Only log successful verification in verbose mode
+    if (process.env.VERBOSE_LOGGING === 'true') {
+      logger.info('[Firebase] Token verified', {
+        uid: decodedToken.uid,
+        email: decodedToken.email,
+      });
+    }
     
     return decodedToken;
   } catch (error) {
-    // Log detailed error information
+    // Always log errors
     logger.error('[Firebase] Token verification failed', {
       error: error.message,
       errorCode: error.code,
-      errorStack: error.stack,
     });
     
     // Check for specific permission errors

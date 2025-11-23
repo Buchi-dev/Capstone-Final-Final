@@ -30,19 +30,25 @@ const authenticateFirebase = asyncHandler(async (req, res, next) => {
   // Verify Firebase token
   let decodedToken;
   try {
-    logger.info('[Auth Middleware] Attempting to verify token', {
-      tokenPrefix: idToken.substring(0, 20) + '...',
-      tokenLength: idToken.length,
-      path: req.path,
-    });
+    // Only log in verbose mode or when there's an error
+    if (process.env.VERBOSE_LOGGING === 'true') {
+      logger.info('[Auth Middleware] Verifying token', {
+        tokenPrefix: idToken.substring(0, 20) + '...',
+        tokenLength: idToken.length,
+        path: req.path,
+      });
+    }
     
     decodedToken = await verifyIdToken(idToken);
     
-    logger.info('[Auth Middleware] Token verified successfully', {
-      uid: decodedToken.uid,
-      email: decodedToken.email,
-      path: req.path,
-    });
+    // Only log successful verification in verbose mode
+    if (process.env.VERBOSE_LOGGING === 'true') {
+      logger.info('[Auth Middleware] Token verified', {
+        uid: decodedToken.uid,
+        email: decodedToken.email,
+        path: req.path,
+      });
+    }
   } catch (tokenError) {
     logger.error('[Auth Middleware] Firebase token verification failed', {
       error: tokenError.message,
@@ -100,13 +106,16 @@ const authenticateFirebase = asyncHandler(async (req, res, next) => {
   req.user = user;
   req.firebaseUser = decodedToken;
   
-  logger.info('[Auth Middleware] Authentication successful', {
-    userId: user._id,
-    email: user.email,
-    role: user.role,
-    status: user.status,
-    path: req.path,
-  });
+  // Only log successful authentication in verbose mode
+  if (process.env.VERBOSE_LOGGING === 'true') {
+    logger.info('[Auth Middleware] Authentication successful', {
+      userId: user._id,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      path: req.path,
+    });
+  }
   
   next();
 });

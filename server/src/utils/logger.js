@@ -36,11 +36,20 @@ const consoleFormat = winston.format.combine(
 // Create transports array
 const transports = [];
 
+// Determine appropriate log level based on environment
+const getLogLevel = () => {
+  if (process.env.LOG_LEVEL) {
+    return process.env.LOG_LEVEL;
+  }
+  // Default to 'warn' in production for less noise, 'info' in development
+  return process.env.NODE_ENV === 'production' ? 'warn' : 'info';
+};
+
 // Console transport (always enabled)
 transports.push(
   new winston.transports.Console({
     format: process.env.NODE_ENV === 'production' ? logFormat : consoleFormat,
-    level: process.env.LOG_LEVEL || 'info',
+    level: getLogLevel(),
   })
 );
 
@@ -70,22 +79,47 @@ if (process.env.NODE_ENV !== 'test') {
 
 // Create logger instance
 const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
+  level: getLogLevel(),
   format: logFormat,
   transports,
   exitOnError: false,
 });
 
-// Add request logging helper
+// Helper to check if we should log based on verbosity settings
+const shouldLog = (level = 'info') => {
+  const verboseMode = process.env.VERBOSE_LOGGING === 'true';
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // In production, only log warnings and errors unless verbose mode is on
+  if (isProduction && !verboseMode && level === 'info') {
+    return false;
+  }
+  
+  return true;
+};
+
+// Add request logging helper with smart filtering
 logger.logRequest = (req, level = 'info', message = 'Request processed') => {
-  logger[level](message, {
-    correlationId: req.correlationId,
-    method: req.method,
-    path: req.path,
-    ip: req.ip,
-    userId: req.user?._id,
-    userRole: req.user?.role,
-  });
+  // Skip OPTIONS requests (CORS preflight) unless in verbose mode
+  if (req.method === 'OPTIONS' && process.env.VERBOSE_LOGGING !== 'true') {
+    return;
+  }
+  
+  // Skip 304 (Not Modified) responses unless in verbose mode
+  if (req.statusCode === 304 && process.env.VERBOSE_LOGGING !== 'true') {
+    return;
+  }
+  
+  if (shouldLog(level)) {
+    logger[level](message, {
+      correlationId: req.correlationId,
+      method: req.method,
+      path: req.path,
+      ip: req.ip,
+      userId: req.user?._id,
+      userRole: req.user?.role,
+    });
+  }
 };
 
 // Add error logging helper
@@ -96,7 +130,15 @@ logger.logError = (error, context = {}) => {
   });
 };
 
+// Add conditional info logger
+logger.infoVerbose = (message, meta) => {
+  if (shouldLog('info')) {
+    logger.info(message, meta);
+  }
+};
+
 // Make logger globally available
 global.logger = logger;
+global.shouldLog = shouldLog;
 
 module.exports = logger;

@@ -68,12 +68,15 @@ function setupSocketIO(httpServer) {
       socket.userEmail = decodedToken.email;
       socket.userRole = decodedToken.role || 'staff'; // Assume role is in custom claims
 
-      logger.info('[Socket.IO] Client authenticated', {
-        socketId: socket.id,
-        userId: socket.userId,
-        email: socket.userEmail,
-        role: socket.userRole,
-      });
+      // Only log authentication in verbose mode
+      if (process.env.VERBOSE_LOGGING === 'true') {
+        logger.info('[Socket.IO] Client authenticated', {
+          socketId: socket.id,
+          userId: socket.userId,
+          email: socket.userEmail,
+          role: socket.userRole,
+        });
+      }
 
       next();
     } catch (error) {
@@ -89,13 +92,16 @@ function setupSocketIO(httpServer) {
   // CONNECTION HANDLING
   // ========================================
   io.on('connection', (socket) => {
-    logger.info('[Socket.IO] Client connected', {
-      socketId: socket.id,
-      userId: socket.userId,
-      email: socket.userEmail,
-      role: socket.userRole,
-      connectedClients: io.engine.clientsCount,
-    });
+    // Only log connections in verbose mode
+    if (process.env.VERBOSE_LOGGING === 'true') {
+      logger.info('[Socket.IO] Client connected', {
+        socketId: socket.id,
+        userId: socket.userId,
+        email: socket.userEmail,
+        role: socket.userRole,
+        connectedClients: io.engine.clientsCount,
+      });
+    }
 
     // ========================================
     // SUBSCRIPTION HANDLERS
@@ -106,10 +112,13 @@ function setupSocketIO(httpServer) {
      */
     socket.on('subscribe:alerts', () => {
       socket.join('alerts');
-      logger.info('[Socket.IO] Subscribed to alerts', {
-        userId: socket.userId,
-        socketId: socket.id,
-      });
+      
+      if (process.env.VERBOSE_LOGGING === 'true') {
+        logger.info('[Socket.IO] Subscribed to alerts', {
+          userId: socket.userId,
+          socketId: socket.id,
+        });
+      }
 
       socket.emit('subscription:confirmed', {
         room: 'alerts',
@@ -122,9 +131,12 @@ function setupSocketIO(httpServer) {
      */
     socket.on('unsubscribe:alerts', () => {
       socket.leave('alerts');
-      logger.info('[Socket.IO] Unsubscribed from alerts', {
-        userId: socket.userId,
-      });
+      
+      if (process.env.VERBOSE_LOGGING === 'true') {
+        logger.info('[Socket.IO] Unsubscribed from alerts', {
+          userId: socket.userId,
+        });
+      }
     });
 
     /**
@@ -132,9 +144,12 @@ function setupSocketIO(httpServer) {
      */
     socket.on('subscribe:devices', () => {
       socket.join('devices');
-      logger.info('[Socket.IO] Subscribed to devices', {
-        userId: socket.userId,
-      });
+      
+      if (process.env.VERBOSE_LOGGING === 'true') {
+        logger.info('[Socket.IO] Subscribed to devices', {
+          userId: socket.userId,
+        });
+      }
 
       socket.emit('subscription:confirmed', {
         room: 'devices',
@@ -147,9 +162,12 @@ function setupSocketIO(httpServer) {
      */
     socket.on('unsubscribe:devices', () => {
       socket.leave('devices');
-      logger.info('[Socket.IO] Unsubscribed from devices', {
-        userId: socket.userId,
-      });
+      
+      if (process.env.VERBOSE_LOGGING === 'true') {
+        logger.info('[Socket.IO] Unsubscribed from devices', {
+          userId: socket.userId,
+        });
+      }
     });
 
     /**
@@ -163,10 +181,13 @@ function setupSocketIO(httpServer) {
 
       const roomName = `device:${deviceId}`;
       socket.join(roomName);
-      logger.info('[Socket.IO] Subscribed to specific device', {
-        userId: socket.userId,
-        deviceId,
-      });
+      
+      if (process.env.VERBOSE_LOGGING === 'true') {
+        logger.info('[Socket.IO] Subscribed to specific device', {
+          userId: socket.userId,
+          deviceId,
+        });
+      }
 
       socket.emit('subscription:confirmed', {
         room: roomName,
@@ -182,10 +203,13 @@ function setupSocketIO(httpServer) {
 
       const roomName = `device:${deviceId}`;
       socket.leave(roomName);
-      logger.info('[Socket.IO] Unsubscribed from device', {
-        userId: socket.userId,
-        deviceId,
-      });
+      
+      if (process.env.VERBOSE_LOGGING === 'true') {
+        logger.info('[Socket.IO] Unsubscribed from device', {
+          userId: socket.userId,
+          deviceId,
+        });
+      }
     });
 
     /**
@@ -194,9 +218,12 @@ function setupSocketIO(httpServer) {
     socket.on('subscribe:admin', () => {
       if (socket.userRole === 'admin') {
         socket.join('admin');
-        logger.info('[Socket.IO] Subscribed to admin room', {
-          userId: socket.userId,
-        });
+        
+        if (process.env.VERBOSE_LOGGING === 'true') {
+          logger.info('[Socket.IO] Subscribed to admin room', {
+            userId: socket.userId,
+          });
+        }
 
         socket.emit('subscription:confirmed', {
           room: 'admin',
@@ -224,12 +251,14 @@ function setupSocketIO(httpServer) {
     // DISCONNECT HANDLING
     // ========================================
     socket.on('disconnect', (reason) => {
-      logger.info('[Socket.IO] Client disconnected', {
-        socketId: socket.id,
-        userId: socket.userId,
-        reason,
-        connectedClients: io.engine.clientsCount,
-      });
+      if (process.env.VERBOSE_LOGGING === 'true') {
+        logger.info('[Socket.IO] Client disconnected', {
+          socketId: socket.id,
+          userId: socket.userId,
+          reason,
+          connectedClients: io.engine.clientsCount,
+        });
+      }
     });
 
     // ========================================

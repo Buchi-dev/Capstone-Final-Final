@@ -58,9 +58,9 @@ async function initializeChangeStreams() {
 
     alertChangeStream.on('change', async (change) => {
       try {
-        const isProduction = process.env.NODE_ENV === 'production';
+        const verboseMode = process.env.VERBOSE_LOGGING === 'true';
         
-        if (!isProduction) {
+        if (verboseMode) {
           logger.info('[Change Streams] Alert change detected:', {
             operation: change.operationType,
             alertId: change.documentKey?._id,
@@ -85,7 +85,7 @@ async function initializeChangeStreams() {
             });
           }
 
-          if (!isProduction) {
+          if (verboseMode) {
             logger.info('[Change Streams] Broadcast new alert:', {
               alertId: newAlert._id,
               severity: newAlert.severity,
@@ -105,7 +105,7 @@ async function initializeChangeStreams() {
             timestamp: new Date(),
           });
 
-          if (!isProduction) {
+          if (verboseMode) {
             logger.info('[Change Streams] Broadcast alert update:', {
               alertId: change.documentKey._id,
               updates: Object.keys(updatedFields),
@@ -139,9 +139,9 @@ async function initializeChangeStreams() {
 
     deviceChangeStream.on('change', async (change) => {
       try {
-        const isProduction = process.env.NODE_ENV === 'production';
+        const verboseMode = process.env.VERBOSE_LOGGING === 'true';
         
-        if (!isProduction) {
+        if (verboseMode) {
           logger.info('[Change Streams] Device change detected:', {
             operation: change.operationType,
             deviceId: change.documentKey?._id,
@@ -157,7 +157,7 @@ async function initializeChangeStreams() {
             timestamp: new Date(),
           });
 
-          if (!isProduction) {
+          if (verboseMode) {
             logger.info('[Change Streams] Broadcast new device:', {
               deviceId: device.deviceId,
               name: device.deviceName,
@@ -183,7 +183,7 @@ async function initializeChangeStreams() {
             timestamp: new Date(),
           });
 
-          if (!isProduction) {
+          if (verboseMode) {
             logger.info('[Change Streams] Broadcast device update:', {
               deviceId: device.deviceId,
               updates: Object.keys(updatedFields),
