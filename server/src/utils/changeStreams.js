@@ -18,6 +18,7 @@ const { Device, SensorReading } = require('../devices/device.Model');
 const User = require('../users/user.Model');
 const logger = require('./logger');
 const { SENSOR_THRESHOLDS } = require('./constants');
+const { queueAlertEmail } = require('./email.queue');
 
 // Store change stream references
 let alertChangeStream;
@@ -82,6 +83,41 @@ async function initializeChangeStreams() {
             global.io.to(`device:${newAlert.deviceId}`).emit('alert:new', {
               alert: newAlert,
               timestamp: new Date(),
+            });
+          }
+
+          // Send email notifications to subscribed users
+          try {
+            const subscribedUsers = await User.find({
+              'notificationPreferences.emailNotifications': true,
+              'notificationPreferences.alertSeverities': { $in: [newAlert.severity] },
+              status: 'active',
+              role: { $in: ['admin', 'staff'] }
+            });
+
+            if (subscribedUsers.length > 0) {
+              logger.info(`Sending alert emails to ${subscribedUsers.length} subscribed users`, {
+                alertId: newAlert.alertId,
+                severity: newAlert.severity,
+              });
+
+              for (const user of subscribedUsers) {
+                try {
+                  await queueAlertEmail(user, newAlert);
+                } catch (emailError) {
+                  logger.error(`Failed to queue alert email for ${user.email}:`, {
+                    error: emailError.message,
+                    alertId: newAlert.alertId,
+                  });
+                }
+              }
+            } else {
+              logger.debug('No users subscribed to alert email notifications');
+            }
+          } catch (emailError) {
+            logger.error('Error sending alert email notifications:', {
+              error: emailError.message,
+              alertId: newAlert.alertId,
             });
           }
 

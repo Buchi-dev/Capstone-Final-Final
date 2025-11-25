@@ -1,6 +1,6 @@
 const Queue = require('bull');
 const logger = require('./logger');
-const { sendWeeklyReportEmail, sendAlertEmail } = require('./email.service');
+const { sendAlertEmail } = require('./email.service');
 const { EMAIL } = require('./constants');
 
 /**
@@ -93,10 +93,6 @@ const processEmailJob = async (job) => {
     let success = false;
 
     switch (type) {
-      case 'weekly-report':
-        success = await sendWeeklyReportEmail(recipient, data.reports);
-        break;
-
       case 'alert':
         success = await sendAlertEmail(recipient, data.alert);
         break;
@@ -118,44 +114,6 @@ const processEmailJob = async (job) => {
       error: error.message,
     });
     throw error; // Re-throw to trigger retry
-  }
-};
-
-/**
- * Add weekly report email to queue
- * @param {Object} user - User object with email
- * @param {Array} reports - Array of report objects
- * @returns {Promise<Object>} Job object
- */
-const queueWeeklyReportEmail = async (user, reports) => {
-  if (!emailQueue) {
-    // Fallback to synchronous sending if queue not available
-    logger.warn('Email queue not available, sending synchronously');
-    await sendWeeklyReportEmail(user, reports);
-    return null;
-  }
-
-  try {
-    const job = await emailQueue.add({
-      type: 'weekly-report',
-      recipient: user.email,
-      data: {
-        reports,
-      },
-    });
-
-    logger.debug('Weekly report email queued:', {
-      jobId: job.id,
-      recipient: user.email,
-    });
-
-    return job;
-  } catch (error) {
-    logger.error('Failed to queue weekly report email:', {
-      recipient: user.email,
-      error: error.message,
-    });
-    throw error;
   }
 };
 
@@ -277,7 +235,6 @@ const closeEmailQueue = async () => {
 
 module.exports = {
   initializeEmailQueue,
-  queueWeeklyReportEmail,
   queueAlertEmail,
   getQueueStats,
   cleanCompletedJobs,
