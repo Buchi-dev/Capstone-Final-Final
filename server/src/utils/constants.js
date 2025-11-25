@@ -35,59 +35,6 @@ const SENSOR_THRESHOLDS = {
   },
 };
 
-// Alert severity levels
-const ALERT_SEVERITY = {
-  CRITICAL: 'Critical',
-  WARNING: 'Warning',
-  ADVISORY: 'Advisory',
-};
-
-// Alert status
-const ALERT_STATUS = {
-  UNACKNOWLEDGED: 'Unacknowledged',
-  ACKNOWLEDGED: 'Acknowledged',
-  RESOLVED: 'Resolved',
-};
-
-// User roles
-const USER_ROLES = {
-  ADMIN: 'admin',
-  STAFF: 'staff',
-};
-
-// User status
-const USER_STATUS = {
-  ACTIVE: 'active',
-  PENDING: 'pending',
-  SUSPENDED: 'suspended',
-};
-
-// Device status
-const DEVICE_STATUS = {
-  ONLINE: 'online',
-  OFFLINE: 'offline',
-};
-
-// Device registration status
-const DEVICE_REGISTRATION = {
-  REGISTERED: 'registered',
-  PENDING: 'pending',
-};
-
-// Report types
-const REPORT_TYPES = {
-  WATER_QUALITY: 'water-quality',
-  DEVICE_STATUS: 'device-status',
-  COMPLIANCE: 'compliance',
-};
-
-// Report status
-const REPORT_STATUS = {
-  GENERATING: 'generating',
-  COMPLETED: 'completed',
-  FAILED: 'failed',
-};
-
 // Pagination defaults
 const PAGINATION = {
   DEFAULT_PAGE: 1,
@@ -110,25 +57,6 @@ const SESSION = {
   MAX_AGE: TIME.ONE_DAY,
   CHECK_PERIOD: TIME.ONE_HOUR,
 };
-
-// Background job schedules (cron expressions)
-const CRON_SCHEDULES = {
-  CHECK_OFFLINE_DEVICES: '*/5 * * * *', // Every 5 minutes
-  CLEANUP_OLD_READINGS: '0 2 * * *', // Daily at 2:00 AM
-  GENERATE_WEEKLY_REPORTS: '0 8 * * 1', // Every Monday at 8:00 AM
-};
-
-// Device offline threshold
-const DEVICE_OFFLINE_THRESHOLD = TIME.FIVE_MINUTES;
-
-// Data retention period
-const DATA_RETENTION = {
-  SENSOR_READINGS: TIME.NINETY_DAYS,
-  LOGS: 30 * TIME.ONE_DAY, // 30 days
-};
-
-// Alert deduplication window
-const ALERT_DEDUP_WINDOW = TIME.ONE_HOUR;
 
 // HTTP Status Codes
 const HTTP_STATUS = {
@@ -185,21 +113,9 @@ const API_VERSION = {
 module.exports = {
   TIME,
   SENSOR_THRESHOLDS,
-  ALERT_SEVERITY,
-  ALERT_STATUS,
-  USER_ROLES,
-  USER_STATUS,
-  DEVICE_STATUS,
-  DEVICE_REGISTRATION,
-  REPORT_TYPES,
-  REPORT_STATUS,
   PAGINATION,
   CACHE_TTL,
   SESSION,
-  CRON_SCHEDULES,
-  DEVICE_OFFLINE_THRESHOLD,
-  DATA_RETENTION,
-  ALERT_DEDUP_WINDOW,
   HTTP_STATUS,
   EMAIL,
   MONGO_POOL,
