@@ -8,7 +8,6 @@
  * @module utils/sseConfig
  */
 
-const admin = require('firebase-admin');
 const logger = require('./logger');
 
 /**
@@ -35,71 +34,33 @@ const subscriptions = new Map();
 let connectionCounter = 0;
 
 /**
- * SSE Middleware - Verify Firebase token and setup SSE connection
+ * SSE Middleware - Setup SSE connection (no authentication required)
  * 
  * Usage: app.get('/sse', sseMiddleware, (req, res) => {...})
  */
 async function sseMiddleware(req, res, next) {
-  // Get token from Authorization header or query parameter
-  const token = req.headers.authorization?.replace('Bearer ', '') || req.query.token;
-
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      error: 'Authentication required. Provide token in Authorization header or query parameter.',
+    logger.info('[SSE] sseMiddleware called', {
+      headers: req.headers,
+      query: req.query,
+      url: req.originalUrl,
+    });
+  
+  // No authentication required - client handles auth
+  // Generate unique connection ID
+  req.connectionId = `sse_${++connectionCounter}_${Date.now()}`;
+  
+  // Set default user info (anonymous)
+  req.userId = 'anonymous';
+  req.userEmail = 'anonymous@example.com';
+  req.userRole = 'guest';
+  
+  if (process.env.VERBOSE_LOGGING === 'true') {
+    logger.info('[SSE] Client connected anonymously', {
+      connectionId: req.connectionId,
     });
   }
-
-  try {
-    // Verify Firebase ID token (checkRevoked = true)
-    const decodedToken = await admin.auth().verifyIdToken(token, true);
-    
-    // Attach user info to request
-    req.userId = decodedToken.uid;
-    req.userEmail = decodedToken.email;
-    req.userRole = decodedToken.role || 'staff';
-    
-    // Generate unique connection ID
-    req.connectionId = `sse_${++connectionCounter}_${Date.now()}`;
-    
-    if (process.env.VERBOSE_LOGGING === 'true') {
-      logger.info('[SSE] Client authenticated', {
-        connectionId: req.connectionId,
-        userId: req.userId,
-        email: req.userEmail,
-        role: req.userRole,
-      });
-    }
-    
-    next();
-  } catch (error) {
-    let errorMessage = 'Invalid authentication token';
-    
-    if (error.code === 'auth/id-token-expired') {
-      errorMessage = 'Token expired. Please refresh your token and reconnect.';
-      logger.warn('[SSE] Expired token attempt', {
-        error: 'Token expired - client should refresh',
-        ip: req.ip,
-      });
-    } else if (error.code === 'auth/id-token-revoked') {
-      errorMessage = 'Token revoked. Please sign in again.';
-      logger.error('[SSE] Revoked token attempt', {
-        error: error.message,
-        ip: req.ip,
-      });
-    } else {
-      logger.error('[SSE] Authentication failed', {
-        error: error.message,
-        code: error.code,
-        ip: req.ip,
-      });
-    }
-    
-    return res.status(401).json({
-      success: false,
-      error: errorMessage,
-    });
-  }
+  
+  next();
 }
 
 /**

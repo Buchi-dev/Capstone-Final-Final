@@ -8,7 +8,6 @@
 
 const requiredEnvVars = [
   'MONGO_URI',
-  'FIREBASE_PROJECT_ID',
   'CLIENT_URL',
   'DEVICE_API_KEY', // Required for securing sensor data endpoints
 ];
@@ -25,8 +24,6 @@ const optionalEnvVars = [
   'SMTP_SECURE',
   'REDIS_URL',
   'SESSION_SECRET', // Optional - only if using sessions for other features
-  'FIREBASE_SERVICE_ACCOUNT_PATH', // Optional if using FIREBASE_SERVICE_ACCOUNT env var
-  'FIREBASE_SERVICE_ACCOUNT', // Optional if using file path
 ];
 
 /**
@@ -124,13 +121,6 @@ const validateEnvironmentSettings = () => {
     process.env.NODE_ENV = 'development';
   }
 
-  // Validate Firebase configuration
-  if (!process.env.FIREBASE_SERVICE_ACCOUNT_PATH && !process.env.FIREBASE_SERVICE_ACCOUNT) {
-    console.error('[ERROR] Either FIREBASE_SERVICE_ACCOUNT_PATH or FIREBASE_SERVICE_ACCOUNT must be set');
-    console.error('       See QUICKSTART-FIREBASE.md for setup instructions');
-    process.exit(1);
-  }
-
   // Production-specific validations (suppress non-critical warnings in production)
   if (nodeEnv === 'production') {
     // Only show critical warnings in production
@@ -151,7 +141,6 @@ const getEnvironmentSummary = () => {
     mongoConfigured: !!process.env.MONGO_URI,
     redisConfigured: !!process.env.REDIS_URL,
     smtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
-    firebaseConfigured: !!(process.env.FIREBASE_PROJECT_ID && (process.env.FIREBASE_SERVICE_ACCOUNT_PATH || process.env.FIREBASE_SERVICE_ACCOUNT)),
     apiKeyConfigured: !!process.env.DEVICE_API_KEY,
   };
 };

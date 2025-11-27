@@ -1,97 +1,42 @@
-const { verifyIdToken } = require('../configs/firebase.Config');
 const User = require('../users/user.Model');
 const logger = require('../utils/logger');
 const { AuthenticationError, NotFoundError } = require('../errors');
 const asyncHandler = require('../middleware/asyncHandler');
 
 /**
- * Firebase Authentication Middleware
- * Verifies Firebase ID token and attaches user to request
+ * Authentication Middleware
+ * Validates user session and attaches user to request
  */
-const authenticateFirebase = asyncHandler(async (req, res, next) => {
-  // Get token from Authorization header
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    logger.warn('[Auth Middleware] No authorization header', {
+const authenticateUser = asyncHandler(async (req, res, next) => {
+  // Get user ID from session or header (set by client after Firebase auth)
+  const userId = req.headers['x-user-id'] || req.session?.userId;
+
+  if (!userId) {
+    logger.warn('[Auth Middleware] No user ID provided', {
       path: req.path,
-      hasHeader: !!authHeader,
+      hasSession: !!req.session,
     });
     throw AuthenticationError.missingToken();
   }
 
-  const idToken = authHeader.split('Bearer ')[1];
-
-  if (!idToken || idToken.trim() === '') {
-    logger.warn('[Auth Middleware] Empty token', { path: req.path });
-    throw AuthenticationError.missingToken();
-  }
-
-  // Verify Firebase token
-  let decodedToken;
-  try {
-    // Only log in verbose mode or when there's an error
-    if (process.env.VERBOSE_LOGGING === 'true') {
-      logger.info('[Auth Middleware] Verifying token', {
-        tokenPrefix: idToken.substring(0, 20) + '...',
-        tokenLength: idToken.length,
-        path: req.path,
-      });
-    }
-    
-    decodedToken = await verifyIdToken(idToken);
-    
-    // DEFENSE IN DEPTH: Validate domain even in middleware
-    // This catches any tokens that bypassed the verify-token endpoint
-    const userEmail = decodedToken.email;
-    if (!userEmail || !userEmail.endsWith('@smu.edu.ph')) {
-      logger.warn('[Auth Middleware] Domain validation failed in middleware', {
-        email: userEmail,
-        path: req.path,
-      });
-      throw AuthenticationError.invalidDomain(userEmail);
-    }
-    
-    // Only log successful verification in verbose mode
-    if (process.env.VERBOSE_LOGGING === 'true') {
-      logger.info('[Auth Middleware] Token verified', {
-        uid: decodedToken.uid,
-        email: decodedToken.email,
-        path: req.path,
-      });
-    }
-  } catch (tokenError) {
-    logger.error('[Auth Middleware] Firebase token verification failed', {
-      error: tokenError.message,
-      errorCode: tokenError.code,
-      tokenPrefix: idToken.substring(0, 20) + '...',
-      path: req.path,
-    });
-    
-    // Provide more specific error messages
-    if (tokenError.code === 'auth/id-token-expired') {
-      throw AuthenticationError.expiredToken();
-    }
-    
-    if (tokenError.code === 'auth/argument-error') {
-      throw AuthenticationError.invalidToken('Invalid token format');
-    }
-    
-    throw AuthenticationError.invalidToken(
-      process.env.NODE_ENV === 'development' ? tokenError.message : undefined
-    );
-  }
-  
-  // Get user from database using Firebase UID
-  const user = await User.findOne({ firebaseUid: decodedToken.uid });
+  // Get user from database
+  const user = await User.findById(userId);
 
   if (!user) {
     logger.warn('[Auth Middleware] User not found in database', {
-      firebaseUid: decodedToken.uid,
-      email: decodedToken.email,
+      userId,
       path: req.path,
     });
-    throw new NotFoundError('User', decodedToken.uid);
+    throw new NotFoundError('User', userId);
+  }
+
+  // Validate email domain
+  if (!user.email || !user.email.endsWith('@smu.edu.ph')) {
+    logger.warn('[Auth Middleware] Domain validation failed', {
+      email: user.email,
+      path: req.path,
+    });
+    throw AuthenticationError.invalidDomain(user.email);
   }
 
   // Check user status
@@ -113,10 +58,9 @@ const authenticateFirebase = asyncHandler(async (req, res, next) => {
     throw AuthenticationError.accountPending();
   }
 
-  // Attach user and Firebase token to request
+  // Attach user to request
   req.user = user;
-  req.firebaseUser = decodedToken;
-  
+
   // Only log successful authentication in verbose mode
   if (process.env.VERBOSE_LOGGING === 'true') {
     logger.info('[Auth Middleware] Authentication successful', {
@@ -127,7 +71,33 @@ const authenticateFirebase = asyncHandler(async (req, res, next) => {
       path: req.path,
     });
   }
-  
+
+  next();
+});
+
+/**
+ * Optional Authentication Middleware
+ * Attaches user to request if authenticated, but doesn't fail if not
+ */
+const optionalAuth = asyncHandler(async (req, res, next) => {
+  const userId = req.headers['x-user-id'] || req.session?.userId;
+
+  if (userId) {
+    try {
+      const user = await User.findById(userId);
+      if (user && user.email && user.email.endsWith('@smu.edu.ph') &&
+          user.status !== 'suspended' && user.status !== 'pending') {
+        req.user = user;
+      }
+    } catch (error) {
+      // Silently fail for optional auth
+      logger.debug('[Auth Middleware] Optional auth failed', {
+        userId,
+        error: error.message,
+      });
+    }
+  }
+
   next();
 });
 
@@ -137,84 +107,43 @@ const authenticateFirebase = asyncHandler(async (req, res, next) => {
  * @param {Object} res - Express response object
  * @param {Function} next - Express next middleware function
  */
-const ensureAuthenticated = authenticateFirebase;
+const ensureAuthenticated = authenticateUser;
 
 /**
- * Middleware to check if user has specific role  
- * @param {...string} roles - Allowed roles       
- * @returns {Function} Express middleware function
+ * Middleware to check if user has specific role
+ * @param {...string} roles - Allowed roles
+ * @returns {Array} Array of Express middleware functions
  */
 const ensureRole = (...roles) => {
-  return async (req, res, next) => {
-    // First authenticate the user
-    try {
-      await authenticateFirebase(req, res, async () => {
-        // After authentication, check role
-        if (!req.user) {
-          return res.status(401).json({
-            success: false,
-            message: 'Authentication required',
-          });
-        }
+  return [
+    authenticateUser,
+    (req, res, next) => {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          message: 'Authentication failed',
+        });
+      }
 
-        if (!roles.includes(req.user.role)) {
-          logger.warn('[Auth Middleware] Unauthorized access attempt', {
-            userId: req.user._id,
-            userRole: req.user.role,
-            requiredRoles: roles,
-            path: req.path,
-          });
+      if (!roles.includes(req.user.role)) {
+        logger.warn('[Auth Middleware] Insufficient permissions', {
+          userId: req.user._id,
+          userRole: req.user.role,
+          requiredRoles: roles,
+          path: req.path,
+        });
 
-          return res.status(403).json({
-            success: false,
-            message: 'Insufficient permissions',
-          });
-        }
+        return res.status(403).json({
+          success: false,
+          message: 'Insufficient permissions',
+          requiredRoles: roles,
+          userRole: req.user.role,
+        });
+      }
 
-        next();
-      });
-    } catch (error) {
-      logger.error('[Auth Middleware] Role check error', {
-        error: error.message,
-        path: req.path,
-      });
-      
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication failed',
-      });
+      next();
     }
-  };
-};
-
-/**
- * Optional authentication - doesn't fail if no token
- * Useful for public endpoints that can show different data if authenticated
- */
-const optionalAuth = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return next();
-    }
-
-    const idToken = authHeader.split('Bearer ')[1];
-    const decodedToken = await verifyIdToken(idToken);
-    const user = await User.findOne({ firebaseUid: decodedToken.uid });
-
-    // Attach user regardless of status for status checks
-    // This allows frontend to handle pending/suspended states properly
-    if (user) {
-      req.user = user;
-      req.firebaseUser = decodedToken;
-    }
-
-    next();
-  } catch (error) {
-    // Don't fail, just continue without user
-    next();
-  }
+  ];
 };
 
 /**
@@ -232,29 +161,30 @@ const ensureStaff = ensureRole('admin', 'staff');
  * Used for endpoints like profile completion where pending users need access
  */
 const authenticatePendingAllowed = async (req, res, next) => {
+  const userId = req.headers['x-user-id'] || req.session?.userId;
+
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: 'No user ID provided',
+    });
+  }
+
   try {
-    // Get token from Authorization header
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        message: 'No token provided',
-      });
-    }
-
-    const idToken = authHeader.split('Bearer ')[1];
-
-    // Verify Firebase token
-    const decodedToken = await verifyIdToken(idToken);
-    
-    // Get user from database using Firebase UID
-    const user = await User.findOne({ firebaseUid: decodedToken.uid });
+    const user = await User.findById(userId);
 
     if (!user) {
       return res.status(401).json({
         success: false,
         message: 'User not found',
+      });
+    }
+
+    // Validate email domain
+    if (!user.email || !user.email.endsWith('@smu.edu.ph')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: Only SMU email addresses (@smu.edu.ph) are allowed.',
       });
     }
 
@@ -267,10 +197,8 @@ const authenticatePendingAllowed = async (req, res, next) => {
     }
 
     // Allow pending users through (they need to complete their profile)
-    // Attach user and Firebase token to request
     req.user = user;
-    req.firebaseUser = decodedToken;
-    
+
     next();
   } catch (error) {
     logger.error('[Auth Middleware] Authentication failed', {
@@ -280,13 +208,13 @@ const authenticatePendingAllowed = async (req, res, next) => {
 
     return res.status(401).json({
       success: false,
-      message: 'Invalid or expired token',
+      message: 'Authentication failed',
     });
   }
 };
 
 module.exports = {
-  authenticateFirebase,
+  authenticateUser,
   ensureAuthenticated,
   ensureRole,
   ensureAdmin,

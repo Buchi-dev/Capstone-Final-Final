@@ -1,110 +1,68 @@
 const express = require('express');
-const { verifyIdToken, getFirebaseUser } = require('../configs/firebase.Config');
-const { authenticateFirebase, optionalAuth } = require('./auth.Middleware');
+const { authenticateUser, optionalAuth } = require('./auth.Middleware');
 const User = require('../users/user.Model');
 const logger = require('../utils/logger');
-const { AuthenticationError } = require('../errors');
 
 const router = express.Router();
 
 /**
- * @route   POST /auth/verify-token
- * @desc    Verify Firebase ID token and sync user to database
+ * @route   POST /auth/login
+ * @desc    Authenticate user with Firebase Auth data
  * @access  Public
  */
-router.post('/verify-token', async (req, res) => {
+router.post('/login', async (req, res) => {
   try {
-    const { idToken } = req.body;
+    const { email, uid, displayName, photoURL } = req.body;
 
-    if (!idToken) {
+    if (!email || !uid) {
       return res.status(400).json({
         success: false,
-        message: 'ID token is required',
+        message: 'Email and UID are required',
       });
     }
 
-    // Verify Firebase token FIRST (fast operation)
-    let decodedToken;
-    try {
-      decodedToken = await verifyIdToken(idToken);
-    } catch (verifyError) {
-      logger.error('[Auth] Firebase token verification failed', {
-        error: verifyError.message,
-        errorCode: verifyError.code,
-      });
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid or expired Firebase token',
-        errorCode: 'AUTH_TOKEN_INVALID',
-      });
-    }
-
-    // IMMEDIATE domain validation BEFORE any database operations
-    // This prevents timeouts for unauthorized users
-    const userEmail = decodedToken.email;
-    if (!userEmail || !userEmail.endsWith('@smu.edu.ph')) {
+    // Validate email domain
+    if (!email.endsWith('@smu.edu.ph')) {
       logger.warn('[Auth] Domain validation failed - personal account rejected', {
-        email: userEmail,
+        email,
         requiredDomain: '@smu.edu.ph',
       });
-      
-      // Return 403 Forbidden with specific error code
+
       return res.status(403).json({
         success: false,
         message: 'Access denied: Only SMU email addresses (@smu.edu.ph) are allowed. Personal accounts are not permitted.',
         errorCode: 'AUTH_INVALID_DOMAIN',
-        metadata: {
-          email: userEmail,
-          requiredDomain: '@smu.edu.ph',
-        },
       });
     }
 
-    // Get Firebase user data only AFTER domain validation
-    const firebaseUser = await getFirebaseUser(decodedToken.uid);
-
     // Check if user exists in database
-    let user = await User.findOne({ firebaseUid: decodedToken.uid });
+    let user = await User.findOne({ email });
 
     if (!user) {
       // Parse name components
-      const fullName = decodedToken.name || firebaseUser.displayName || 'User';
-      const nameParts = fullName.trim().split(/\s+/); // Split by whitespace
-      
+      const fullName = displayName || 'User';
+      const nameParts = fullName.trim().split(/\s+/);
+
       let firstName = '';
-      let middleName = '';
       let lastName = '';
-      
-      if (nameParts.length === 1) {
-        firstName = nameParts[0];
-      } else if (nameParts.length >= 2) {
-        // Last part is always the last name
+
+      if (nameParts.length >= 2) {
         lastName = nameParts[nameParts.length - 1];
-        
-        // Check if second-to-last part is a middle initial (contains period)
-        if (nameParts.length >= 3 && nameParts[nameParts.length - 2].includes('.')) {
-          middleName = nameParts[nameParts.length - 2];
-          // Everything before middle name is first name
-          firstName = nameParts.slice(0, nameParts.length - 2).join(' ');
-        } else {
-          // No middle initial, everything before last name is first name
-          firstName = nameParts.slice(0, nameParts.length - 1).join(' ');
-        }
+        firstName = nameParts.slice(0, nameParts.length - 1).join(' ');
+      } else {
+        firstName = fullName;
       }
-      
+
       // Create new user
       user = new User({
-        firebaseUid: decodedToken.uid,
-        email: decodedToken.email || firebaseUser.email,
+        email,
+        firebaseUid: uid,
         displayName: fullName,
         firstName,
-        middleName,
         lastName,
-        profilePicture: decodedToken.picture || firebaseUser.photoURL || '',
-        provider: 'firebase',
-        role: 'staff', // Default role
-        status: 'pending',
-        lastLogin: new Date(),
+        photoURL,
+        role: 'staff', // Default role for SMU users
+        status: 'active', // Default status
       });
 
       await user.save();
@@ -114,99 +72,116 @@ router.post('/verify-token', async (req, res) => {
         email: user.email,
       });
     } else {
-      // Update last login
-      user.lastLogin = new Date();
+      // Update user info if needed
+      user.firebaseUid = uid;
+      if (displayName) user.displayName = displayName;
+      if (photoURL) user.photoURL = photoURL;
       await user.save();
-
-      logger.info('[Auth] User logged in', {
-        userId: user._id,
-        email: user.email,
-      });
     }
 
-    res.json({
-      success: true,
-      user: user.toPublicProfile(),
-      message: 'Token verified successfully',
-    });
-  } catch (error) {
-    logger.error('[Auth] Token verification failed', {
-      error: error.message,
-    });
-
-    res.status(401).json({
-      success: false,
-      message: 'Invalid or expired token',
-    });
-  }
-});
-
-/**
- * @route   GET /auth/current-user
- * @desc    Get current authenticated user
- * @access  Private
- */
-router.get('/current-user', authenticateFirebase, (req, res) => {
-  res.json({
-    success: true,
-    user: req.user.toPublicProfile(),
-  });
-});
-
-/**
- * @route   GET /auth/status
- * @desc    Check authentication status
- * @access  Public
- */
-router.get('/status', optionalAuth, (req, res) => {
-  res.json({
-    authenticated: !!req.user,
-    user: req.user ? req.user.toPublicProfile() : null,
-  });
-});
-
-/**
- * @route   POST /auth/test-email
- * @desc    Test email configuration by sending a test email
- * @access  Public (temporarily for testing)
- */
-router.post('/test-email', async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
+    // Check user status
+    if (user.status === 'suspended') {
+      return res.status(403).json({
         success: false,
-        message: 'Email address is required',
+        message: 'Account suspended',
+        errorCode: 'AUTH_ACCOUNT_SUSPENDED',
       });
     }
 
-    const { testEmailConfiguration } = require('../utils/email.service');
-    await testEmailConfiguration(email);
+    logger.info('[Auth] User authenticated successfully', {
+      userId: user._id,
+      email: user.email,
+      role: user.role,
+    });
 
     res.json({
       success: true,
-      message: 'Test email sent successfully. Check your inbox.',
+      message: 'Authentication successful',
+      user: {
+        _id: user._id,
+        email: user.email,
+        displayName: user.displayName,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        status: user.status,
+        photoURL: user.photoURL,
+      },
     });
   } catch (error) {
-    logger.error('Test email failed:', { error: error.message });
+    logger.error('[Auth] Login failed', {
+      error: error.message,
+      email: req.body.email,
+    });
+
     res.status(500).json({
       success: false,
-      message: 'Failed to send test email',
-      error: error.message,
+      message: 'Authentication failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 });
 
 /**
  * @route   POST /auth/logout
- * @desc    Logout user (client-side handles Firebase signOut)
+ * @desc    Logout user (client-side cleanup)
  * @access  Public
  */
 router.post('/logout', (req, res) => {
   res.json({
     success: true,
-    message: 'Logout successful. Clear Firebase session on client.',
+    message: 'Logged out successfully',
+  });
+});
+
+/**
+ * @route   GET /auth/status
+ * @desc    Check authentication status
+ * @access  Private (optional)
+ */
+router.get('/status', optionalAuth, async (req, res) => {
+  if (req.user) {
+    res.json({
+      authenticated: true,
+      user: {
+        _id: req.user._id,
+        email: req.user.email,
+        displayName: req.user.displayName,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        role: req.user.role,
+        status: req.user.status,
+        photoURL: req.user.photoURL,
+      },
+    });
+  } else {
+    res.json({
+      authenticated: false,
+      user: null,
+    });
+  }
+});
+
+/**
+ * @route   GET /auth/me
+ * @desc    Get current user profile
+ * @access  Private
+ */
+router.get('/me', authenticateUser, async (req, res) => {
+  res.json({
+    success: true,
+    user: {
+      _id: req.user._id,
+      email: req.user.email,
+      displayName: req.user.displayName,
+      firstName: req.user.firstName,
+      lastName: req.user.lastName,
+      role: req.user.role,
+      status: req.user.status,
+      photoURL: req.user.photoURL,
+      createdAt: req.user.createdAt,
+      updatedAt: req.user.updatedAt,
+    },
   });
 });
 

@@ -105,26 +105,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // User is signed in with Firebase AND has valid domain
         setFirebaseReady(true);
         
-        // Initialize SSE connection once
-        if (!sseInitialized.current) {
-          sseInitialized.current = true;
-          if (import.meta.env.DEV) {
-            console.log('[AuthContext] User authenticated, connecting to SSE...');
+        // Login with backend using Firebase user data
+        try {
+          const response = await authService.login(firebaseUser);
+          setUser(response.user);
+          
+          // Set user ID in API client headers for future requests
+          if (response.user._id) {
+            // This will be used by the API client for authentication
+            localStorage.setItem('userId', response.user._id);
           }
-          try {
-            await initializeSSE();
+          
+          // Initialize SSE connection once
+          if (!sseInitialized.current) {
+            sseInitialized.current = true;
             if (import.meta.env.DEV) {
-              console.log('[AuthContext] SSE connected successfully');
+              console.log('[AuthContext] User authenticated, connecting to SSE...');
             }
-          } catch (sseError) {
-            console.error('[AuthContext] Failed to connect to SSE:', sseError);
-            sseInitialized.current = false; // Allow retry on error
-            // Non-fatal error, app can still work with HTTP polling
+            try {
+              await initializeSSE();
+              if (import.meta.env.DEV) {
+                console.log('[AuthContext] SSE connected successfully');
+              }
+            } catch (sseError) {
+              console.error('[AuthContext] Failed to connect to SSE:', sseError);
+              sseInitialized.current = false; // Allow retry on error
+              // Non-fatal error, app can still work with HTTP polling
+            }
           }
+        } catch (loginError) {
+          console.error('[AuthContext] Backend login failed:', loginError);
+          // Sign out from Firebase if backend login fails
+          try {
+            await auth.signOut();
+          } catch (signOutError) {
+            console.error('[AuthContext] Error signing out after login failure:', signOutError);
+          }
+          setUser(null);
         }
         
-        // Fetch user data from backend
-        fetchUser();
+        setLoading(false);
       } else {
         // User is signed out
         if (import.meta.env.DEV) {
@@ -132,6 +152,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         disconnectSSE();
         sseInitialized.current = false;
+        
+        // Clear user ID from localStorage
+        localStorage.removeItem('userId');
         
         setFirebaseReady(true);
         setUser(null);

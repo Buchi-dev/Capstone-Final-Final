@@ -10,11 +10,11 @@ const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
+const cookieParser = require('cookie-parser');
 
 // Import configurations
 const { connectDB, closeDB } = require('./configs/mongo.Config');
 const { connectRedis, closeRedis } = require('./configs/redis.Config');
-const { configureFirebase } = require('./configs/firebase.Config');
 const { setupSwagger } = require('./configs/swagger.config');
 
 // Import utilities
@@ -47,9 +47,6 @@ const app = express();
 
 // Connect to MongoDB
 connectDB();
-
-// Configure Firebase Admin SDK
-configureFirebase();
 
 // Store Redis client at module level
 let redisClient;
@@ -90,13 +87,17 @@ app.use(
         callback(new Error('Not allowed by CORS'));
       }
     },
-    credentials: true, // Allow cookies to be sent
+    credentials: (req) => {
+      // SSE routes don't need credentials
+      return !req.url.startsWith('/sse');
+    },
   })
 );
 
 // Body parser middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(cookieParser());
 
 // Favicon handler - prevent 404 errors in logs
 app.get('/favicon.ico', (req, res) => {
@@ -204,7 +205,7 @@ initializeApp().then(() => {
       logger.info('Water Quality Monitoring API - PRODUCTION');
       logger.info('========================================');
       logger.info(`Port: ${PORT} | Environment: ${envSummary.nodeEnv} | API: ${API_VERSION.CURRENT}`);
-      logger.info(`Services: MongoDB ✓ | Redis ✓ | SMTP ✓ | Firebase ✓ | SSE ✓`);
+      logger.info(`Services: MongoDB ✓ | Redis ✓ | SMTP ✓ | SSE ✓`);
       logger.info(`Health: http://localhost:${PORT}/health`);
       logger.info('========================================');
     } else {
@@ -221,7 +222,6 @@ initializeApp().then(() => {
       logger.info(`   MongoDB:     ${envSummary.mongoConfigured ? '[OK]' : '[FAIL]'}`);
       logger.info(`   Redis:       ${envSummary.redisConfigured ? '[OK]' : '[WARN] Not configured'}`);
       logger.info(`   SMTP:        ${envSummary.smtpConfigured ? '[OK]' : '[WARN] Not configured'}`);
-      logger.info(`   Firebase:    ${envSummary.firebaseConfigured ? '[OK]' : '[FAIL]'}`);
       logger.info(`   API Key:     ${envSummary.apiKeyConfigured ? '[OK]' : '[FAIL]'}`);
       logger.info(`   SSE:         [OK]`);
       logger.info('');

@@ -67,30 +67,21 @@ export interface LogoutResponse {
 export class AuthService {
   
   /**
-   * Verify Firebase ID token and sync user to database
-   * This is called after successful Firebase authentication
+   * Login user with Firebase Auth data
    * 
-   * @param idToken - Firebase ID token from client-side authentication
+   * @param firebaseUser - Firebase user object
    * @returns Promise with user data
-   * @throws {Error} If token verification fails
-   * @example
-   * const firebaseUser = await signInWithPopup(auth, googleProvider);
-   * const idToken = await firebaseUser.user.getIdToken();
-   * const response = await authService.verifyToken(idToken);
+   * @throws {Error} If login fails
    */
-  async verifyToken(idToken: string): Promise<VerifyTokenResponse> {
+  async login(firebaseUser: any): Promise<VerifyTokenResponse> {
     try {
       const response = await apiClient.post<VerifyTokenResponse>(
-        AUTH_ENDPOINTS.VERIFY_TOKEN,
-        { idToken },
+        AUTH_ENDPOINTS.LOGIN,
         {
-          // Explicitly set the Authorization header with the fresh token
-          // This bypasses the interceptor which might use a cached/old token
-          headers: {
-            'Authorization': `Bearer ${idToken}`
-          },
-          // Use longer timeout for token verification to allow backend processing
-          timeout: 15000, // 15 seconds
+          email: firebaseUser.email,
+          uid: firebaseUser.uid,
+          displayName: firebaseUser.displayName,
+          photoURL: firebaseUser.photoURL,
         }
       );
       return response.data;
@@ -104,7 +95,7 @@ export class AuthService {
       }
       
       const message = getErrorMessage(error);
-      console.error('[AuthService] Token verification error:', message);
+      console.error('[AuthService] Login error:', message);
       throw new Error(message);
     }
   }
@@ -141,10 +132,10 @@ export class AuthService {
    */
   async checkStatus(): Promise<AuthStatusResponse> {
     try {
-      const response = await apiClient.get<AuthStatusResponse>(
-        AUTH_ENDPOINTS.STATUS
+      const response = await apiClient.get<CurrentUserResponse>(
+        AUTH_ENDPOINTS.CURRENT_USER
       );
-      return response.data;
+      return { authenticated: true, user: response.data.user };
     } catch (error) {
       console.error('[AuthService] Check status error:', error);
       return { authenticated: false, user: null };
@@ -180,7 +171,7 @@ export class AuthService {
       firebaseUserCredential = await signInWithPopup(auth, googleProvider);
       const firebaseUser = firebaseUserCredential.user;
 
-      // CRITICAL: Check domain BEFORE backend verification to fail fast
+      // CRITICAL: Check domain BEFORE backend sync to fail fast
       const email = firebaseUser.email;
       if (!email || !email.endsWith('@smu.edu.ph')) {
         console.warn('[AuthService] Domain validation failed - personal account detected:', email);
@@ -191,12 +182,9 @@ export class AuthService {
         throw new Error('Access denied: Only SMU email addresses (@smu.edu.ph) are allowed. Personal accounts are not permitted.');
       }
 
-      // Get ID token from Firebase
-      const idToken = await firebaseUser.getIdToken();
-
-      // Verify token with backend and sync user to database
-      // Backend will do secondary domain validation
-      const response = await this.verifyToken(idToken);
+      // Login with user data (replaces token verification)
+      // Backend will do domain validation
+      const response = await this.login(firebaseUser);
 
       return response;
     } catch (error: any) {

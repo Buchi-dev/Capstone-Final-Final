@@ -8,6 +8,7 @@
  */
 
 const express = require('express');
+const cors = require('cors');
 const router = express.Router();
 const {
   sseMiddleware,
@@ -20,17 +21,35 @@ const { deviceSSEConnection } = require('../devices/device.Controller');
 const { ensureApiKey } = require('../middleware/apiKey.middleware');
 const logger = require('./logger');
 
+// SSE-specific CORS configuration (no credentials required for anonymous connections)
+const sseCors = cors({
+  origin: (origin, callback) => {
+    const allowedOrigins = [
+      'https://smupuretrack.web.app',
+      'https://smupuretrack.firebaseapp.com',
+      'http://localhost:5173',
+      process.env.CLIENT_URL || 'http://localhost:5173'
+    ].filter(Boolean);
+    
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: false, // SSE connections are anonymous, no credentials needed
+});
+
 /**
  * GET /sse/stream
  * Main SSE endpoint - establishes real-time connection
  * 
- * Query params:
- *   - token: Firebase ID token for authentication
- * 
- * Headers:
- *   - Authorization: Bearer <token> (alternative to query param)
+ * No authentication required - client handles authentication
  */
-router.get('/stream', sseMiddleware, (req, res) => {
+router.get('/stream', sseCors, sseMiddleware, (req, res) => {
   setupSSEConnection(req, res);
 });
 
@@ -49,7 +68,7 @@ router.get('/:deviceId', ensureApiKey, deviceSSEConnection);
  *   - connectionId: Connection ID from SSE stream
  *   - channel: Channel name (alerts, devices, admin, device:DEVICE_ID)
  */
-router.post('/subscribe', sseMiddleware, (req, res) => {
+router.post('/subscribe', sseCors, sseMiddleware, (req, res) => {
   const { connectionId, channel } = req.body;
   
   if (!connectionId || !channel) {
@@ -88,7 +107,7 @@ router.post('/subscribe', sseMiddleware, (req, res) => {
  *   - connectionId: Connection ID from SSE stream
  *   - channel: Channel name
  */
-router.post('/unsubscribe', sseMiddleware, (req, res) => {
+router.post('/unsubscribe', sseCors, sseMiddleware, (req, res) => {
   const { connectionId, channel } = req.body;
   
   if (!connectionId || !channel) {
@@ -124,7 +143,7 @@ router.post('/unsubscribe', sseMiddleware, (req, res) => {
  * Get SSE connection statistics
  * (Admin only in production)
  */
-router.get('/stats', sseMiddleware, (req, res) => {
+router.get('/stats', sseCors, sseMiddleware, (req, res) => {
   // In production, restrict to admin users
   if (process.env.NODE_ENV === 'production' && req.userRole !== 'admin') {
     return res.status(403).json({

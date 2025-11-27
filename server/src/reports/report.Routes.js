@@ -18,30 +18,30 @@ const router = express.Router();
 /**
  * @route   POST /api/v1/reports/water-quality
  * @desc    Generate water quality report
- * @access  Authenticated users (Staff and Admin)
+ * @access  Public (Staff and Admin)
  */
-router.post('/water-quality', ensureAuthenticated, validateReportGeneration, generateWaterQualityReport);
+router.post('/water-quality', validateReportGeneration, generateWaterQualityReport);
 
 /**
  * @route   POST /api/v1/reports/device-status
  * @desc    Generate device status report
- * @access  Authenticated users (Staff and Admin)
+ * @access  Public (Staff and Admin)
  */
-router.post('/device-status', ensureAuthenticated, validateReportGeneration, generateDeviceStatusReport);
+router.post('/device-status', validateReportGeneration, generateDeviceStatusReport);
 
 /**
  * @route   GET /api/v1/reports
  * @desc    Get all reports (with filters)
- * @access  Authenticated users
+ * @access  Public
  */
-router.get('/', ensureAuthenticated, validatePagination, getAllReports);
+router.get('/', validatePagination, getAllReports);
 
 /**
  * @route   GET /api/v1/reports/:id
  * @desc    Get report by ID
- * @access  Authenticated users
+ * @access  Public
  */
-router.get('/:id', ensureAuthenticated, validateMongoId, getReportById);
+router.get('/:id', validateMongoId, getReportById);
 
 /**
  * @route   DELETE /api/v1/reports/:id

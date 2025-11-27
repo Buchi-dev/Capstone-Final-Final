@@ -9,13 +9,13 @@
  */
 
 // ==================== API VERSION ====================
-// Use /api in development (proxied), /api/v1 in production
-const API_VERSION = import.meta.env.PROD ? '/api/v1' : '/api';
+// Use /api/v1 in both development and production
+const API_VERSION = '/api/v1';
 
 // ==================== AUTHENTICATION ====================
 export const AUTH_ENDPOINTS = {
-  VERIFY_TOKEN: '/auth/verify-token',
-  CURRENT_USER: '/auth/current-user',
+  LOGIN: '/auth/login',
+  CURRENT_USER: '/auth/me',
   STATUS: '/auth/status',
   LOGOUT: '/auth/logout',
 } as const;

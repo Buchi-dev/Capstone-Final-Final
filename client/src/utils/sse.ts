@@ -3,12 +3,11 @@
  * 
  * Manages real-time connection to the backend server
  * Replaces Socket.IO with more reliable SSE for Render.com compatibility
- * Handles authentication, reconnection, and subscription management
+ * Handles reconnection and subscription management
  * 
  * @module utils/sse
  */
 
-import { getAuth } from 'firebase/auth';
 import { API_BASE_URL } from '../config/api.config';
 
 /**
@@ -21,11 +20,6 @@ let eventSource: EventSource | null = null;
  */
 let isConnecting = false;
 let connectionId: string | null = null;
-
-/**
- * Token refresh timer
- */
-let tokenRefreshTimer: NodeJS.Timeout | null = null;
 
 /**
  * Reconnection settings
@@ -65,11 +59,10 @@ export type SSEChannel =
   | `device:${string}`;
 
 /**
- * Initialize SSE connection with Firebase authentication
- * Includes automatic token refresh every 50 minutes
+ * Initialize SSE connection
+ * No authentication required - server handles connections anonymously
  * 
  * @returns {Promise<void>}
- * @throws {Error} If user is not authenticated
  */
 export async function initializeSSE(): Promise<void> {
   // Return if already connected
@@ -91,22 +84,11 @@ export async function initializeSSE(): Promise<void> {
   isConnecting = true;
 
   try {
-    // Get Firebase auth instance
-    const auth = getAuth();
-    const user = auth.currentUser;
-
-    if (!user) {
-      throw new Error('User must be authenticated to connect to SSE');
-    }
-
-    // Get fresh Firebase ID token (force refresh to ensure it's valid)
-    const token = await user.getIdToken(true);
-
-    // Build SSE URL with token
-    const sseUrl = `${API_BASE_URL}/sse/stream?token=${encodeURIComponent(token)}`;
+    // Build SSE URL (no authentication required)
+    const sseUrl = `${API_BASE_URL}/sse/stream`;
 
     if (import.meta.env.DEV) {
-      console.log('[SSE] Connecting to:', sseUrl.replace(token, '[TOKEN]'));
+      console.log('[SSE] Connecting to:', sseUrl);
     }
 
     // Create EventSource connection
@@ -118,13 +100,13 @@ export async function initializeSSE(): Promise<void> {
     // Wait for connection
     await waitForConnection(eventSource);
 
-    // Start automatic token refresh (every 50 minutes, tokens expire after 60 minutes)
-    startTokenRefresh();
+    // Start automatic token refresh (not needed anymore, but keep for compatibility)
+    // startTokenRefresh();
 
     reconnectAttempts = 0; // Reset on successful connection
 
     if (import.meta.env.DEV) {
-      console.log('[SSE] Connection established successfully with auto token refresh');
+      console.log('[SSE] Connection established successfully');
     }
 
     isConnecting = false;
@@ -149,14 +131,21 @@ function setupEventListeners(es: EventSource): void {
   // Connection opened
   es.onopen = () => {
     if (import.meta.env.DEV) {
-      console.log('[SSE] ✅ Connection opened');
+      console.log('[SSE] ✅ Connection opened', {
+        readyState: es.readyState,
+        url: es.url
+      });
     }
     reconnectAttempts = 0;
   };
 
   // Connection error
   es.onerror = (error) => {
-    console.error('[SSE] ❌ Connection error:', error);
+    console.error('[SSE] ❌ Connection error:', {
+      readyState: es.readyState,
+      error,
+      url: es.url
+    });
     
     if (es.readyState === EventSource.CLOSED) {
       console.log('[SSE] Connection closed, attempting reconnection...');
@@ -250,102 +239,56 @@ function setupEventListeners(es: EventSource): void {
 function waitForConnection(es: EventSource): Promise<void> {
   return new Promise((resolve, reject) => {
     if (es.readyState === EventSource.OPEN) {
+      if (import.meta.env.DEV) {
+        console.log('[SSE] Already open, resolving immediately');
+      }
       resolve();
       return;
     }
 
     const timeout = setTimeout(() => {
+      console.error('[SSE] Connection timeout', {
+        readyState: es.readyState,
+        url: es.url
+      });
       reject(new Error('Connection timeout after 10 seconds'));
     }, 10000);
 
-    // Wait for 'connected' event
-    const connectedHandler = () => {
+    // Resolve when EventSource opens OR when 'connected' event is received
+    const openHandler = () => {
+      if (import.meta.env.DEV) {
+        console.log('[SSE] EventSource opened successfully');
+      }
       clearTimeout(timeout);
+      es.removeEventListener('open', openHandler);
       es.removeEventListener('connected', connectedHandler);
       resolve();
     };
 
+    const connectedHandler = () => {
+      if (import.meta.env.DEV) {
+        console.log('[SSE] Connected event received, resolving');
+      }
+      clearTimeout(timeout);
+      es.removeEventListener('open', openHandler);
+      es.removeEventListener('connected', connectedHandler);
+      resolve();
+    };
+
+    es.addEventListener('open', openHandler);
     es.addEventListener('connected', connectedHandler);
 
     // Handle errors
     const errorHandler = (error: Event) => {
       clearTimeout(timeout);
       es.removeEventListener('error', errorHandler);
+      es.removeEventListener('open', openHandler);
+      es.removeEventListener('connected', connectedHandler);
       reject(error);
     };
 
     es.addEventListener('error', errorHandler, { once: true });
   });
-}
-
-/**
- * Start automatic token refresh timer
- * Refreshes Firebase token and reconnects SSE every 50 minutes
- */
-function startTokenRefresh(): void {
-  // Clear any existing timer
-  if (tokenRefreshTimer) {
-    clearInterval(tokenRefreshTimer);
-  }
-
-  // Refresh token every 50 minutes (tokens expire after 60 minutes)
-  const REFRESH_INTERVAL = 50 * 60 * 1000; // 50 minutes in milliseconds
-
-  tokenRefreshTimer = setInterval(async () => {
-    try {
-      if (!eventSource || eventSource.readyState !== EventSource.OPEN) {
-        if (import.meta.env.DEV) {
-          console.log('[SSE] Token refresh skipped - not connected');
-        }
-        return;
-      }
-
-      const auth = getAuth();
-      const user = auth.currentUser;
-
-      if (!user) {
-        console.warn('[SSE] Token refresh failed - user not authenticated');
-        stopTokenRefresh();
-        return;
-      }
-
-      if (import.meta.env.DEV) {
-        console.log('[SSE] Refreshing Firebase token and reconnecting...');
-      }
-
-      // Disconnect current connection
-      disconnectSSE();
-
-      // Wait a bit before reconnecting
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Reconnect with fresh token
-      await initializeSSE();
-
-      if (import.meta.env.DEV) {
-        console.log('[SSE] ✅ Token refreshed and reconnected');
-      }
-    } catch (error) {
-      console.error('[SSE] Failed to refresh token:', error);
-    }
-  }, REFRESH_INTERVAL);
-
-  if (import.meta.env.DEV) {
-    console.log('[SSE] Token auto-refresh started (every 50 minutes)');
-  }
-}
-
-/**
- * Stop automatic token refresh timer
- */
-function stopTokenRefresh(): void {
-  if (tokenRefreshTimer) {
-    clearInterval(tokenRefreshTimer);
-    tokenRefreshTimer = null;
-    if (import.meta.env.DEV) {
-      console.log('[SSE] Token auto-refresh stopped');
-    }
-  }
 }
 
 /**
@@ -437,20 +380,10 @@ export async function subscribeToChannel(channel: SSEChannel): Promise<void> {
     throw new Error('Not connected to SSE');
   }
 
-  const auth = getAuth();
-  const user = auth.currentUser;
-
-  if (!user) {
-    throw new Error('User not authenticated');
-  }
-
-  const token = await user.getIdToken();
-
   const response = await fetch(`${API_BASE_URL}/sse/subscribe`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({
       connectionId,
@@ -478,20 +411,10 @@ export async function unsubscribeFromChannel(channel: SSEChannel): Promise<void>
     throw new Error('Not connected to SSE');
   }
 
-  const auth = getAuth();
-  const user = auth.currentUser;
-
-  if (!user) {
-    throw new Error('User not authenticated');
-  }
-
-  const token = await user.getIdToken();
-
   const response = await fetch(`${API_BASE_URL}/sse/unsubscribe`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({
       connectionId,
@@ -516,9 +439,6 @@ export function disconnectSSE(): void {
     if (import.meta.env.DEV) {
       console.log('[SSE] Disconnecting and cleaning up...');
     }
-
-    // Stop token refresh timer
-    stopTokenRefresh();
 
     eventSource.close();
     eventSource = null;

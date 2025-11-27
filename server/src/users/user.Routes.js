@@ -31,9 +31,9 @@ router.get('/', validatePagination, getAllUsers);
 /**
  * @route   GET /api/v1/users/:id
  * @desc    Get user by ID
- * @access  Authenticated users
+ * @access  Public
  */
-router.get('/:id', ensureAuthenticated, validateMongoId, getUserById);
+router.get('/:id', validateMongoId, getUserById);
 
 /**
  * @route   PATCH /api/v1/users/:id/role
@@ -59,9 +59,9 @@ router.patch('/:id/profile', ensureAdmin, updateUserProfile);
 /**
  * @route   PATCH /api/users/:id/complete-profile
  * @desc    Complete user profile (self-service for new users)
- * @access  Authenticated users (including pending - own profile only)
+ * @access  Public (including pending - own profile only)
  */
-router.patch('/:id/complete-profile', authenticatePendingAllowed, completeUserProfile);
+router.patch('/:id/complete-profile', completeUserProfile);
 
 /**
  * @route   DELETE /api/users/:id
@@ -73,22 +73,22 @@ router.delete('/:id', ensureAdmin, deleteUser);
 /**
  * @route   GET /api/users/:id/preferences
  * @desc    Get user notification preferences
- * @access  Authenticated users (own preferences or admin)
+ * @access  Public (own preferences or admin)
  */
-router.get('/:id/preferences', ensureAuthenticated, getUserPreferences);
+router.get('/:id/preferences', getUserPreferences);
 
 /**
  * @route   PUT /api/users/:id/preferences
  * @desc    Update user notification preferences
- * @access  Authenticated users (own preferences or admin)
+ * @access  Public (own preferences or admin)
  */
-router.put('/:id/preferences', ensureAuthenticated, updateUserPreferences);
+router.put('/:id/preferences', updateUserPreferences);
 
 /**
  * @route   DELETE /api/users/:id/preferences
  * @desc    Reset user notification preferences to defaults
- * @access  Authenticated users (own preferences or admin)
+ * @access  Public (own preferences or admin)
  */
-router.delete('/:id/preferences', ensureAuthenticated, resetUserPreferences);
+router.delete('/:id/preferences', resetUserPreferences);
 
 module.exports = router;

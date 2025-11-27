@@ -5,10 +5,10 @@
 import axios, { type AxiosInstance } from 'axios';
 import { auth } from './firebase.config';
 
-// API Base URL - use relative paths in development (proxied by Vite), or when served from same domain in production
+// API Base URL - use localhost:5000 in development, or when served from same domain in production
 export const API_BASE_URL = import.meta.env.PROD
   ? (import.meta.env.VITE_API_BASE_URL || '')
-  : '';
+  : 'http://localhost:5000';
 
 // Log API configuration on startup
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -36,73 +36,21 @@ export const apiClient: AxiosInstance = axios.create({
 
 /**
  * Request interceptor
- * Add Firebase ID token to Authorization header for authenticated requests
+ * Add user ID to X-User-ID header for authenticated requests
  */
 apiClient.interceptors.request.use(
   async (config) => {
-    // Add Firebase ID token if user is authenticated
-    try {
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        // Force token refresh if it might be expiring soon (within 5 minutes)
-        // This prevents mid-request token expiration
-        // Check token expiration from claims
-        const tokenResult = await currentUser.getIdTokenResult();
-        const expirationTime = new Date(tokenResult.expirationTime).getTime();
-        const now = Date.now();
-        const timeUntilExpiry = expirationTime - now;
-        const fiveMinutes = 5 * 60 * 1000;
-        
-        // Force refresh if token expires in less than 5 minutes
-        const forceRefresh = timeUntilExpiry < fiveMinutes;
-        
-        if (forceRefresh && import.meta.env.DEV) {
-          console.log('[API] Token expiring soon, forcing refresh');
-        }
-        
-        const idToken = await currentUser.getIdToken(forceRefresh);
-        config.headers.Authorization = `Bearer ${idToken}`;
-        if (import.meta.env.DEV) {
-          // SECURITY: Never log the full token - only show masked version
-          const maskedToken = idToken.substring(0, 10) + '...' + idToken.substring(idToken.length - 10);
-          console.log(`[API] Added token for user:`, currentUser.email, `(token: ${maskedToken})`);
-          if (forceRefresh) {
-            console.log('[API] Token was refreshed');
-          }
-        }
-      } else {
-        if (import.meta.env.DEV) {
-          console.warn('[API] No currentUser available for request to:', config.url);
-        }
-        // Check if this is a protected endpoint that requires auth
-        const protectedEndpoints = ['/api/v1/users', '/api/v1/devices', '/api/v1/analytics', '/api/v1/alerts'];
-        const isProtectedEndpoint = protectedEndpoints.some(endpoint => config.url?.includes(endpoint));
-        
-        if (isProtectedEndpoint) {
-          console.error('[API] Protected endpoint called without authentication:', config.url);
-          // Wait a bit for Firebase to initialize
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Try one more time
-          const retryUser = auth.currentUser;
-          if (retryUser) {
-            const idToken = await retryUser.getIdToken();
-            config.headers.Authorization = `Bearer ${idToken}`;
-            if (import.meta.env.DEV) {
-              const maskedToken = idToken.substring(0, 10) + '...' + idToken.substring(idToken.length - 10);
-              console.log('[API] Token added after retry for:', retryUser.email, `(token: ${maskedToken})`);
-            }
-          } else {
-            console.error('[API] Still no user after retry - request will likely fail');
-          }
-        }
-        // Don't reject - some endpoints might be public or handle missing auth
-        // The backend will return 401 if auth is required
+    // Add user ID from localStorage if available
+    const userId = localStorage.getItem('userId');
+    if (userId) {
+      config.headers['X-User-ID'] = userId;
+      if (import.meta.env.DEV) {
+        console.log(`[API] Added user ID header for request to:`, config.url);
       }
-    } catch (error) {
-      console.error('[API] Failed to get Firebase token:', error);
-      // If token fetch fails, let the request continue and let backend handle it
-      // This prevents blocking all requests due to transient token errors
+    } else {
+      if (import.meta.env.DEV) {
+        console.warn('[API] No user ID available for request to:', config.url);
+      }
     }
     
     // Add timestamp for debugging

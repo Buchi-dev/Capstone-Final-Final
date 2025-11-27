@@ -26,30 +26,30 @@ const router = express.Router();
 /**
  * @route   GET /api/v1/devices
  * @desc    Get all devices (with filters)
- * @access  Authenticated users
+ * @access  Public
  */
-router.get('/', ensureAuthenticated, validatePagination, getAllDevices);
+router.get('/', validatePagination, getAllDevices);
 
 /**
  * @route   GET /api/v1/devices/stats
  * @desc    Get device statistics
- * @access  Authenticated users
+ * @access  Public
  */
-router.get('/stats', ensureAuthenticated, getDeviceStats);
+router.get('/stats', getDeviceStats);
 
 /**
  * @route   GET /api/v1/devices/:id
  * @desc    Get device by ID
- * @access  Authenticated users
+ * @access  Public
  */
-router.get('/:id', ensureAuthenticated, validateMongoId, getDeviceById);
+router.get('/:id', validateMongoId, getDeviceById);
 
 /**
  * @route   GET /api/v1/devices/:id/readings
  * @desc    Get device sensor readings
- * @access  Authenticated users
+ * @access  Public
  */
-router.get('/:id/readings', ensureAuthenticated, validateMongoId, validateDateRange, validatePagination, getDeviceReadings);
+router.get('/:id/readings', validateMongoId, validateDateRange, validatePagination, getDeviceReadings);
 
 /**
  * @route   PATCH /api/v1/devices/:id
