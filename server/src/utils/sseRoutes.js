@@ -21,13 +21,6 @@ const { ensureApiKey } = require('../middleware/apiKey.middleware');
 const logger = require('./logger');
 
 /**
- * GET /sse/:deviceId
- * Device SSE endpoint for receiving commands
- * Requires API key authentication
- */
-router.get('/:deviceId', ensureApiKey, deviceSSEConnection);
-
-/**
  * GET /sse/stream
  * Main SSE endpoint - establishes real-time connection
  * 
@@ -40,6 +33,13 @@ router.get('/:deviceId', ensureApiKey, deviceSSEConnection);
 router.get('/stream', sseMiddleware, (req, res) => {
   setupSSEConnection(req, res);
 });
+
+/**
+ * GET /sse/:deviceId
+ * Device SSE endpoint for receiving commands
+ * Requires API key authentication
+ */
+router.get('/:deviceId', ensureApiKey, deviceSSEConnection);
 
 /**
  * POST /sse/subscribe
