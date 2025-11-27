@@ -68,7 +68,15 @@ const createTransporter = () => {
     return null;
   }
 
-  return nodemailer.createTransport({
+  logger.info('[Email Service] Creating SMTP transporter', {
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    secure: process.env.SMTP_SECURE,
+    user: process.env.SMTP_USER,
+    fromName: process.env.SMTP_FROM_NAME,
+  });
+
+  const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: parseInt(process.env.SMTP_PORT || '587'),
     secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
@@ -76,7 +84,26 @@ const createTransporter = () => {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
+    debug: true, // Enable debug logging
+    logger: true, // Enable internal logging
   });
+
+  // Test the connection
+  transporter.verify((error, success) => {
+    if (error) {
+      logger.error('[Email Service] SMTP connection verification failed', {
+        error: error.message,
+        code: error.code,
+        errno: error.errno,
+        syscall: error.syscall,
+        hostname: error.hostname,
+      });
+    } else {
+      logger.info('[Email Service] SMTP connection verified successfully');
+    }
+  });
+
+  return transporter;
 };
 
 /**
@@ -86,9 +113,17 @@ const createTransporter = () => {
  * @returns {Promise<boolean>} - Success status
  */
 async function sendAlertEmail(user, alert) {
+  logger.info('[Email Service] Starting email send process', {
+    recipientEmail: user.email,
+    alertId: alert.alertId,
+    severity: alert.severity,
+    parameter: alert.parameter,
+  });
+
   const transporter = createTransporter();
-  
+
   if (!transporter) {
+    logger.error('[Email Service] No transporter available');
     return false;
   }
 
@@ -100,6 +135,21 @@ async function sendAlertEmail(user, alert) {
     };
 
     const appUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+
+    logger.debug('[Email Service] Preparing email template', {
+      severity: alert.severity,
+      templateData: {
+        alertEmoji: severityEmoji[alert.severity],
+        alertSeverity: alert.severity,
+        alertSeverityClass: alert.severity.toLowerCase(),
+        alertMessage: alert.message,
+        deviceId: alert.deviceId,
+        parameter: alert.parameter,
+        value: alert.value,
+        timestamp: alert.timestamp.toLocaleString(),
+        appUrl,
+      },
+    });
 
     // Load and render template
     const template = loadTemplate('alert-email');
@@ -119,6 +169,11 @@ async function sendAlertEmail(user, alert) {
       from: `"${process.env.SMTP_FROM_NAME || 'Water Quality Monitor'}" <${process.env.SMTP_USER}>`,
       to: user.email,
       subject: `${severityEmoji[alert.severity]} ${alert.severity} Alert: ${alert.message}`,
+      headers: {
+        'X-Priority': alert.severity === 'Critical' ? '1' : '3',
+        'X-Mailer': 'Water Quality Monitor System',
+        'List-Unsubscribe': `<${appUrl}/unsubscribe?email=${encodeURIComponent(user.email)}>`,
+      },
       text: `
 ${alert.severity} Alert
 ==================
@@ -133,17 +188,34 @@ View alert details: ${appUrl}/admin/alerts
       html: emailHtml,
     };
 
+    logger.info('[Email Service] Sending email', {
+      from: mailOptions.from,
+      to: mailOptions.to,
+      subject: mailOptions.subject,
+      smtpHost: process.env.SMTP_HOST,
+      smtpPort: process.env.SMTP_PORT,
+    });
+
     const info = await transporter.sendMail(mailOptions);
     logger.info('[Email Service] Alert email sent successfully', {
       recipientEmail: user.email,
       messageId: info.messageId,
       alertSeverity: alert.severity,
+      response: info.response,
+      envelope: info.envelope,
     });
     return true;
   } catch (error) {
     logger.error('[Email Service] Error sending alert email', {
       recipientEmail: user.email,
+      alertId: alert.alertId,
       error: error.message,
+      code: error.code,
+      errno: error.errno,
+      syscall: error.syscall,
+      hostname: error.hostname,
+      command: error.command,
+      stack: error.stack,
     });
     return false;
   }
@@ -173,6 +245,10 @@ async function testEmailConfiguration(recipientEmail) {
         from: `"${process.env.SMTP_FROM_NAME || 'Water Quality Monitor'}" <${process.env.SMTP_USER}>`,
         to: recipientEmail,
         subject: 'Test Email - Water Quality Monitor',
+        headers: {
+          'X-Mailer': 'Water Quality Monitor System',
+          'X-Test-Email': 'true',
+        },
         text: 'This is a test email from your Water Quality Monitoring System. If you received this, your email configuration is working correctly!',
         html: emailHtml,
       };

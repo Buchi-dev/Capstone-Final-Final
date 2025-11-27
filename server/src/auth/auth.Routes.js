@@ -131,6 +131,39 @@ router.get('/status', optionalAuth, (req, res) => {
 });
 
 /**
+ * @route   POST /auth/test-email
+ * @desc    Test email configuration by sending a test email
+ * @access  Public (temporarily for testing)
+ */
+router.post('/test-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email address is required',
+      });
+    }
+
+    const { testEmailConfiguration } = require('../utils/email.service');
+    await testEmailConfiguration(email);
+
+    res.json({
+      success: true,
+      message: 'Test email sent successfully. Check your inbox.',
+    });
+  } catch (error) {
+    logger.error('Test email failed:', { error: error.message });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send test email',
+      error: error.message,
+    });
+  }
+});
+
+/**
  * @route   POST /auth/logout
  * @desc    Logout user (client-side handles Firebase signOut)
  * @access  Public

@@ -24,9 +24,9 @@ const router = express.Router();
 /**
  * @route   GET /api/v1/users
  * @desc    Get all users (with filters)
- * @access  Admin only
+ * @access  Public (temporarily for testing)
  */
-router.get('/', ensureAdmin, validatePagination, getAllUsers);
+router.get('/', validatePagination, getAllUsers);
 
 /**
  * @route   GET /api/v1/users/:id

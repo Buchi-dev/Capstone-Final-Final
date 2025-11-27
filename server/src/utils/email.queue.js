@@ -83,17 +83,30 @@ const initializeEmailQueue = (redisUrl) => {
 const processEmailJob = async (job) => {
   const { type, recipient, data } = job.data;
 
-  try {
-    logger.debug('Processing email job:', {
-      jobId: job.id,
-      type,
-      recipient,
-    });
+  logger.info('Processing email job:', {
+    jobId: job.id,
+    type,
+    recipient: recipient.email,
+    attempts: job.attemptsMade,
+    maxAttempts: EMAIL.RETRY_ATTEMPTS,
+    jobData: {
+      alertId: data?.alert?.alertId,
+      severity: data?.alert?.severity,
+      parameter: data?.alert?.parameter,
+    },
+  });
 
+  try {
     let success = false;
 
     switch (type) {
       case 'alert':
+        logger.info('Sending alert email:', {
+          jobId: job.id,
+          recipient: recipient.email,
+          alertId: data.alert.alertId,
+          severity: data.alert.severity,
+        });
         success = await sendAlertEmail(recipient, data.alert);
         break;
 
@@ -102,16 +115,30 @@ const processEmailJob = async (job) => {
     }
 
     if (!success) {
+      logger.error('Email sending returned false:', {
+        jobId: job.id,
+        type,
+        recipient: recipient.email,
+      });
       throw new Error('Email sending failed');
     }
 
-    return { success: true, recipient };
+    logger.info('Email job completed successfully:', {
+      jobId: job.id,
+      type,
+      recipient: recipient.email,
+    });
+
+    return { success: true, recipient: recipient.email };
   } catch (error) {
     logger.error('Email job processing error:', {
       jobId: job.id,
       type,
-      recipient,
+      recipient: recipient.email,
       error: error.message,
+      stack: error.stack,
+      attempts: job.attemptsMade,
+      maxAttempts: EMAIL.RETRY_ATTEMPTS,
     });
     throw error; // Re-throw to trigger retry
   }
@@ -124,20 +151,55 @@ const processEmailJob = async (job) => {
  * @returns {Promise<Object>} Job object
  */
 const queueAlertEmail = async (user, alert) => {
+  logger.info('Queueing alert email:', {
+    userId: user._id,
+    userEmail: user.email,
+    alertId: alert.alertId,
+    severity: alert.severity,
+    parameter: alert.parameter,
+    queueAvailable: !!emailQueue,
+  });
+
   if (!emailQueue) {
     // Fallback to synchronous sending if queue not available
-    logger.warn('Email queue not available, sending synchronously');
-    if (typeof sendAlertEmail === 'function') {
-      await sendAlertEmail(user, alert);
+    logger.warn('Email queue not available, attempting synchronous send', {
+      userEmail: user.email,
+      alertId: alert.alertId,
+    });
+    try {
+      if (typeof sendAlertEmail === 'function') {
+        const success = await sendAlertEmail(user, alert);
+        logger.info('Synchronous email send result:', {
+          userEmail: user.email,
+          alertId: alert.alertId,
+          success,
+        });
+        return { synchronous: true, success };
+      } else {
+        logger.error('sendAlertEmail function not available');
+        return { synchronous: true, success: false };
+      }
+    } catch (syncError) {
+      logger.error('Synchronous email send failed:', {
+        userEmail: user.email,
+        alertId: alert.alertId,
+        error: syncError.message,
+      });
+      return { synchronous: true, success: false };
     }
-    return null;
   }
 
   try {
+    logger.info('Adding email job to queue:', {
+      userEmail: user.email,
+      alertId: alert.alertId,
+      severity: alert.severity,
+    });
+
     const job = await emailQueue.add(
       {
         type: 'alert',
-        recipient: user.email,
+        recipient: user,
         data: {
           alert,
         },
@@ -147,17 +209,21 @@ const queueAlertEmail = async (user, alert) => {
       }
     );
 
-    logger.debug('Alert email queued:', {
+    logger.info('Alert email successfully queued:', {
       jobId: job.id,
       recipient: user.email,
       alertId: alert.alertId,
+      severity: alert.severity,
+      queueName: 'email-notifications',
     });
 
     return job;
   } catch (error) {
     logger.error('Failed to queue alert email:', {
       recipient: user.email,
+      alertId: alert.alertId,
       error: error.message,
+      stack: error.stack,
     });
     throw error;
   }

@@ -71,7 +71,17 @@ async function initializeChangeStreams() {
         if (change.operationType === 'insert') {
           // New alert created
           const newAlert = change.fullDocument;
-          
+
+          logger.info('[Change Streams] New alert detected:', {
+            alertId: newAlert.alertId,
+            deviceId: newAlert.deviceId,
+            severity: newAlert.severity,
+            parameter: newAlert.parameter,
+            value: newAlert.value,
+            message: newAlert.message,
+            timestamp: newAlert.timestamp,
+          });
+
           // Broadcast to all clients subscribed to alerts
           global.io.to('alerts').emit('alert:new', {
             alert: newAlert,
@@ -88,11 +98,28 @@ async function initializeChangeStreams() {
 
           // Send email notifications to subscribed users
           try {
+            logger.info('[Change Streams] Querying for email subscribers:', {
+              severity: newAlert.severity,
+              alertId: newAlert.alertId,
+            });
+
             const subscribedUsers = await User.find({
               'notificationPreferences.emailNotifications': true,
               'notificationPreferences.alertSeverities': { $in: [newAlert.severity] },
               status: 'active',
               role: { $in: ['admin', 'staff'] }
+            });
+
+            logger.info('[Change Streams] Found subscribed users:', {
+              count: subscribedUsers.length,
+              alertId: newAlert.alertId,
+              severity: newAlert.severity,
+              users: subscribedUsers.map(u => ({
+                id: u._id,
+                email: u.email,
+                role: u.role,
+                preferences: u.notificationPreferences,
+              })),
             });
 
             if (subscribedUsers.length > 0) {
@@ -103,11 +130,23 @@ async function initializeChangeStreams() {
 
               for (const user of subscribedUsers) {
                 try {
+                  logger.info('[Change Streams] Queueing email for user:', {
+                    userId: user._id,
+                    userEmail: user.email,
+                    alertId: newAlert.alertId,
+                    severity: newAlert.severity,
+                  });
                   await queueAlertEmail(user, newAlert);
+                  logger.info('[Change Streams] Email queued successfully:', {
+                    userEmail: user.email,
+                    alertId: newAlert.alertId,
+                  });
                 } catch (emailError) {
                   logger.error(`Failed to queue alert email for ${user.email}:`, {
                     error: emailError.message,
                     alertId: newAlert.alertId,
+                    userId: user._id,
+                    stack: emailError.stack,
                   });
                 }
               }
