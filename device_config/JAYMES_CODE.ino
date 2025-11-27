@@ -3,13 +3,18 @@
 
 // Define analog input pins
 const int analogPin0 = A0; // TDS sensor (A0)
-const int analogPin1 = A1; // PH
+const int analogPin1 = A0; // PH
 const int analogPin2 = A2; // TURBIDITY
 
 // Calibration data: ADC readings -> PPM measured values
-const int CALIB_COUNT = 4;
+const int CALIB_COUNT = 20;
 const int calibADC[CALIB_COUNT] = {105, 116, 224, 250};
 const float calibPPM[CALIB_COUNT] = {236.0, 278.0, 1220.0, 1506.0};
+
+// pH calibration data
+const int PH_CALIB_COUNT = 3;
+const int phCalibADC[PH_CALIB_COUNT] = {482, 503, 532};
+const float phCalibPH[PH_CALIB_COUNT] = {9.81, 6.81, 4.16};
 
 // TDS Calibration correction factor
 // Calculated from: 220/179 * 0.479 = 0.589
@@ -29,6 +34,13 @@ int turbBuffer[TURB_SMA_SIZE];
 int turbIndex = 0;
 long turbSum = 0;
 int turbCount = 0;
+
+// pH smoothing
+const int PH_SMA_SIZE = 5; // lightweight smoothing for pH
+int phBuffer[PH_SMA_SIZE];
+int phIndex = 0;
+long phSum = 0;
+int phCount = 0;
 
 // Precomputed linear fit fallback (slope/intercept). Calculated in setup().
 float fitSlope = 0.0;
@@ -83,24 +95,59 @@ float adcToPPM(int adc) {
   return fitSlope * (float)adc + fitIntercept;
 }
 
+// Convert ADC reading to pH using piecewise linear interpolation
+float adcToPH(int adc) {
+  if (PH_CALIB_COUNT <= 0) return 7.0;
+
+  // if adc is exactly one of calibration points
+  for (int i = 0; i < PH_CALIB_COUNT; ++i) {
+    if (adc == phCalibADC[i]) return phCalibPH[i];
+  }
+
+  // find which segment adc lies in
+  for (int i = 0; i < PH_CALIB_COUNT - 1; ++i) {
+    int x0 = phCalibADC[i];
+    int x1 = phCalibADC[i + 1];
+    if (adc >= x0 && adc <= x1) {
+      float y0 = phCalibPH[i];
+      float y1 = phCalibPH[i + 1];
+      float slope = (y1 - y0) / (float)(x1 - x0);
+      return y0 + slope * (adc - x0);
+    }
+  }
+
+  // adc < smallest calibration -> extrapolate using first segment
+  if (adc < phCalibADC[0] && PH_CALIB_COUNT >= 2) {
+    float slope = (phCalibPH[1] - phCalibPH[0]) / (float)(phCalibADC[1] - phCalibADC[0]);
+    return phCalibPH[0] + slope * (adc - phCalibADC[0]);
+  }
+
+  // adc > largest calibration -> extrapolate using last segment
+  if (adc > phCalibADC[PH_CALIB_COUNT - 1] && PH_CALIB_COUNT >= 2) {
+    int last = PH_CALIB_COUNT - 1;
+    float slope = (phCalibPH[last] - phCalibPH[last - 1]) / (float)(phCalibADC[last] - phCalibADC[last - 1]);
+    return phCalibPH[last] + slope * (adc - phCalibADC[last]);
+  }
+
+  // fallback
+  return 7.0;
+}
+
 // Convert turbidity ADC (10-bit) to NTU using calibrated ranges.
-// Based on calibration: ADC 265 = 0 NTU (Very Clear), ADC 250 = 5 NTU (Very Cloudy)
+// Based on calibration: ADC 172 = 0 NTU (Very Clean), ADC 141 = 5 NTU (Very Cloudy)
 float calculateTurbidityNTU(int adcValue) {
-  // Linear calibration: slope = (5 - 0) / (250 - 265) = -1/3
-  // intercept = 0 - (-1/3)*265 ≈ 88.45
-  float slope = -1.0 / 3.0;
-  float intercept = 88.45;
+  // Linear calibration: slope = (5 - 0) / (141 - 172) ≈ -0.1613
+  // intercept = 0 - (-0.1613)*172 ≈ 27.74
+  float slope = -0.1613;
+  float intercept = 27.74;
   float ntu = slope * (float)adcValue + intercept;
   if (ntu < 0) ntu = 0;  // Clamp to 0 for very clear water
   return ntu;
 }
 
 String getTurbidityStatus(float ntu) {
-  if (ntu < EXCELLENT_THRESHOLD) return "Excellent";
-  if (ntu < GOOD_THRESHOLD) return "Good";
-  if (ntu < ACCEPTABLE_THRESHOLD) return "Acceptable";
-  if (ntu < POOR_THRESHOLD) return "Poor";
-  return "Unacceptable";
+  if (ntu < 35.0) return "Very Clean";
+  return "Very Cloudy";
 }
 
 void setup() {
@@ -142,6 +189,13 @@ void loop() {
   int value1 = analogRead(analogPin1);
   int value2 = analogRead(analogPin2);
 
+  // Add value1 into ph buffer
+  phSum -= phBuffer[phIndex];
+  phBuffer[phIndex] = value1;
+  phSum += phBuffer[phIndex];
+  phIndex = (phIndex + 1) % PH_SMA_SIZE;
+  if (phCount < PH_SMA_SIZE) phCount++;
+
   // Add value2 into turb buffer
   turbSum -= turbBuffer[turbIndex];
   turbBuffer[turbIndex] = value2;
@@ -169,6 +223,9 @@ void loop() {
   float ntu = calculateTurbidityNTU(averagedTurbADC);
   String turbStatus = getTurbidityStatus(ntu);
 
+  int averagedPHADC = phSum / max(1, phCount);
+  float ph = adcToPH(averagedPHADC);
+
   // Print useful values
   Serial.print("A0(raw): ");
   Serial.print(value0);
@@ -180,9 +237,14 @@ void loop() {
   Serial.println(calibratedPPM, 1);
 
   // Print other sensors
-  Serial.print("A1: ");
+  Serial.print("A1(raw): ");
   Serial.print(value1);
-  Serial.print(" | A2(raw): ");
+  Serial.print(" | A1(avg): ");
+  Serial.print(averagedPHADC);
+  Serial.print(" | pH: ");
+  Serial.println(ph, 2);
+
+  Serial.print("A2(raw): ");
   Serial.print(value2);
   Serial.print(" | A2(avg): ");
   Serial.print(averagedTurbADC);

@@ -72,10 +72,10 @@
 #define WIFI_PASSWORD "Pldtadmin@2024"
 
 // API Server Configuration
-#define API_SERVER "your-server-ip"  // Update with your server IP (without http://)
-#define API_PORT 5000
+#define API_SERVER "puretrack-api.onrender.com"  // Server hostname (no http:// or https://)
+#define API_PORT 443  // 443 for HTTPS, 80 for HTTP
 #define API_ENDPOINT "/api/v1/devices/readings"
-#define API_KEY "your_device_api_key_here"  // Must match DEVICE_API_KEY in server .env
+#define API_KEY "6a8d48a00823c869ad23c27cc34a3d446493cf35d6924d8f9d54e17c4565737a"  // Must match DEVICE_API_KEY in server .env
 
 // Device Configuration
 #define DEVICE_ID "arduino_uno_r4_002"
@@ -96,7 +96,7 @@
 // GLOBAL OBJECTS
 // ===========================
 
-WiFiClient wifiClient;
+WiFiSSLClient wifiClient;  // Use SSL client for HTTPS connections
 HttpClient httpClient = HttpClient(wifiClient, API_SERVER, API_PORT);
 ArduinoLEDMatrix matrix;   // LED Matrix object for 12x8 display
 
@@ -298,6 +298,10 @@ void connectWiFi() {
   Serial.print("Connecting to WiFi: ");
   Serial.println(WIFI_SSID);
   
+  // Disconnect first to ensure clean connection
+  WiFi.disconnect();
+  delay(100);
+  
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   
   int attempts = 0;
@@ -314,8 +318,28 @@ void connectWiFi() {
     connectWiFi();  // Recursive retry
   } else {
     Serial.println("\n✓ WiFi connected!");
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
+    
+    // Wait for valid IP address (not 0.0.0.0)
+    attempts = 0;
+    while (WiFi.localIP() == IPAddress(0, 0, 0, 0) && attempts < 20) {
+      Serial.print("Waiting for IP address.");
+      delay(500);
+      attempts++;
+    }
+    
+    IPAddress ip = WiFi.localIP();
+    if (ip == IPAddress(0, 0, 0, 0)) {
+      Serial.println("\n✗ Failed to obtain IP address!");
+      Serial.println("Retrying WiFi connection...");
+      delay(2000);
+      connectWiFi();  // Recursive retry
+    } else {
+      Serial.print("IP address: ");
+      Serial.println(ip);
+      Serial.print("Signal strength (RSSI): ");
+      Serial.print(WiFi.RSSI());
+      Serial.println(" dBm");
+    }
   }
 }
 
@@ -324,20 +348,28 @@ void connectWiFi() {
 // ===========================
 
 void testServerConnection() {
-  Serial.print("Testing connection to: ");
-  Serial.print(API_SERVER);
-  Serial.print(":");
-  Serial.println(API_PORT);
+  Serial.print("Testing connection to: https://");
+  Serial.println(API_SERVER);
+  Serial.println("Sending GET request to /health endpoint...");
   
+  httpClient.beginRequest();
   httpClient.get("/health");
+  httpClient.sendHeader("Host", API_SERVER);  // Required by Cloudflare
+  httpClient.sendHeader("User-Agent", "Arduino-UNO-R4/5.0.0");
+  httpClient.endRequest();
   
   int statusCode = httpClient.responseStatusCode();
   String response = httpClient.responseBody();
   
-  if (statusCode > 0) {
+  Serial.print("Health check status code: ");
+  Serial.println(statusCode);
+  
+  if (statusCode > 0 && statusCode < 400) {
     serverConnected = true;
     Serial.print("✓ Server responded with status code: ");
     Serial.println(statusCode);
+    Serial.print("Response: ");
+    Serial.println(response);
     
     // Switch to IDLE state if we were connecting
     if (matrixState == CONNECTING) {
@@ -346,7 +378,14 @@ void testServerConnection() {
     }
   } else {
     serverConnected = false;
-    Serial.println("✗ Server connection failed!");
+    Serial.print("✗ Server connection failed with status: ");
+    Serial.println(statusCode);
+    Serial.print("Response: ");
+    Serial.println(response);
+    Serial.println("Check:");
+    Serial.println("  1. WiFi connection is stable");
+    Serial.println("  2. Server URL is correct");
+    Serial.println("  3. Server is running and accessible");
   }
 }
 
@@ -433,18 +472,25 @@ void publishSensorData() {
   StaticJsonDocument<256> doc;
   doc["deviceId"] = DEVICE_ID;
   doc["tds"] = tds;                    // TDS in ppm
-  doc["ph"] = ph;                      // pH value (0-14)
+  doc["pH"] = ph;                      // pH value (0-14) - NOTE: Server expects "pH" with capital H
   doc["turbidity"] = turbidity;        // Turbidity in NTU
-  doc["timestamp"] = millis();         // Device uptime
+  // timestamp is optional - server will use current time if not provided
   
   String payload;
   serializeJson(doc, payload);
   
+  // Debug: Print JSON payload
+  Serial.println("--- Sending JSON Payload ---");
+  Serial.println(payload);
+  Serial.println("----------------------------");
+  
   // Send HTTP POST request
   httpClient.beginRequest();
   httpClient.post(API_ENDPOINT);
+  httpClient.sendHeader("Host", API_SERVER);  // Required by Cloudflare
   httpClient.sendHeader("Content-Type", "application/json");
   httpClient.sendHeader("x-api-key", API_KEY);
+  httpClient.sendHeader("User-Agent", "Arduino-UNO-R4/5.0.0");
   httpClient.sendHeader("Content-Length", payload.length());
   httpClient.beginBody();
   httpClient.print(payload);
@@ -453,13 +499,19 @@ void publishSensorData() {
   int statusCode = httpClient.responseStatusCode();
   String response = httpClient.responseBody();
   
+  Serial.print("Server Status Code: ");
+  Serial.println(statusCode);
+  
   if (statusCode == 200) {
     serverConnected = true;
-    Serial.print("✓ HTTP POST successful: ");
-    Serial.println(statusCode);
+    Serial.println("✓ HTTP POST successful!");
+    Serial.print("Response: ");
+    Serial.println(response);
   } else {
     serverConnected = false;
-    Serial.print("✗ HTTP POST failed: ");
+    Serial.print("✗ HTTP POST failed with status: ");
     Serial.println(statusCode);
+    Serial.print("Error response: ");
+    Serial.println(response);
   }
 }

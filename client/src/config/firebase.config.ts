@@ -36,6 +36,7 @@ setPersistence(auth, browserLocalPersistence).catch((error) => {
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: 'select_account', // Always show account selection
+  hd: 'smu.edu.ph', // Restrict to SMU domain only
 });
 
 export default app;

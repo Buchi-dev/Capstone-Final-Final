@@ -28,6 +28,15 @@ router.post('/verify-token', async (req, res) => {
     // Get Firebase user data
     const firebaseUser = await getFirebaseUser(decodedToken.uid);
 
+    // Validate email domain - only allow SMU emails
+    const userEmail = decodedToken.email || firebaseUser.email;
+    if (!userEmail || !userEmail.endsWith('@smu.edu.ph')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Only SMU email addresses (@smu.edu.ph) are allowed.',
+      });
+    }
+
     // Check if user exists in database
     let user = await User.findOne({ firebaseUid: decodedToken.uid });
 
