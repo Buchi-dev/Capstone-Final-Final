@@ -69,20 +69,39 @@ export default defineConfig({
   server: {
     host: true, // Listen on all addresses including LAN
     port: 5173,
+    // proxy: {
+    //   '/api': {
+    //     target: 'https://puretrack-api.onrender.com',
+    //     changeOrigin: true,
+    //     secure: true,
+    //     rewrite: (path) => path.replace(/^\/api/, '/api/v1'),
+    //   },
+    //   '/auth': {
+    //     target: 'https://puretrack-api.onrender.com',
+    //     changeOrigin: true,
+    //     secure: true,
+    //   },
+    //   '/socket.io': {
+    //     target: 'https://puretrack-api.onrender.com',
+    //     changeOrigin: true,
+    //     secure: true,
+    //     ws: true,
+    //   }
+    // }
     proxy: {
       '/api': {
-        target: 'https://puretrack-api.onrender.com',
+        target: 'http://localhost:5000',
         changeOrigin: true,
         secure: true,
         rewrite: (path) => path.replace(/^\/api/, '/api/v1'),
       },
       '/auth': {
-        target: 'https://puretrack-api.onrender.com',
+        target: 'http://localhost:5000',
         changeOrigin: true,
         secure: true,
       },
       '/socket.io': {
-        target: 'https://puretrack-api.onrender.com',
+        target: 'http://localhost:5000',
         changeOrigin: true,
         secure: true,
         ws: true,

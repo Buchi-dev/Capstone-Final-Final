@@ -1,7 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 
 // Protected Route Components
-import { PublicRoute, ApprovedRoute, AdminRoute } from '../components/ProtectedRoute';
+import { PublicRoute, ProtectedRoute, ApprovedRoute, AdminRoute, AccountCompletionRoute } from '../components/ProtectedRoute';
 import { RootRedirect } from '../components/RootRedirect';
 
 // Admin Pages
@@ -64,15 +64,27 @@ const router = createBrowserRouter([
   },
   {
     path: '/auth/account-completion',
-    element: <AuthAccountCompletion />,
+    element: (
+      <AccountCompletionRoute>
+        <AuthAccountCompletion />
+      </AccountCompletionRoute>
+    ),
   },
   {
     path: '/auth/pending-approval',
-    element: <AuthPendingApproval />,
+    element: (
+      <ProtectedRoute>
+        <AuthPendingApproval />
+      </ProtectedRoute>
+    ),
   },
   {
     path: '/auth/account-suspended',
-    element: <AuthAccountSuspended />,
+    element: (
+      <ProtectedRoute>
+        <AuthAccountSuspended />
+      </ProtectedRoute>
+    ),
   },
 
   // ==================== ADMIN ROUTES ====================

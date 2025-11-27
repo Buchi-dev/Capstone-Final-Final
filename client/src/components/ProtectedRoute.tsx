@@ -242,3 +242,48 @@ export function RoleRoute({ children, allowedRoles }: RoleRouteProps) {
 
   return <>{children}</>;
 }
+
+/**
+ * Account Completion Route - Only accessible to pending users with incomplete profiles
+ * Redirects based on user status and profile completeness
+ */
+export function AccountCompletionRoute({ children }: ProtectedRouteProps) {
+  const { isAuthenticated, user, loading, isPending, isSuspended, isActive } = useAuth();
+  const location = useLocation();
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/auth/login" state={{ from: location }} replace />;
+  }
+
+  if (!user) {
+    return <Navigate to="/auth/login" replace />;
+  }
+
+  // If user is active, redirect to dashboard
+  if (isActive) {
+    const redirectPath = user.role === "admin" ? "/admin/dashboard" : "/staff/dashboard";
+    return <Navigate to={redirectPath} replace />;
+  }
+
+  // If suspended, redirect to suspended page
+  if (isSuspended) {
+    return <Navigate to="/auth/account-suspended" replace />;
+  }
+
+  // If pending and profile is complete, redirect to pending approval
+  if (isPending && user.department && user.phoneNumber) {
+    return <Navigate to="/auth/pending-approval" replace />;
+  }
+
+  // If pending and profile is incomplete, allow access
+  if (isPending && (!user.department || !user.phoneNumber)) {
+    return <>{children}</>;
+  }
+
+  // Fallback - redirect to login
+  return <Navigate to="/auth/login" replace />;
+}
