@@ -13,6 +13,9 @@ class MQTTService {
     this.connected = false;
     this.messageHandlers = new Map();
     this.deviceSubscriptions = new Set();
+    this.presenceResponses = new Map(); // Track presence responses during queries
+    this.presenceQueryActive = false;
+    this.presenceTimeout = null;
   }
 
   /**
@@ -91,6 +94,8 @@ class MQTTService {
       MQTT_CONFIG.TOPICS.ALL_DEVICE_DATA,
       // MQTT_CONFIG.TOPICS.ALL_DEVICE_STATUS, // Removed per spec - backend doesn't need status
       MQTT_CONFIG.TOPICS.ALL_DEVICE_REGISTER,
+      MQTT_CONFIG.TOPICS.ALL_PRESENCE_RESPONSES, // Presence responses from devices
+      MQTT_CONFIG.TOPICS.ALL_DEVICE_PRESENCE,     // Individual device presence (retained)
     ];
 
     topics.forEach(topic => {
@@ -128,6 +133,8 @@ class MQTTService {
         this.handleDeviceStatus(deviceId, data);
       } else if (topic.includes('/register')) {
         this.handleDeviceRegistration(deviceId, data);
+      } else if (topic === MQTT_CONFIG.TOPICS.PRESENCE_RESPONSE) {
+        this.handlePresenceResponse(data);
       }
 
     } catch (error) {
@@ -228,6 +235,31 @@ class MQTTService {
   }
 
   /**
+   * Handle presence response messages from devices
+   */
+  handlePresenceResponse(data) {
+    // Only process responses if a presence query is active
+    if (!this.presenceQueryActive) {
+      logger.debug('[MQTT Presence] Ignoring presence response - no active query');
+      return;
+    }
+
+    try {
+      if (data.response === 'i_am_online' && data.deviceId) {
+        this.presenceResponses.set(data.deviceId, {
+          timestamp: new Date(),
+          ...data,
+        });
+        logger.debug(`[MQTT Presence] Device ${data.deviceId} responded to presence query`);
+      } else {
+        logger.warn('[MQTT Presence] Invalid presence response format:', data);
+      }
+    } catch (error) {
+      logger.warn('[MQTT Presence] Failed to process presence response:', error.message);
+    }
+  }
+
+  /**
    * Send command to specific device
    */
   sendCommandToDevice(deviceId, command, data = {}) {
@@ -318,6 +350,76 @@ class MQTTService {
   }
 
   /**
+   * Publish presence query to check which devices are online
+   * @param {number} timeoutMs - How long to wait for responses (default: 10000ms)
+   * @returns {Promise<Array>} - Array of device IDs that responded
+   */
+  async queryDevicePresence(timeoutMs = 10000) {
+    return new Promise((resolve) => {
+      if (!this.connected) {
+        logger.warn('[MQTT Presence] Cannot query presence - MQTT not connected');
+        resolve([]);
+        return;
+      }
+
+      // Clear any existing presence data
+      this.presenceResponses.clear();
+      this.presenceQueryActive = true;
+
+      logger.info('[MQTT Presence] Publishing presence query...');
+
+      // Publish "who is online?" message
+      this.publish(MQTT_CONFIG.TOPICS.PRESENCE_QUERY, {
+        query: 'who_is_online',
+        timestamp: new Date().toISOString(),
+        serverId: MQTT_CONFIG.CLIENT_ID,
+      }, { qos: 1 });
+
+      // Set timeout for collecting responses
+      this.presenceTimeout = setTimeout(() => {
+        this.presenceQueryActive = false;
+        const onlineDevices = Array.from(this.presenceResponses.keys());
+        logger.info(`[MQTT Presence] Presence query complete. ${onlineDevices.length} devices responded:`, onlineDevices);
+        resolve(onlineDevices);
+      }, timeoutMs);
+
+      // Listen for responses during the query window
+      // Note: Presence responses are handled by the main handleMessage method
+      // We just need to set the query active flag
+    });
+  }
+
+  /**
+   * Send command to specific device
+   */
+  sendCommandToDevice(deviceId, command, data = {}) {
+    const topic = `devices/${deviceId}/commands`;
+    const message = {
+      command,
+      timestamp: new Date().toISOString(),
+      ...data,
+    };
+
+    return this.publish(topic, message, { qos: 1 });
+  }
+
+  /**
+   * Set up Last Will and Testament for a device (called when device connects)
+   * @param {string} deviceId - Device ID
+   */
+  setupDeviceLWT(deviceId) {
+    // Publish retained "online" message for the device
+    const topic = `devices/${deviceId}/presence`;
+    this.publish(topic, {
+      deviceId,
+      status: 'online',
+      timestamp: new Date().toISOString(),
+    }, { qos: 1, retain: true });
+
+    logger.debug(`[MQTT Presence] Set up LWT for device ${deviceId}`);
+  }
+
+  /**
    * Get connection status
    */
   getStatus() {
@@ -326,6 +428,7 @@ class MQTTService {
       broker: MQTT_CONFIG.BROKER_URL,
       clientId: MQTT_CONFIG.CLIENT_ID,
       subscriptions: Array.from(this.deviceSubscriptions),
+      presenceQueryActive: this.presenceQueryActive,
     };
   }
 }

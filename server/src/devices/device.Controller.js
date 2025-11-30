@@ -347,6 +347,11 @@ const processSensorData = asyncHandler(async (req, res) => {
   
   await device.save();
 
+  // Set up MQTT Last Will and Testament for presence detection
+  if (mqttService && mqttService.setupDeviceLWT) {
+    mqttService.setupDeviceLWT(trimmedDeviceId);
+  }
+
   // Save sensor reading with trimmed deviceId
   const reading = new SensorReading({
     deviceId: trimmedDeviceId,
@@ -600,6 +605,11 @@ const deviceRegister = asyncHandler(async (req, res) => {
     if (name && !device.name) device.name = name;
     
     await device.save();
+
+    // Set up MQTT Last Will and Testament for presence detection
+    if (mqttService && mqttService.setupDeviceLWT) {
+      mqttService.setupDeviceLWT(trimmedDeviceId);
+    }
 
     // Check registration status
     if (device.isRegistered) {

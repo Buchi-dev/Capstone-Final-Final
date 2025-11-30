@@ -42,10 +42,17 @@ const MQTT_CONFIG = {
     // Server publishes commands to these topics
     DEVICE_COMMANDS: 'devices/+/commands',   // devices/{deviceId}/commands
 
+    // Presence detection topics
+    PRESENCE_QUERY: 'presence/query',         // Server asks "who is online?"
+    PRESENCE_RESPONSE: 'presence/response',   // Devices respond "I'm online"
+    DEVICE_PRESENCE: 'devices/+/presence',    // Individual device presence (retained)
+
     // Wildcard subscriptions for server
     ALL_DEVICE_DATA: 'devices/+/data',
     ALL_DEVICE_STATUS: 'devices/+/status',
     ALL_DEVICE_REGISTER: 'devices/+/register',
+    ALL_DEVICE_PRESENCE: 'devices/+/presence',
+    ALL_PRESENCE_RESPONSES: 'presence/response',
   },
 
   // Message Types

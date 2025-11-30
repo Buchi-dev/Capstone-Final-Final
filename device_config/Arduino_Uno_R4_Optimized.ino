@@ -5,9 +5,9 @@
  * SSL/TLS ENABLED for HiveMQ Cloud (Port 8883)
  * EEPROM: Persistent registration status
  * Data sends at :00 and :30 minutes every hour (synchronized with clock)
- * FIXED: Deregister command now forces MQTT reconnection
+ * FIXED: Presence detection with enhanced logging and error handling
  * 
- * Firmware: v6.8.1 - Production SSL + EEPROM + Clock Sync + Deregister Fix
+ * Firmware: v6.8.3 - Production SSL + EEPROM + Clock Sync + Enhanced MQTT Presence
  */
 
 #include <WiFiS3.h>
@@ -37,7 +37,7 @@
 #define DEVICE_ID "arduino_uno_r4_002"
 #define DEVICE_NAME "Water Quality Monitor R4"
 #define DEVICE_TYPE "Arduino UNO R4 WiFi"
-#define FIRMWARE_VERSION "6.8.1"
+#define FIRMWARE_VERSION "6.8.3"
 
 // Sensor Pin Configuration
 #define TDS_PIN A0
@@ -149,6 +149,22 @@ String topicData = "devices/" + String(DEVICE_ID) + "/data";
 String topicStatus = "devices/" + String(DEVICE_ID) + "/status";
 String topicRegister = "devices/" + String(DEVICE_ID) + "/register";
 String topicCommands = "devices/" + String(DEVICE_ID) + "/commands";
+
+// MQTT Presence Topics
+#define PRESENCE_QUERY_TOPIC "presence/query"
+#define PRESENCE_RESPONSE_TOPIC "presence/response"
+String topicPresence = "devices/" + String(DEVICE_ID) + "/presence";
+
+// Presence detection variables
+bool presenceQueryActive = false;
+unsigned long lastPresenceQuery = 0;
+const unsigned long PRESENCE_TIMEOUT = 30000; // 30 seconds
+
+// ===========================
+// FUNCTION DECLARATIONS
+// ===========================
+void handlePresenceQuery(String message);
+void publishPresenceOnline();
 
 // ===========================
 // EEPROM FUNCTIONS
@@ -285,224 +301,6 @@ String getNextTransmissionPHTime() {
   char buffer[9];
   sprintf(buffer, "%02d:%02d PH", nextHour, nextMinute);
   return String(buffer);
-}
-
-// ===========================
-// SETUP FUNCTION
-// ===========================
-void setup() {
-  Serial.begin(115200);
-  delay(2000);
-  
-  bootTime = millis();
-
-  Serial.println("\n=== Arduino R4 - Clock-Synchronized TX ===");
-  Serial.println("Firmware: v6.8.1");
-  Serial.print("Boot: ");
-  Serial.println(bootTime);
-  Serial.println("MQTT: SSL/TLS (Port 8883)");
-  Serial.println("Restart: 12:00 AM Philippine Time");
-  Serial.println("Data TX: :00 and :30 minutes (clock-synced)");
-  Serial.println("FIXED: Deregister reconnection issue");
-  
-  initEEPROM();
-  
-  pinMode(TDS_PIN, INPUT);
-  pinMode(PH_PIN, INPUT);
-  pinMode(TURBIDITY_PIN, INPUT);
-
-  memset(smaBuffer, 0, sizeof(smaBuffer));
-  memset(phBuffer, 0, sizeof(phBuffer));
-  memset(turbBuffer, 0, sizeof(turbBuffer));
-
-  computeCalibrationParams();
-  printCalibrationInfo();
-
-  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
-  mqttClient.setCallback(mqttCallback);
-  mqttClient.setKeepAlive(90);
-  mqttClient.setSocketTimeout(60);
-  mqttClient.setBufferSize(768);  // Increased from 512
-
-  Serial.println("\n=== Connecting... ===");
-  
-  connectWiFi();
-  
-  if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
-    
-    timeClient.begin();
-    delay(1000);
-    
-    Serial.print("NTP sync");
-    for (int i = 0; i < 5; i++) {
-      Serial.print(".");
-      if (timeClient.update()) {
-        timeInitialized = true;
-        Serial.println(" OK");
-        printCurrentTime();
-        break;
-      }
-      delay(1000);
-    }
-    
-    if (!timeInitialized) {
-      Serial.println(" Failed (will retry)");
-    }
-    
-    delay(2000);
-    
-    connectMQTT();
-    
-    if (mqttConnected) {
-      delay(3000);
-      
-      if (!isApproved) {
-        Serial.println("Device NOT approved - sending registration");
-        sendRegistration();
-      } else {
-        Serial.println("Device already approved - skipping registration");
-        sendStatusUpdate();
-      }
-    }
-  }
-
-  Serial.println("\n=== System Ready ===");
-  Serial.print("Mode: ");
-  Serial.println(isApproved ? "ACTIVE MONITORING" : "WAITING FOR APPROVAL");
-  
-  if (timeInitialized) {
-    Serial.print("Next TX: ");
-    Serial.println(getNextTransmissionPHTime());
-  }
-  
-  Serial.println();
-}
-
-// ===========================
-// MAIN LOOP
-// ===========================
-void loop() {
-  unsigned long currentMillis = millis();
-
-  // Safety fallback
-  if ((currentMillis - bootTime) / 3600000UL >= MAX_UPTIME_HOURS) {
-    Serial.println("Max uptime - safety restart");
-    delay(2000);
-    NVIC_SystemReset();
-  }
-
-  // Check for midnight restart
-  if (timeInitialized) {
-    checkMidnightRestart();
-  }
-
-  // WiFi management
-  if (WiFi.status() != WL_CONNECTED) {
-    handleWiFiDisconnection();
-    delay(5000);
-    return;
-  } else {
-    consecutiveWifiFailures = 0;
-  }
-
-  // Update NTP time periodically
-  if (timeInitialized && currentMillis - lastNtpUpdate >= NTP_UPDATE_INTERVAL) {
-    lastNtpUpdate = currentMillis;
-    timeClient.update();
-  }
-
-  // Initialize time if not yet done
-  if (!timeInitialized && WiFi.status() == WL_CONNECTED) {
-    if (timeClient.update()) {
-      timeInitialized = true;
-      Serial.println("NTP time synchronized");
-      printCurrentTime();
-    }
-  }
-
-  // MQTT management
-  if (!mqttClient.connected()) {
-    mqttConnected = false;
-    
-    // Connect if needed for registration or approaching transmission time
-    bool needMqtt = !isApproved;
-    
-    if (timeInitialized && isApproved) {
-      int currentMinute = timeClient.getMinutes();
-      // Connect 2 minutes before transmission time
-      needMqtt = (currentMinute == 28 || currentMinute == 29 || currentMinute == 58 || currentMinute == 59 || currentMinute == 0 || currentMinute == 30);
-    }
-    
-    if (needMqtt && currentMillis - lastMqttReconnect >= MQTT_RECONNECT_INTERVAL) {
-      lastMqttReconnect = currentMillis;
-      connectMQTT();
-    }
-  } else {
-    mqttClient.loop();
-    consecutiveMqttFailures = 0;
-  }
-
-  // Watchdog heartbeat
-  if (currentMillis - lastWatchdog >= WATCHDOG_INTERVAL) {
-    lastWatchdog = currentMillis;
-    printWatchdog();
-  }
-
-  // Registration mode
-  if (!isApproved) {
-    if (currentMillis - lastRegistrationAttempt >= REGISTRATION_INTERVAL) {
-      lastRegistrationAttempt = currentMillis;
-      if (mqttConnected) {
-        sendRegistration();
-      }
-    }
-  } 
-  // Active monitoring mode
-  else {
-    // Read sensors every 1 minute (local monitoring)
-    if (currentMillis - lastSensorRead >= SENSOR_READ_INTERVAL) {
-      lastSensorRead = currentMillis;
-      readSensors();
-      
-      if (timeInitialized) {
-        Serial.print("Next TX: ");
-        Serial.println(getNextTransmissionPHTime());
-      }
-    }
-
-    // Clock-synchronized data transmission
-    if (isTransmissionTime()) {
-      Serial.println("\n=== SCHEDULED 30-MIN TX ===");
-      Serial.print("Current time: ");
-      Serial.println(timeClient.getFormattedTime());
-      
-      // Ensure MQTT connection
-      if (!mqttConnected) {
-        connectMQTT();
-        delay(3000);
-      }
-      
-      if (mqttConnected) {
-        publishSensorData();
-        sendStatusUpdate();
-        transmissionCount++;
-        
-        // Mark this minute as transmitted
-        lastTransmissionMinute = timeClient.getMinutes();
-        
-        Serial.print("TX Count: ");
-        Serial.println(transmissionCount);
-        Serial.print("Next TX: ");
-        Serial.println(getNextTransmissionPHTime());
-      } else {
-        Serial.println("MQTT unavailable - transmission skipped");
-      }
-      
-      Serial.println("=== TX COMPLETE ===\n");
-    }
-  }
-
-  delay(100);
 }
 
 // ===========================
@@ -702,14 +500,25 @@ void connectMQTT() {
   Serial.println(" (SSL/TLS)");
   Serial.println("Establishing SSL handshake...");
 
+  // Create LWT payload for presence detection
+  StaticJsonDocument<256> lwtDoc;
+  lwtDoc["deviceId"] = DEVICE_ID;
+  lwtDoc["deviceName"] = DEVICE_NAME;
+  lwtDoc["status"] = "offline";
+  lwtDoc["timestamp"] = "disconnected";
+  lwtDoc["reason"] = "unexpected_disconnect";
+
+  String lwtPayload;
+  serializeJson(lwtDoc, lwtPayload);
+
   bool connected = mqttClient.connect(
     MQTT_CLIENT_ID,
     MQTT_USERNAME,
     MQTT_PASSWORD,
-    topicStatus.c_str(),
-    0,
-    true,
-    "{\"status\":\"offline\"}"
+    topicPresence.c_str(),  // LWT topic
+    1,                     // QoS 1
+    true,                  // Retained
+    lwtPayload.c_str()     // LWT payload
   );
 
   if (connected) {
@@ -721,6 +530,15 @@ void connectMQTT() {
       Serial.print("✓ Subscribed: ");
       Serial.println(topicCommands);
     }
+
+    // Subscribe to presence query topic
+    if (mqttClient.subscribe(PRESENCE_QUERY_TOPIC, 1)) {
+      Serial.print("✓ Subscribed: ");
+      Serial.println(PRESENCE_QUERY_TOPIC);
+    }
+
+    // Publish initial online presence status (retained)
+    publishPresenceOnline();
     
   } else {
     Serial.print("✗ MQTT SSL Failed: ");
@@ -757,18 +575,28 @@ void printMqttError(int state) {
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("MQTT RX: ");
+  Serial.print("MQTT RX [");
+  Serial.print(topic);
+  Serial.print("]: ");
   
   char message[length + 1];
   memcpy(message, payload, length);
   message[length] = '\0';
   Serial.println(message);
 
+  // Handle presence queries FIRST
+  String topicStr = String(topic);
+  if (topicStr == PRESENCE_QUERY_TOPIC) {
+    handlePresenceQuery(message);
+    return;  // Exit early after handling presence
+  }
+
+  // Handle regular commands
   StaticJsonDocument<256> doc;
   DeserializationError error = deserializeJson(doc, message);
 
   if (error) {
-    Serial.println("JSON error");
+    Serial.println("JSON parse error");
     return;
   }
 
@@ -785,13 +613,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     Serial.println("CMD: DEREGISTER - Approval revoked");
     saveApprovedStatus(false);
     
-    // FIXED: Force MQTT disconnect and reconnect
     Serial.println("Disconnecting MQTT for fresh registration...");
     mqttClient.disconnect();
     delay(2000);
     mqttConnected = false;
     consecutiveMqttFailures = 0;
-    lastMqttReconnect = millis() - MQTT_RECONNECT_INTERVAL; // Force immediate reconnect
+    lastMqttReconnect = millis() - MQTT_RECONNECT_INTERVAL;
     
   } else if (strcmp(command, "restart") == 0) {
     Serial.println("CMD: RESTART");
@@ -863,7 +690,6 @@ void publishSensorData() {
     Serial.print("State: ");
     Serial.println(mqttClient.state());
     
-    // FIXED: If state is 0 but publish fails, force reconnect
     if (mqttClient.state() == 0) {
       Serial.println("State shows connected but publish failed - forcing reconnect");
       mqttClient.disconnect();
@@ -876,7 +702,6 @@ void publishSensorData() {
 }
 
 void sendRegistration() {
-  // FIXED: Better connection check
   if (!mqttClient.connected()) {
     Serial.println("MQTT not connected - cannot register");
     mqttConnected = false;
@@ -930,7 +755,6 @@ void sendRegistration() {
   Serial.print(payload.length());
   Serial.println(" bytes");
   
-  // FIXED: Check payload size
   if (payload.length() > 768) {
     Serial.println("✗ Payload too large!");
     return;
@@ -947,7 +771,6 @@ void sendRegistration() {
     Serial.print("MQTT state: ");
     Serial.println(mqttClient.state());
     
-    // FIXED: If state is 0 (connected) but publish fails, force reconnect
     if (mqttClient.state() == 0) {
       Serial.println("State shows connected but publish failed - forcing reconnect");
       mqttClient.disconnect();
@@ -1007,6 +830,125 @@ void sendShutdownStatus() {
 
   mqttClient.publish(topicStatus.c_str(), payload.c_str(), true);
   delay(500);
+}
+
+// ===========================
+// MQTT PRESENCE DETECTION FUNCTIONS
+// ===========================
+
+/**
+ * Handle presence query from server
+ */
+void handlePresenceQuery(String message) {
+  Serial.println("\n=== PRESENCE QUERY RECEIVED ===");
+  
+  // Parse the query message
+  StaticJsonDocument<256> doc;
+  DeserializationError error = deserializeJson(doc, message);
+
+  if (error) {
+    Serial.print("Failed to parse presence query: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  // Check if it's a "who is online?" query
+  const char* queryType = doc["query"];
+  if (queryType != nullptr && strcmp(queryType, "who_is_online") == 0) {
+    presenceQueryActive = true;
+    lastPresenceQuery = millis();
+
+    Serial.println("Query type: who_is_online");
+    Serial.println("Preparing response...");
+
+    // Respond that we're online
+    StaticJsonDocument<300> responseDoc;
+    responseDoc["response"] = "i_am_online";
+    responseDoc["deviceId"] = DEVICE_ID;
+    responseDoc["deviceName"] = DEVICE_NAME;
+    responseDoc["timestamp"] = timeInitialized ? timeClient.getEpochTime() : (millis() / 1000);
+    responseDoc["firmwareVersion"] = FIRMWARE_VERSION;
+    responseDoc["uptime"] = (millis() - bootTime) / 1000;
+    responseDoc["isApproved"] = isApproved;
+    responseDoc["wifiRSSI"] = WiFi.RSSI();
+    
+    if (timeInitialized) {
+      responseDoc["phTime"] = getPhilippineTimeString();
+    }
+
+    String responsePayload;
+    serializeJson(responseDoc, responsePayload);
+
+    Serial.print("Response payload: ");
+    Serial.println(responsePayload);
+    Serial.print("Response size: ");
+    Serial.print(responsePayload.length());
+    Serial.println(" bytes");
+
+    // Ensure we're still connected
+    if (!mqttClient.connected()) {
+      Serial.println("✗ MQTT disconnected - cannot respond");
+      mqttConnected = false;
+      return;
+    }
+
+    // Publish response
+    bool published = mqttClient.publish(PRESENCE_RESPONSE_TOPIC, responsePayload.c_str(), false);
+    
+    if (published) {
+      Serial.println("✓ Presence response published successfully");
+    } else {
+      Serial.println("✗ Failed to publish presence response");
+      Serial.print("MQTT state: ");
+      Serial.println(mqttClient.state());
+      printMqttError(mqttClient.state());
+    }
+
+    // Also update retained presence status
+    publishPresenceOnline();
+    
+    Serial.println("=== PRESENCE RESPONSE COMPLETE ===\n");
+  } else {
+    Serial.print("Unknown query type: ");
+    Serial.println(queryType != nullptr ? queryType : "null");
+  }
+}
+
+/**
+ * Publish retained online presence status
+ */
+void publishPresenceOnline() {
+  if (!mqttClient.connected()) {
+    Serial.println("MQTT not connected - cannot publish presence");
+    mqttConnected = false;
+    return;
+  }
+
+  StaticJsonDocument<256> presenceDoc;
+  presenceDoc["deviceId"] = DEVICE_ID;
+  presenceDoc["deviceName"] = DEVICE_NAME;
+  presenceDoc["status"] = "online";
+  presenceDoc["timestamp"] = timeInitialized ? timeClient.getEpochTime() : (millis() / 1000);
+  presenceDoc["lastResponse"] = millis();
+  presenceDoc["firmwareVersion"] = FIRMWARE_VERSION;
+  presenceDoc["uptime"] = (millis() - bootTime) / 1000;
+  presenceDoc["isApproved"] = isApproved;
+  
+  if (timeInitialized) {
+    presenceDoc["phTime"] = getPhilippineTimeString();
+  }
+
+  String presencePayload;
+  serializeJson(presenceDoc, presencePayload);
+
+  // Publish with retained flag = true for persistence
+  if (mqttClient.publish(topicPresence.c_str(), presencePayload.c_str(), true)) {
+    Serial.println("✓ Presence status: online (retained)");
+  } else {
+    Serial.println("✗ Failed to publish presence status");
+    Serial.print("MQTT state: ");
+    Serial.println(mqttClient.state());
+  }
 }
 
 // ===========================
@@ -1134,7 +1076,7 @@ void readSensors() {
 void printWatchdog() {
   Serial.println("\n=== WATCHDOG ===");
   Serial.print("Uptime: ");
-  Serial.print((millis() - bootTime) / 3600);
+  Serial.print((millis() - bootTime) / 3600000);
   Serial.println("h");
   
   Serial.print("Boot count: ");
@@ -1177,4 +1119,228 @@ void printWatchdog() {
   Serial.print("TX Count: ");
   Serial.println(transmissionCount);
   Serial.println("================\n");
+}
+
+// ===========================
+// SETUP FUNCTION
+// ===========================
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+  
+  bootTime = millis();
+
+  Serial.println("\n=== Arduino R4 - Clock-Synchronized TX ===");
+  Serial.println("Firmware: v6.8.3");
+  Serial.print("Boot: ");
+  Serial.println(bootTime);
+  Serial.println("MQTT: SSL/TLS (Port 8883)");
+  Serial.println("Restart: 12:00 AM Philippine Time");
+  Serial.println("Data TX: :00 and :30 minutes (clock-synced)");
+  Serial.println("FEATURE: Enhanced MQTT Presence Detection");
+  
+  initEEPROM();
+  
+  pinMode(TDS_PIN, INPUT);
+  pinMode(PH_PIN, INPUT);
+  pinMode(TURBIDITY_PIN, INPUT);
+
+  memset(smaBuffer, 0, sizeof(smaBuffer));
+  memset(phBuffer, 0, sizeof(phBuffer));
+  memset(turbBuffer, 0, sizeof(turbBuffer));
+
+  computeCalibrationParams();
+  printCalibrationInfo();
+
+  mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  mqttClient.setCallback(mqttCallback);
+  mqttClient.setKeepAlive(90);
+  mqttClient.setSocketTimeout(60);
+  mqttClient.setBufferSize(768);
+
+  Serial.println("\n=== Connecting... ===");
+  
+  connectWiFi();
+  
+  if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
+    
+    timeClient.begin();
+    delay(1000);
+    
+    Serial.print("NTP sync");
+    for (int i = 0; i < 5; i++) {
+      Serial.print(".");
+      if (timeClient.update()) {
+        timeInitialized = true;
+        Serial.println(" OK");
+        printCurrentTime();
+        break;
+      }
+      delay(1000);
+    }
+    
+    if (!timeInitialized) {
+      Serial.println(" Failed (will retry)");
+    }
+    
+    delay(2000);
+    
+    connectMQTT();
+    
+    if (mqttConnected) {
+      delay(3000);
+      
+      if (!isApproved) {
+        Serial.println("Device NOT approved - sending registration");
+        sendRegistration();
+      } else {
+        Serial.println("Device already approved - skipping registration");
+        sendStatusUpdate();
+      }
+    }
+  }
+
+  Serial.println("\n=== System Ready ===");
+  Serial.print("Mode: ");
+  Serial.println(isApproved ? "ACTIVE MONITORING" : "WAITING FOR APPROVAL");
+  
+  if (timeInitialized) {
+    Serial.print("Next TX: ");
+    Serial.println(getNextTransmissionPHTime());
+  }
+  
+  Serial.println();
+}
+
+// ===========================
+// MAIN LOOP
+// ===========================
+void loop() {
+  unsigned long currentMillis = millis();
+
+  // Safety fallback
+  if ((currentMillis - bootTime) / 3600000UL >= MAX_UPTIME_HOURS) {
+    Serial.println("Max uptime - safety restart");
+    delay(2000);
+    NVIC_SystemReset();
+  }
+
+  // Check for midnight restart
+  if (timeInitialized) {
+    checkMidnightRestart();
+  }
+
+  // WiFi management
+  if (WiFi.status() != WL_CONNECTED) {
+    handleWiFiDisconnection();
+    delay(5000);
+    return;
+  } else {
+    consecutiveWifiFailures = 0;
+  }
+
+  // Update NTP time periodically
+  if (timeInitialized && currentMillis - lastNtpUpdate >= NTP_UPDATE_INTERVAL) {
+    lastNtpUpdate = currentMillis;
+    timeClient.update();
+  }
+
+  // Initialize time if not yet done
+  if (!timeInitialized && WiFi.status() == WL_CONNECTED) {
+    if (timeClient.update()) {
+      timeInitialized = true;
+      Serial.println("NTP time synchronized");
+      printCurrentTime();
+    }
+  }
+
+  // MQTT management
+  if (!mqttClient.connected()) {
+    mqttConnected = false;
+    
+    // Connect if needed for registration or approaching transmission time
+    bool needMqtt = !isApproved;
+    
+    if (timeInitialized && isApproved) {
+      int currentMinute = timeClient.getMinutes();
+      // Connect 2 minutes before transmission time
+      needMqtt = (currentMinute == 28 || currentMinute == 29 || currentMinute == 58 || currentMinute == 59 || currentMinute == 0 || currentMinute == 30);
+    }
+    
+    if (needMqtt && currentMillis - lastMqttReconnect >= MQTT_RECONNECT_INTERVAL) {
+      lastMqttReconnect = currentMillis;
+      connectMQTT();
+    }
+  } else {
+    mqttClient.loop();
+    consecutiveMqttFailures = 0;
+  }
+
+  // Check for presence query timeout
+  if (presenceQueryActive && (currentMillis - lastPresenceQuery) > PRESENCE_TIMEOUT) {
+    presenceQueryActive = false;
+    Serial.println("Presence query timeout");
+  }
+
+  // Watchdog heartbeat
+  if (currentMillis - lastWatchdog >= WATCHDOG_INTERVAL) {
+    lastWatchdog = currentMillis;
+    printWatchdog();
+  }
+
+  // Registration mode
+  if (!isApproved) {
+    if (currentMillis - lastRegistrationAttempt >= REGISTRATION_INTERVAL) {
+      lastRegistrationAttempt = currentMillis;
+      if (mqttConnected) {
+        sendRegistration();
+      }
+    }
+  } 
+  // Active monitoring mode
+  else {
+    // Read sensors every 1 minute (local monitoring)
+    if (currentMillis - lastSensorRead >= SENSOR_READ_INTERVAL) {
+      lastSensorRead = currentMillis;
+      readSensors();
+      
+      if (timeInitialized) {
+        Serial.print("Next TX: ");
+        Serial.println(getNextTransmissionPHTime());
+      }
+    }
+
+    // Clock-synchronized data transmission
+    if (isTransmissionTime()) {
+      Serial.println("\n=== SCHEDULED 30-MIN TX ===");
+      Serial.print("Current time: ");
+      Serial.println(timeClient.getFormattedTime());
+      
+      // Ensure MQTT connection
+      if (!mqttConnected) {
+        connectMQTT();
+        delay(3000);
+      }
+      
+      if (mqttConnected) {
+        publishSensorData();
+        sendStatusUpdate();
+        transmissionCount++;
+        
+        // Mark this minute as transmitted
+        lastTransmissionMinute = timeClient.getMinutes();
+        
+        Serial.print("TX Count: ");
+        Serial.println(transmissionCount);
+        Serial.print("Next TX: ");
+        Serial.println(getNextTransmissionPHTime());
+      } else {
+        Serial.println("MQTT unavailable - transmission skipped");
+      }
+      
+      Serial.println("=== TX COMPLETE ===\n");
+    }
+  }
+
+  delay(100);
 }

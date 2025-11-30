@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const { Device, SensorReading } = require('../devices/device.Model');
 const logger = require('../utils/logger');
 const { TIME } = require('../utils/constants');
+const mqttService = require('../utils/mqtt.service');
 
 /**
  * Background Jobs Service
@@ -9,34 +10,53 @@ const { TIME } = require('../utils/constants');
  */
 
 /**
- * Check for offline devices
+ * Check device presence using MQTT
  * Runs every 5 minutes
- * Marks devices as offline if no reading received in last 5 minutes
+ * Queries devices for presence and updates their online/offline status
  */
-const checkOfflineDevices = cron.schedule('*/5 * * * *', async () => {
+const checkOfflineDevices = cron.schedule('*/1 * * * *', async () => {
   try {
-    logger.info('[Background Job] Checking for offline devices...');
-    
-    const fiveMinutesAgo = new Date(Date.now() - TIME.FIVE_MINUTES);
-    
-    // Find devices that haven't been seen in 5 minutes and mark them offline
-    const result = await Device.updateMany(
+    logger.info('[Background Job] Checking device presence via MQTT...');
+
+    // Query all devices for presence
+    const onlineDeviceIds = await mqttService.queryDevicePresence(15000); // 15 second timeout
+
+    if (!onlineDeviceIds || onlineDeviceIds.length === 0) {
+      logger.warn('[Background Job] No devices responded to presence query');
+      // Mark all devices as offline if none responded
+      await Device.updateMany(
+        { status: 'online' },
+        { status: 'offline' }
+      );
+      return;
+    }
+
+    // Update devices that responded as online
+    const onlineResult = await Device.updateMany(
+      { deviceId: { $in: onlineDeviceIds } },
       {
-        lastSeen: { $lt: fiveMinutesAgo },
         status: 'online',
-      },
-      {
-        status: 'offline',
+        lastSeen: new Date(),
       }
     );
 
-    if (result.modifiedCount > 0) {
-      logger.info('[Background Job] Marked devices as offline', {
-        count: result.modifiedCount,
-      });
-    }
+    // Mark devices that didn't respond as offline
+    const offlineResult = await Device.updateMany(
+      {
+        deviceId: { $nin: onlineDeviceIds },
+        status: 'online'
+      },
+      { status: 'offline' }
+    );
+
+    logger.info('[Background Job] Device presence check complete', {
+      onlineDevices: onlineResult.modifiedCount,
+      offlineDevices: offlineResult.modifiedCount,
+      totalResponded: onlineDeviceIds.length,
+    });
+
   } catch (error) {
-    logger.error('[Background Job] Error checking offline devices:', {
+    logger.error('[Background Job] Error checking device presence:', {
       error: error.message,
       stack: error.stack,
     });
