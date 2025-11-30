@@ -8,6 +8,8 @@ import {
   Button,
   Typography,
   Alert,
+  message,
+  Popconfirm,
 } from 'antd';
 import {
   CheckCircleOutlined,
@@ -19,10 +21,14 @@ import {
   EnvironmentOutlined,
   InfoCircleOutlined,
   DashboardOutlined,
+  ReloadOutlined,
+  SettingOutlined,
+  PauseCircleOutlined,
 } from '@ant-design/icons';
 import type { Device, DeviceStatus } from '../../../../schemas';
 import { isDeviceRegistered } from '../../../../schemas';
 import { useThemeToken } from '../../../../theme';
+import { sendDeviceCommand } from '../../../../utils/mqtt';
 
 const { Text } = Typography;
 
@@ -44,6 +50,27 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
 
   if (!device) return null;
 
+  // Command handlers
+  const handleRestartDevice = () => {
+    sendDeviceCommand(device.deviceId, 'restart');
+    message.success(`Restart command sent to ${device.name}`);
+  };
+
+  const handleCalibrateDevice = () => {
+    sendDeviceCommand(device.deviceId, 'calibrate');
+    message.success(`Calibration command sent to ${device.name}`);
+  };
+
+  const handleStopCalibrateDevice = () => {
+    sendDeviceCommand(device.deviceId, 'stop_calibrate');
+    message.success(`Stop calibration command sent to ${device.name}`);
+  };
+
+  const handleDeregisterDevice = () => {
+    sendDeviceCommand(device.deviceId, 'deregister');
+    message.success(`Deregister command sent to ${device.name}`);
+  };
+
   return (
     <Modal
       title={
@@ -56,9 +83,51 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
       onCancel={onClose}
       width={900}
       footer={[
-        <Button key="close" type="primary" onClick={onClose}>
-          Close
-        </Button>,
+        <Space key="commands">
+          <Popconfirm
+            title="Restart Device"
+            description="Are you sure you want to restart this device?"
+            onConfirm={handleRestartDevice}
+            okText="Restart"
+            cancelText="Cancel"
+          >
+            <Button icon={<ReloadOutlined />} danger>
+              Restart
+            </Button>
+          </Popconfirm>
+
+          <Popconfirm
+            title="Start Calibration"
+            description="Put device in calibration mode?"
+            onConfirm={handleCalibrateDevice}
+            okText="Start"
+            cancelText="Cancel"
+          >
+            <Button icon={<SettingOutlined />}>
+              Calibrate
+            </Button>
+          </Popconfirm>
+
+          <Button icon={<PauseCircleOutlined />} onClick={handleStopCalibrateDevice}>
+            Stop Calibrate
+          </Button>
+
+          <Popconfirm
+            title="Deregister Device"
+            description="This will remove the device registration. Are you sure?"
+            onConfirm={handleDeregisterDevice}
+            okText="Deregister"
+            cancelText="Cancel"
+          >
+            <Button icon={<CloseCircleOutlined />} danger>
+              Deregister
+            </Button>
+          </Popconfirm>
+
+          <Button key="close" type="primary" onClick={onClose}>
+            Close
+          </Button>
+        </Space>,
       ]}
     >
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -168,6 +237,34 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
             </Descriptions>
           </Card>
         )}
+
+        {/* Device Commands */}
+        <Card title={<><SettingOutlined /> Device Commands</>} size="small">
+          <Space direction="vertical" size="small" style={{ width: '100%' }}>
+            <Text strong>Available Commands:</Text>
+            <Space wrap size="small">
+              <Tag color="red">
+                <ReloadOutlined /> Restart - Reboot the device
+              </Tag>
+              <Tag color="blue">
+                <SettingOutlined /> Calibrate - Enter calibration mode
+              </Tag>
+              <Tag color="orange">
+                <PauseCircleOutlined /> Stop Calibrate - Exit calibration mode
+              </Tag>
+              <Tag color="volcano">
+                <CloseCircleOutlined /> Deregister - Remove device registration
+              </Tag>
+            </Space>
+            <Alert
+              message="Command Execution"
+              description="Commands are sent directly to the device via MQTT. The device must be online to receive commands."
+              type="info"
+              showIcon
+              style={{ marginTop: 8 }}
+            />
+          </Space>
+        </Card>
 
         {/* Status Messages */}
         {device.status === 'offline' && (

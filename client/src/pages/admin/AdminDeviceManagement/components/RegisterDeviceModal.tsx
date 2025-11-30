@@ -1,8 +1,9 @@
-import { Modal, Form, Input, Select, Space, Typography, Divider, Alert } from 'antd';
+import { Modal, Form, Input, Select, Space, Typography, Divider, Alert, message } from 'antd';
 import { useEffect, useState } from 'react';
 import type { Device } from '../../../../schemas';
 import { EnvironmentOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useThemeToken } from '../../../../theme';
+import { sendDeviceCommand } from '../../../../utils/mqtt';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -14,6 +15,8 @@ interface RegisterDeviceModalProps {
   onRegister: (deviceId: string, locationData: { building: string; floor: string; notes?: string }) => void;
   onCancel: () => void;
 }
+
+
 
 export const RegisterDeviceModal = ({
   visible,
@@ -40,6 +43,13 @@ export const RegisterDeviceModal = ({
     }
   }, [visible, device, form]);
 
+  const handleDeviceGoSignal = () => {
+    if (!device) return;
+    sendDeviceCommand(device.deviceId, 'go');
+    message.success(`Go command sent to ${device.name}`);
+  };
+
+
   const handleOk = async () => {
     // Prevent multiple submissions
     if (isSubmitting) {
@@ -60,7 +70,7 @@ export const RegisterDeviceModal = ({
         floor: values.floor,
         notes: values.notes || '',
       });
-      
+      handleDeviceGoSignal();
       // Reset submission state after a delay to ensure the modal has time to close
       setTimeout(() => {
         setIsSubmitting(false);

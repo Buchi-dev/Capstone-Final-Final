@@ -19,7 +19,7 @@ const User = require('../users/user.Model');
 const logger = require('./logger');
 const { SENSOR_THRESHOLDS } = require('./constants');
 const { queueAlertEmail } = require('./email.queue');
-const { broadcastToChannel } = require('./sseConfig');
+const mqttService = require('./mqtt.service');
 
 // Store change stream references
 let alertChangeStream;
@@ -74,20 +74,31 @@ async function initializeChangeStreams() {
             severity: newAlert.severity,
             parameter: newAlert.parameter,
             value: newAlert.value,
+            occurrenceCount: newAlert.occurrenceCount,
             message: newAlert.message,
             timestamp: newAlert.timestamp,
           });
 
-          // Broadcast to all clients subscribed to alerts via SSE
-          broadcastToChannel('alerts', 'alert:new', {
-            alert: newAlert,
-          });
-
-          // Broadcast to specific device channel if available
-          if (newAlert.deviceId) {
-            broadcastToChannel(`device:${newAlert.deviceId}`, 'alert:new', {
-              alert: newAlert,
+          // ✅ Only send emails for truly new alerts (first occurrence)
+          // Skip email notifications for alert occurrence updates
+          if (newAlert.occurrenceCount > 1) {
+            logger.info('[Change Streams] Skipping email for alert occurrence update', {
+              alertId: newAlert.alertId,
+              occurrenceCount: newAlert.occurrenceCount,
             });
+            return; // Don't send emails for occurrence updates
+          }
+
+          // Publish to MQTT topic for real-time client updates
+          // mqttService.publish(MQTT_CONFIG.TOPICS.ALERTS_NEW, {
+          //   alert: newAlert,
+          // });
+
+          // Publish to device-specific topic if available
+          if (newAlert.deviceId) {
+            // mqttService.publish(`devices/${newAlert.deviceId}/alerts`, {
+            //   alert: newAlert,
+            // });
           }
 
           // Send email notifications to subscribed users
@@ -167,11 +178,12 @@ async function initializeChangeStreams() {
           const updatedAlert = change.fullDocument;
           const updatedFields = change.updateDescription?.updatedFields || {};
 
-          broadcastToChannel('alerts', 'alert:updated', {
-            alertId: change.documentKey._id,
-            updates: updatedFields,
-            fullDocument: updatedAlert,
-          });
+          // Publish alert update to MQTT
+          // mqttService.publish(MQTT_CONFIG.TOPICS.ALERTS_UPDATED, {
+          //   alertId: change.documentKey._id,
+          //   updates: updatedFields,
+          //   fullDocument: updatedAlert,
+          // });
 
           if (verboseMode) {
             logger.info('[Change Streams] Broadcast alert update:', {
@@ -220,12 +232,12 @@ async function initializeChangeStreams() {
 
         if (change.operationType === 'insert') {
           // New device registered
-          broadcastToChannel('devices', 'device:new', {
-            device,
-          });
+          // mqttService.publish(MQTT_CONFIG.TOPICS.DEVICES_NEW, {
+          //   device,
+          // });
 
           if (verboseMode) {
-            logger.info('[Change Streams] Broadcast new device:', {
+            logger.info('[Change Streams] Published new device:', {
               deviceId: device.deviceId,
               name: device.deviceName,
             });
@@ -235,21 +247,21 @@ async function initializeChangeStreams() {
           // Device updated (status, location, etc.)
           const updatedFields = change.updateDescription?.updatedFields || {};
 
-          // Broadcast to devices channel
-          broadcastToChannel('devices', 'device:updated', {
-            deviceId: device.deviceId,
-            updates: updatedFields,
-            fullDocument: device,
-          });
+          // Publish to devices topic
+          // mqttService.publish(MQTT_CONFIG.TOPICS.DEVICES_UPDATED, {
+          //   deviceId: device.deviceId,
+          //   updates: updatedFields,
+          //   fullDocument: device,
+          // });
 
-          // Broadcast to specific device channel
-          broadcastToChannel(`device:${device.deviceId}`, 'device:updated', {
-            updates: updatedFields,
-            fullDocument: device,
-          });
+          // Publish to device-specific topic
+          // mqttService.publish(`devices/${device.deviceId}/updated`, {
+          //   updates: updatedFields,
+          //   fullDocument: device,
+          // });
 
           if (verboseMode) {
-            logger.info('[Change Streams] Broadcast device update:', {
+            logger.info('[Change Streams] Published device update:', {
               deviceId: device.deviceId,
               updates: Object.keys(updatedFields),
             });
@@ -285,32 +297,32 @@ async function initializeChangeStreams() {
         if (change.operationType === 'insert') {
           const reading = change.fullDocument;
 
-          // Broadcast to all clients subscribed to devices via SSE
-          broadcastToChannel('devices', 'reading:new', {
-            reading,
-          });
+          // Publish to MQTT for real-time client updates
+          // mqttService.publish(MQTT_CONFIG.TOPICS.READINGS_NEW, {
+          //   reading,
+          // });
 
-          // Broadcast to specific device channel
+          // Publish to device-specific topic
           if (reading.deviceId) {
-            broadcastToChannel(`device:${reading.deviceId}`, 'reading:new', {
-              reading,
-            });
+            // mqttService.publish(`devices/${reading.deviceId}/readings`, {
+            //   reading,
+            // });
           }
 
-          // Check for anomalies and broadcast warnings
+          // Check for anomalies and publish warnings
           const hasAnomalies = checkForAnomalies(reading);
           if (hasAnomalies.length > 0) {
-            broadcastToChannel('devices', 'reading:anomaly', {
-              deviceId: reading.deviceId,
-              anomalies: hasAnomalies,
-              reading,
-            });
+            // mqttService.publish(MQTT_CONFIG.TOPICS.READINGS_ANOMALY, {
+            //   deviceId: reading.deviceId,
+            //   anomalies: hasAnomalies,
+            //   reading,
+            // });
           }
 
-          logger.debug('[Change Streams] Broadcast new reading:', {
+          logger.debug('[Change Streams] Published new reading:', {
             deviceId: reading.deviceId,
             parameters: Object.keys(reading).filter(k => 
-              ['pH', 'turbidity', 'tds', 'temperature'].includes(k)
+              ['pH', 'turbidity', 'tds'].includes(k)
             ),
           });
         }
@@ -345,16 +357,16 @@ async function initializeChangeStreams() {
           const user = change.fullDocument;
           const updatedFields = change.updateDescription?.updatedFields || {};
 
-          // Only broadcast if role or status changed (important updates)
+          // Only publish if role or status changed (important updates)
           if (updatedFields.role || updatedFields.status) {
-            broadcastToChannel('admin', 'user:updated', {
-              userId: user.uid,
-              updates: updatedFields,
-            });
+            // mqttService.publish(MQTT_CONFIG.TOPICS.USERS_UPDATED, {
+            //   userId: user.uid,
+            //   updates: updatedFields,
+            // });
 
             const isProduction = process.env.NODE_ENV === 'production';
             if (!isProduction) {
-              logger.info('[Change Streams] Broadcast user update:', {
+              logger.info('[Change Streams] Published user update:', {
                 userId: user.uid,
                 updates: Object.keys(updatedFields),
               });

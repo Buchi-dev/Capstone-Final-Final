@@ -7,7 +7,8 @@ const CacheService = require('../utils/cache.service');
 const { NotFoundError, ValidationError, AppError } = require('../errors');
 const ResponseHelper = require('../utils/responses');
 const asyncHandler = require('../middleware/asyncHandler');
-const { sendCommandToDevice, isDeviceConnected } = require('../utils/sseConfig');
+const mqttService = require('../utils/mqtt.service');
+const { checkAlertCooldown, updateAlertOccurrence } = require('../middleware/alertCooldown');
 
 /**
  * Get all devices
@@ -240,13 +241,13 @@ const deleteDevice = asyncHandler(async (req, res) => {
       });
     }
 
-    // Send deregister command to device if connected via SSE
-    if (isDeviceConnected(device.deviceId)) {
+    // Send deregister command to device if connected via MQTT
+    if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(device.deviceId)) {
       logger.info('[Device Controller] Sending deregister command to device', {
         deviceId: device.deviceId,
       });
       
-      sendCommandToDevice(device.deviceId, 'deregister', {
+      mqttService.sendCommandToDevice(device.deviceId, 'deregister', {
         message: 'Device has been removed from the system',
         reason: 'admin_deletion',
       });
@@ -254,8 +255,10 @@ const deleteDevice = asyncHandler(async (req, res) => {
       // Give device a moment to receive the command
       await new Promise(resolve => setTimeout(resolve, 1000));
     } else {
-      logger.warn('[Device Controller] Device not connected via SSE, cannot send deregister command', {
+      logger.warn('[Device Controller] MQTT service not available or device not connected, cannot send deregister command', {
         deviceId: device.deviceId,
+        mqttServiceAvailable: !!mqttService,
+        isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
       });
     }
 
@@ -344,6 +347,11 @@ const processSensorData = asyncHandler(async (req, res) => {
   
   await device.save();
 
+  // Set up MQTT Last Will and Testament for presence detection
+  if (mqttService && mqttService.setupDeviceLWT) {
+    mqttService.setupDeviceLWT(trimmedDeviceId);
+  }
+
   // Save sensor reading with trimmed deviceId
   const reading = new SensorReading({
     deviceId: trimmedDeviceId,
@@ -423,29 +431,33 @@ async function checkThresholdsAndCreateAlerts(device, reading) {
 }
 
 /**
- * Create alert helper
+ * Create alert helper with cooldown logic
  */
 async function createAlert(device, parameter, value, threshold, severity, timestamp) {
   try {
-    const alertId = uuidv4();
     const thresholdValue = typeof threshold === 'object' ? (threshold.max || threshold.min) : threshold;
-    const message = `${parameter} level ${value > thresholdValue ? 'above' : 'below'} safe threshold`;
 
-    // Check if similar alert already exists (within last hour, same device, same parameter, unacknowledged)
-    const recentAlert = await Alert.findOne({
-      deviceId: device.deviceId,
-      parameter,
-      status: 'Unacknowledged',
-      timestamp: { $gte: new Date(Date.now() - 60 * 60 * 1000) },
-    });
+    // ✅ Check cooldown before creating alert
+    const cooldownCheck = await checkAlertCooldown(device.deviceId, parameter, severity);
 
-    if (recentAlert) {
-      logger.info('[Device Controller] Skipping duplicate alert', {
+    if (!cooldownCheck.canCreateAlert) {
+      // Update existing alert occurrence count instead of creating new alert
+      const updatedAlert = await updateAlertOccurrence(cooldownCheck.activeAlert, value, timestamp);
+
+      logger.info('[Device Controller] Updated existing alert occurrence', {
         deviceId: device.deviceId,
         parameter,
+        alertId: updatedAlert.alertId,
+        occurrenceCount: updatedAlert.occurrenceCount,
+        minutesRemaining: cooldownCheck.minutesRemaining,
       });
-      return null;
+
+      return updatedAlert; // Return existing alert (updated)
     }
+
+    // ✅ Create new alert if no cooldown active
+    const alertId = uuidv4();
+    const message = `${parameter} level ${value > thresholdValue ? 'above' : 'below'} safe threshold`;
 
     const alert = new Alert({
       alertId,
@@ -457,19 +469,25 @@ async function createAlert(device, parameter, value, threshold, severity, timest
       threshold: thresholdValue,
       message,
       timestamp,
+      occurrenceCount: 1,
+      firstOccurrence: timestamp,
+      lastOccurrence: timestamp,
+      currentValue: value,
     });
 
     await alert.save();
-    logger.info('[Device Controller] Created alert', {
+
+    logger.info('[Device Controller] Created new alert', {
       alertId,
       severity,
       deviceId: device.deviceId,
       parameter,
       value,
     });
+
     return alert;
   } catch (error) {
-    logger.error('[Device Controller] Error creating alert', {
+    logger.error('[Device Controller] Error creating/updating alert', {
       error: error.message,
       deviceId: device.deviceId,
       parameter,
@@ -550,6 +568,26 @@ const deviceRegister = asyncHandler(async (req, res) => {
       id: device._id 
     });
 
+    // Send "wait" command to device via MQTT if connected
+    if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(trimmedDeviceId)) {
+      const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'wait', {
+        message: 'Device registration received. Waiting for admin approval.',
+        device: device.toPublicProfile(),
+      });
+      
+      if (commandSent) {
+        logger.info('[Device Controller] "wait" command sent to device', {
+          deviceId: trimmedDeviceId,
+        });
+      }
+    } else {
+      logger.warn('[Device Controller] MQTT service not available or device not connected, "wait" command not sent', {
+        deviceId: trimmedDeviceId,
+        mqttServiceAvailable: !!mqttService,
+        isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
+      });
+    }
+
     return ResponseHelper.success(res, {
       device: device.toPublicProfile(),
       message: 'Device registration pending admin approval',
@@ -568,8 +606,33 @@ const deviceRegister = asyncHandler(async (req, res) => {
     
     await device.save();
 
+    // Set up MQTT Last Will and Testament for presence detection
+    if (mqttService && mqttService.setupDeviceLWT) {
+      mqttService.setupDeviceLWT(trimmedDeviceId);
+    }
+
     // Check registration status
     if (device.isRegistered) {
+      // Send "go" command to device via MQTT if connected
+      if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(trimmedDeviceId)) {
+        const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'go', {
+          message: 'Device is registered and approved. You can start sending sensor data.',
+          device: device.toPublicProfile(),
+        });
+        
+        if (commandSent) {
+          logger.info('[Device Controller] "go" command sent to device', {
+            deviceId: trimmedDeviceId,
+          });
+        }
+      } else {
+        logger.warn('[Device Controller] MQTT service not available or device not connected, "go" command not sent', {
+          deviceId: trimmedDeviceId,
+          mqttServiceAvailable: !!mqttService,
+          isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
+        });
+      }
+
       return ResponseHelper.success(res, {
         device: device.toPublicProfile(),
         message: 'Device is registered and approved',
@@ -578,6 +641,26 @@ const deviceRegister = asyncHandler(async (req, res) => {
         command: 'go', // Tell device it can start sending sensor data
       }, 'Device registration approved');
     } else {
+      // Send "wait" command to device via MQTT if connected
+      if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(trimmedDeviceId)) {
+        const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'wait', {
+          message: 'Device registration pending admin approval.',
+          device: device.toPublicProfile(),
+        });
+        
+        if (commandSent) {
+          logger.info('[Device Controller] "wait" command sent to device', {
+            deviceId: trimmedDeviceId,
+          });
+        }
+      } else {
+        logger.warn('[Device Controller] MQTT service not available or device not connected, "wait" command not sent', {
+          deviceId: trimmedDeviceId,
+          mqttServiceAvailable: !!mqttService,
+          isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
+        });
+      }
+
       return ResponseHelper.success(res, {
         device: device.toPublicProfile(),
         message: 'Device registration pending admin approval',
@@ -631,9 +714,9 @@ const approveDeviceRegistration = asyncHandler(async (req, res) => {
     id: device._id,
   });
 
-  // Send "go" command to device via SSE if connected
-  if (isDeviceConnected(device.deviceId)) {
-    const commandSent = sendCommandToDevice(device.deviceId, 'go', {
+  // Send "go" command to device via MQTT if connected
+  if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(device.deviceId)) {
+    const commandSent = mqttService.sendCommandToDevice(device.deviceId, 'go', {
       message: 'Device registration approved. You can now start sending sensor data.',
       device: device.toPublicProfile(),
     });
@@ -644,8 +727,10 @@ const approveDeviceRegistration = asyncHandler(async (req, res) => {
       });
     }
   } else {
-    logger.warn('[Device Controller] Device not connected via SSE, "go" command not sent', {
+    logger.warn('[Device Controller] MQTT service not available or device not connected, "go" command not sent', {
       deviceId: device.deviceId,
+      mqttServiceAvailable: !!mqttService,
+      isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
     });
   }
 
@@ -658,7 +743,12 @@ const approveDeviceRegistration = asyncHandler(async (req, res) => {
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const deviceSSEConnection = asyncHandler(async (req, res) => {
+/**
+ * Get device status for MQTT polling (replaces SSE)
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const getDeviceStatus = asyncHandler(async (req, res) => {
   const { deviceId } = req.params;
   const trimmedDeviceId = deviceId?.trim();
 
@@ -670,44 +760,34 @@ const deviceSSEConnection = asyncHandler(async (req, res) => {
   const device = await Device.findOne({ deviceId: trimmedDeviceId });
 
   if (!device) {
-    return ResponseHelper.error(res, 
-      'Device not found. Please register first.', 
+    return ResponseHelper.error(res,
+      'Device not found. Please register first.',
       404,
       'DEVICE_NOT_FOUND'
     );
   }
 
-  // Import setupDeviceSSEConnection
-  const { setupDeviceSSEConnection } = require('../utils/sseConfig');
-
-  // Setup SSE connection for this device
-  setupDeviceSSEConnection(trimmedDeviceId, res, {
-    name: device.name,
-    type: device.type,
-    firmwareVersion: device.firmwareVersion,
-  });
-
-  logger.info('[Device Controller] Device SSE connection established', {
+  // Return device status for MQTT polling
+  const status = {
     deviceId: trimmedDeviceId,
+    isRegistered: device.isRegistered,
+    isApproved: device.isRegistered, // Same as isRegistered for backward compatibility
+    status: device.status,
+    registrationStatus: device.registrationStatus,
+    lastSeen: device.lastSeen,
+    command: device.isRegistered ? 'go' : 'wait',
+    message: device.isRegistered
+      ? 'Device is registered. You can send sensor data via MQTT.'
+      : 'Device registration pending approval. Please wait.',
+  };
+
+  logger.debug('[Device Controller] Device status requested', {
+    deviceId: trimmedDeviceId,
+    status: status.status,
+    isRegistered: status.isRegistered,
   });
 
-  // Send initial status
-  const { sendCommandToDevice: sendCmd } = require('../utils/sseConfig');
-  
-  // Send device status after a short delay
-  setTimeout(() => {
-    if (device.isRegistered) {
-      sendCmd(trimmedDeviceId, 'go', {
-        message: 'Device is registered. You can send sensor data.',
-        device: device.toPublicProfile(),
-      });
-    } else {
-      sendCmd(trimmedDeviceId, 'wait', {
-        message: 'Device registration pending approval. Please wait.',
-        device: device.toPublicProfile(),
-      });
-    }
-  }, 500);
+  ResponseHelper.success(res, status, 'Device status retrieved');
 });
 
 module.exports = {
@@ -720,5 +800,5 @@ module.exports = {
   getDeviceStats,
   deviceRegister,
   approveDeviceRegistration,
-  deviceSSEConnection,
+  deviceSSEConnection: getDeviceStatus,
 };

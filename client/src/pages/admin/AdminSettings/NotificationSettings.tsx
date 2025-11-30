@@ -7,38 +7,27 @@
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Card,
   Form,
   App,
   Spin,
   Typography,
-  Row,
-  Col,
 } from 'antd';
-import { ThunderboltOutlined } from '@ant-design/icons';
 import { useAuth, useDevices, useUserPreferences, useUserMutations } from '../../../hooks';
-import dayjs from 'dayjs';
 
 // Extracted components
 import {
   PreferencesStatusAlert,
   NotificationChannelsCard,
-  QuietHoursCard,
-  AlertSeveritiesFilter,
-  WaterParametersFilter,
-  DevicesFilter,
-  ScheduledReportsInfo,
   SavePreferencesButton,
 } from './components';
 
-const { Text, Paragraph } = Typography;
+const { Text } = Typography;
 
 interface NotificationPreferences {
   userId: string;
   email: string;
   emailNotifications: boolean;
   pushNotifications: boolean;
-  sendScheduledAlerts: boolean;
   alertSeverities: string[];
   parameters: string[];
   devices: string[];
@@ -58,8 +47,6 @@ const NotificationSettings: React.FC = () => {
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null);
 
   // Global hooks
-  const { devices: devicesWithReadings } = useDevices({ pollInterval: 0 });
-  
   const { 
     preferences: userPrefs, 
     isLoading: prefsLoading,
@@ -67,22 +54,12 @@ const NotificationSettings: React.FC = () => {
   } = useUserPreferences({ 
     userId: user?._id || '',
     enabled: !!user?._id 
-  }) as { preferences: Record<string, unknown> | null; isLoading: boolean; refetch: () => Promise<void> }; // Type cast to bypass schema mismatch between frontend/backend
+  }) as { preferences: Record<string, unknown> | null; isLoading: boolean; refetch: () => Promise<void> }; // Type cast to bypass schema mismatch
   
   const { 
     updateUserPreferences, 
     isLoading: saving 
   } = useUserMutations();
-
-  // Transform devices for select component
-  const devices = devicesWithReadings.map((d) => ({
-    deviceId: d.deviceId,
-    name: d.name,
-    status: d.status,
-    location: d.metadata?.location 
-      ? `${d.metadata.location.building}, ${d.metadata.location.floor}`
-      : 'Unknown'
-  }));
 
   const loadPreferences = useCallback(async () => {
     if (!user) return;
@@ -104,15 +81,6 @@ const NotificationSettings: React.FC = () => {
         const formValues = {
           emailNotifications: prefs.emailNotifications ?? true,
           pushNotifications: prefs.pushNotifications ?? false,
-          sendScheduledAlerts: prefs.sendScheduledAlerts ?? true,
-          alertSeverities: prefs.alertSeverities || ['Critical', 'Warning', 'Advisory'],
-          parameters: prefs.parameters || [],
-          devices: prefs.devices || [],
-          quietHoursEnabled: prefs.quietHoursEnabled ?? false,
-          quietHours: prefs.quietHoursStart && prefs.quietHoursEnd ? [
-            dayjs(prefs.quietHoursStart as string, 'HH:mm'),
-            dayjs(prefs.quietHoursEnd as string, 'HH:mm'),
-          ] : undefined,
         };
         
         form.setFieldsValue(formValues);
@@ -121,11 +89,6 @@ const NotificationSettings: React.FC = () => {
         form.setFieldsValue({
           emailNotifications: true,
           pushNotifications: false,
-          sendScheduledAlerts: true,
-          alertSeverities: ['Critical', 'Warning', 'Advisory'],
-          parameters: [],
-          devices: [],
-          quietHoursEnabled: false,
         });
       }
     } catch (error) {
@@ -146,37 +109,22 @@ const NotificationSettings: React.FC = () => {
 
     try {
       interface FormValues {
-        quietHoursEnabled?: boolean;
-        quietHours?: Array<{ format: (fmt: string) => string }>;
         emailNotifications?: boolean;
         pushNotifications?: boolean;
-        sendScheduledAlerts?: boolean;
-        alertSeverities?: string[];
-        parameters?: string[];
-        devices?: string[];
       }
       const formValues = values as FormValues;
-      
-      const quietHoursStart = formValues.quietHoursEnabled && formValues.quietHours?.[0]
-        ? formValues.quietHours[0].format('HH:mm')
-        : undefined;
-
-      const quietHoursEnd = formValues.quietHoursEnabled && formValues.quietHours?.[1]
-        ? formValues.quietHours[1].format('HH:mm')
-        : undefined;
 
       const preferencesPayload = {
         userId: user.id,
         email: user.email,
         emailNotifications: formValues.emailNotifications ?? false,
         pushNotifications: formValues.pushNotifications ?? false,
-        sendScheduledAlerts: formValues.sendScheduledAlerts ?? true,
-        alertSeverities: formValues.alertSeverities || ['Critical', 'Warning', 'Advisory'],
-        parameters: formValues.parameters || [],
-        devices: formValues.devices || [],
-        quietHoursEnabled: formValues.quietHoursEnabled ?? false,
-        quietHoursStart,
-        quietHoursEnd,
+        alertSeverities: ['Critical', 'Warning', 'Advisory'], // fixed
+        parameters: [], // fixed
+        devices: [], // fixed
+        quietHoursEnabled: false, // fixed
+        quietHoursStart: undefined,
+        quietHoursEnd: undefined,
       };
 
       console.log('[NotificationSettings] Saving preferences:', preferencesPayload);
@@ -215,11 +163,6 @@ const NotificationSettings: React.FC = () => {
         initialValues={{
           emailNotifications: true,
           pushNotifications: false,
-          sendScheduledAlerts: true,
-          alertSeverities: ['Critical', 'Warning', 'Advisory'],
-          parameters: [],
-          devices: [],
-          quietHoursEnabled: false,
         }}
       >
         <PreferencesStatusAlert 
@@ -227,49 +170,7 @@ const NotificationSettings: React.FC = () => {
           userEmail={user?.email ?? undefined} 
         />
 
-        <Row gutter={[24, 24]}>
-          <Col xs={24} lg={12}>
-            <NotificationChannelsCard />
-          </Col>
-
-          <Col xs={24} lg={12}>
-            <QuietHoursCard />
-          </Col>
-        </Row>
-
-        <Card
-          title={
-            <span>
-              <ThunderboltOutlined style={{ fontSize: '20px', color: '#fa8c16', marginRight: '8px' }} />
-              <span style={{ fontSize: '16px', fontWeight: 600 }}>Alert Filters</span>
-            </span>
-          }
-          bordered={false}
-          style={{ 
-            marginTop: '24px',
-            boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02)'
-          }}
-        >
-          <Paragraph type="secondary" style={{ marginBottom: '24px', fontSize: '14px' }}>
-            Customize which alerts you want to receive based on severity, parameters, and devices
-          </Paragraph>
-
-          <Row gutter={[24, 24]}>
-            <Col xs={24} lg={8}>
-              <AlertSeveritiesFilter />
-            </Col>
-
-            <Col xs={24} lg={8}>
-              <WaterParametersFilter />
-            </Col>
-
-            <Col xs={24} lg={8}>
-              <DevicesFilter devices={devices} />
-            </Col>
-          </Row>
-        </Card>
-
-        <ScheduledReportsInfo />
+        <NotificationChannelsCard />
 
         <SavePreferencesButton loading={saving} />
       </Form>
