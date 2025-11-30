@@ -1,15 +1,13 @@
 /*
- * Water Quality Monitoring System - MQTT OPTIMIZED
- * Arduino UNO R4 WiFi with Advanced Sensor Calibration + MQTT Integration
- * MQTT v3.1.1 OPTIMIZED VERSION with HiveMQ Broker
- * Sensors: TDS (Calibrated), pH (Calibrated), Turbidity (Calibrated)
+ * Water Quality Monitoring System - 24/7 PRODUCTION VERSION
+ * Arduino UNO R4 WiFi with MQTT + Stability Enhancements
+ * Optimized for continuous operation with error recovery
  * 
- * Author: IoT Water Quality Project - MQTT Version
- * Date: 2025
- * Firmware: v6.0.0 - MQTT Integration with Command Handling
+ * Firmware: v6.1.0 - Production Stable
  */
 
 #include <WiFiS3.h>
+#include <WiFiSSLClient.h>  // ADDED: For secure MQTT
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include "Arduino_LED_Matrix.h"
@@ -19,40 +17,48 @@
 // ===========================
 
 // USER MODES
-bool sendToServer = true;          // MQTT publishing enabled
-bool isCalibrationMode = false;     // Set to false for normal operation
+bool sendToServer = true;
+bool isCalibrationMode = false;
 
 // WiFi Credentials
 #define WIFI_SSID "Yuzon Only"
 #define WIFI_PASSWORD "Pldtadmin@2024"
 
-// MQTT Broker Configuration - HiveMQ Cloud Cluster
+// MQTT Broker Configuration - HiveMQ Cloud
 #define MQTT_BROKER "0331c5286d084675b9198021329c7573.s1.eu.hivemq.cloud"
-#define MQTT_PORT 8883
+#define MQTT_PORT 8883  // TLS port
 #define MQTT_CLIENT_ID "arduino_uno_r4_002"
-#define MQTT_USERNAME "Admin"  // Leave empty for anonymous connection
-#define MQTT_PASSWORD "Admin123"  // Leave empty for anonymous connection
+#define MQTT_USERNAME "Admin"
+#define MQTT_PASSWORD "Admin123"
 
 // Device Configuration
 #define DEVICE_ID "arduino_uno_r4_002"
-#define DEVICE_NAME "Water Quality Monitor R4 MQTT"
+#define DEVICE_NAME "Water Quality Monitor R4"
 #define DEVICE_TYPE "Arduino UNO R4 WiFi"
-#define FIRMWARE_VERSION "6.0.0"
+#define FIRMWARE_VERSION "6.1.0"
 
 // Sensor Pin Configuration
 #define TDS_PIN A0
 #define PH_PIN A1
 #define TURBIDITY_PIN A2
 
-// Timing Configuration - Optimized for MQTT
-#define SENSOR_READ_INTERVAL 2000
-#define MQTT_PUBLISH_INTERVAL 2000
-#define REGISTRATION_INTERVAL 5000
-#define MQTT_RECONNECT_INTERVAL 5000
-#define STATUS_UPDATE_INTERVAL 30000  // Send status every 30 seconds
+// Timing Configuration - Optimized for stability
+#define SENSOR_READ_INTERVAL 5000      // CHANGED: 5s for stability
+#define MQTT_PUBLISH_INTERVAL 5000
+#define REGISTRATION_INTERVAL 10000    // CHANGED: 10s intervals
+#define MQTT_RECONNECT_INTERVAL 10000  // CHANGED: 10s retry
+#define STATUS_UPDATE_INTERVAL 60000   // CHANGED: Every 60s
+#define WATCHDOG_RESET_INTERVAL 30000  // ADDED: Reset watchdog every 30s
+#define MEMORY_CHECK_INTERVAL 300000   // ADDED: Check memory every 5 min
+
+// 24/7 Operation Settings
+#define MAX_MQTT_FAILURES 5            // ADDED: Max consecutive failures
+#define MAX_WIFI_FAILURES 3            // ADDED: Max WiFi failures before reboot
+#define REBOOT_AFTER_HOURS 168         // ADDED: Auto-reboot after 7 days
+#define MIN_FREE_MEMORY 1024           // ADDED: Minimum free RAM threshold
 
 // ===========================
-// ADVANCED CALIBRATION DATA
+// CALIBRATION DATA
 // ===========================
 
 const int CALIB_COUNT = 4;
@@ -92,10 +98,10 @@ float fitSlope = 0.0;
 float fitIntercept = 0.0;
 
 // ===========================
-// GLOBAL OBJECTS - MQTT OPTIMIZED
+// GLOBAL OBJECTS - WITH SSL SUPPORT
 // ===========================
-WiFiClient wifiClient;
-PubSubClient mqttClient(wifiClient);
+WiFiSSLClient wifiSSLClient;  // CHANGED: Use SSL client for port 8883
+PubSubClient mqttClient(wifiSSLClient);
 ArduinoLEDMatrix matrix;
 
 // ===========================
@@ -106,16 +112,22 @@ unsigned long lastMqttPublish = 0;
 unsigned long lastRegistrationAttempt = 0;
 unsigned long lastMqttReconnect = 0;
 unsigned long lastStatusUpdate = 0;
+unsigned long lastWatchdogReset = 0;     // ADDED
+unsigned long lastMemoryCheck = 0;       // ADDED
+unsigned long bootTime = 0;              // ADDED
 
 bool isRegistered = false;
 bool isApproved = false;
 bool mqttConnected = false;
+bool connectionActive = false;  // FIXED: Added missing variable
 
 float turbidity = 0.0;
 float tds = 0.0;
 float ph = 0.0;
 
 int consecutiveFailures = 0;
+int consecutiveMqttFailures = 0;  // ADDED
+int consecutiveWifiFailures = 0;  // ADDED
 const int MAX_FAILURES = 3;
 
 // MQTT Topics
@@ -128,21 +140,26 @@ enum MatrixState {
   CONNECTING,
   IDLE,
   HEARTBEAT,
-  MQTT_CONNECTING
+  MQTT_CONNECTING,
+  ERROR_STATE  // ADDED
 };
 
 MatrixState matrixState = CONNECTING;
 MatrixState previousState = CONNECTING;
 
 // ===========================
-// SETUP FUNCTION - MQTT OPTIMIZED
+// SETUP FUNCTION - ENHANCED
 // ===========================
 void setup() {
   Serial.begin(115200);
-  while (!Serial && millis() < 3000);
+  delay(2000);  // ADDED: Wait for serial
+  
+  bootTime = millis();
 
-  Serial.println("=== Arduino UNO R4 MQTT Optimized ===");
-  Serial.println("Firmware: v6.0.0 - MQTT Integration with HiveMQ");
+  Serial.println("\n\n=== Arduino UNO R4 - 24/7 PRODUCTION ===");
+  Serial.println("Firmware: v6.1.0 - Stability Optimized");
+  Serial.print("Boot Time: ");
+  Serial.println(bootTime);
   
   // Initialize LED Matrix
   matrix.begin();
@@ -153,83 +170,118 @@ void setup() {
     delay(50);
   }
 
+  // Initialize sensor pins
   pinMode(TDS_PIN, INPUT);
   pinMode(PH_PIN, INPUT);
   pinMode(TURBIDITY_PIN, INPUT);
 
-  // Initialize buffers
+  // Initialize buffers to zero
   for (int i = 0; i < SMA_SIZE; i++) smaBuffer[i] = 0;
   for (int i = 0; i < PH_SMA_SIZE; i++) phBuffer[i] = 0;
   for (int i = 0; i < TURB_SMA_SIZE; i++) turbBuffer[i] = 0;
 
-  // Compute calibration parameters
   computeCalibrationParams();
-
   printCalibrationInfo();
 
-  // Initialize MQTT client
+  // MQTT Client Configuration - ENHANCED
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
-  mqttClient.setKeepAlive(60);
-  mqttClient.setSocketTimeout(30);
+  mqttClient.setKeepAlive(60);           // Keep-alive packets
+  mqttClient.setSocketTimeout(30);       // Socket timeout
+  mqttClient.setBufferSize(512);         // ADDED: Increase buffer for JSON
 
-  Serial.println("MQTT Client initialized:");
-  Serial.println("  - Broker: 0331c5286d084675b9198021329c7573.s1.eu.hivemq.cloud:8883");
-  Serial.println("  - Client ID: " + String(MQTT_CLIENT_ID));
-  Serial.println("  - Topics configured for device communication");
+  Serial.println("\n=== MQTT Configuration ===");
+  Serial.print("Broker: ");
+  Serial.println(MQTT_BROKER);
+  Serial.print("Port: ");
+  Serial.print(MQTT_PORT);
+  Serial.println(" (TLS)");
+  Serial.print("Client ID: ");
+  Serial.println(MQTT_CLIENT_ID);
 
+  // WiFi and MQTT connection
   matrixState = CONNECTING;
   matrix.loadSequence(LEDMATRIX_ANIMATION_WIFI_SEARCH);
   matrix.play(true);
 
   connectWiFi();
-  connectMQTT();
-
-  if (mqttConnected) {
-    matrixState = IDLE;
-    matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    connectMQTT();
+    
+    if (mqttConnected) {
+      matrixState = IDLE;
+      matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
+    }
   }
 
   Serial.println("\n=== DEVICE MODES ===");
   Serial.print("Send to Server: ");
-  Serial.println(sendToServer ? "ENABLED (MQTT)" : "DISABLED");
+  Serial.println(sendToServer ? "ENABLED" : "DISABLED");
   Serial.print("Calibration Mode: ");
-  Serial.println(isCalibrationMode ? "ENABLED (250ms)" : "DISABLED");
+  Serial.println(isCalibrationMode ? "ENABLED" : "DISABLED");
+  Serial.print("Auto-reboot after: ");
+  Serial.print(REBOOT_AFTER_HOURS);
+  Serial.println(" hours");
   
   if (!isCalibrationMode && sendToServer) {
-    // Send initial registration
+    delay(2000);
     sendRegistration();
   }
+
+  Serial.println("\n=== System Ready for 24/7 Operation ===\n");
 }
 
 // ===========================
-// MAIN LOOP - MQTT OPTIMIZED
+// MAIN LOOP - OPTIMIZED
 // ===========================
 void loop() {
   unsigned long currentMillis = millis();
 
-  // Dynamic timing based on mode
+  // Check for uptime-based reboot (prevent long-term drift)
+  checkAutoReboot(currentMillis);
+
+  // Periodic memory check
+  if (currentMillis - lastMemoryCheck >= MEMORY_CHECK_INTERVAL) {
+    lastMemoryCheck = currentMillis;
+    checkMemoryHealth();
+  }
+
+  // Software watchdog (reset periodically)
+  if (currentMillis - lastWatchdogReset >= WATCHDOG_RESET_INTERVAL) {
+    lastWatchdogReset = currentMillis;
+    resetWatchdog();
+  }
+
+  // Dynamic timing
   unsigned long readInterval = isCalibrationMode ? 250 : SENSOR_READ_INTERVAL;
 
   updateMatrixState();
 
-  // WiFi connection management
+  // WiFi connection management - ENHANCED
   if (WiFi.status() != WL_CONNECTED) {
     handleWiFiDisconnection();
-    return;
+    return;  // Skip rest of loop
+  } else {
+    consecutiveWifiFailures = 0;  // Reset on success
+    connectionActive = true;
   }
 
-  // MQTT connection management
+  // MQTT connection management - ENHANCED
   if (!mqttClient.connected()) {
+    mqttConnected = false;
+    connectionActive = false;
+    
     if (currentMillis - lastMqttReconnect >= MQTT_RECONNECT_INTERVAL) {
       lastMqttReconnect = currentMillis;
       connectMQTT();
     }
   } else {
-    mqttClient.loop();  // Process incoming MQTT messages
+    mqttClient.loop();  // Process incoming messages
+    consecutiveMqttFailures = 0;  // Reset on success
   }
 
-  // Registration mode vs Active mode
+  // Registration vs Active mode
   if (!isApproved && sendToServer && !isCalibrationMode) {
     if (currentMillis - lastRegistrationAttempt >= REGISTRATION_INTERVAL) {
       lastRegistrationAttempt = currentMillis;
@@ -241,7 +293,7 @@ void loop() {
       lastSensorRead = currentMillis;
 
       if (!isCalibrationMode) {
-        Serial.println("--- Reading Sensors (Calibrated) ---");
+        Serial.println("--- Reading Sensors ---");
         if (matrixState == IDLE) {
           matrixState = HEARTBEAT;
           matrix.loadSequence(LEDMATRIX_ANIMATION_HEARTBEAT_LINE);
@@ -251,30 +303,438 @@ void loop() {
 
       readSensors();
 
-      // Publish data via MQTT
-      if (sendToServer && !isCalibrationMode) {
+      // Publish data
+      if (sendToServer && !isCalibrationMode && mqttConnected) {
         publishSensorDataMQTT();
-      } else if (!sendToServer) {
-        if (!isCalibrationMode) {
-          Serial.println("(!) sendToServer=false, local readings only.");
-        }
-      } else if (isCalibrationMode) {
-        // Minimal output in calibration mode for speed
       }
     }
 
-    // Send periodic status updates
-    if (sendToServer && !isCalibrationMode && currentMillis - lastStatusUpdate >= STATUS_UPDATE_INTERVAL) {
-      lastStatusUpdate = currentMillis;
-      sendStatusUpdate();
+    // Periodic status updates
+    if (sendToServer && !isCalibrationMode && mqttConnected) {
+      if (currentMillis - lastStatusUpdate >= STATUS_UPDATE_INTERVAL) {
+        lastStatusUpdate = currentMillis;
+        sendStatusUpdate();
+      }
     }
   }
 
-  delay(10);
+  delay(10);  // Small delay for stability
 }
 
 // ===========================
-// OPTIMIZED FUNCTIONS
+// 24/7 OPERATION FUNCTIONS
+// ===========================
+
+void checkAutoReboot(unsigned long currentMillis) {
+  unsigned long uptimeHours = (currentMillis - bootTime) / 3600000UL;
+  
+  if (uptimeHours >= REBOOT_AFTER_HOURS) {
+    Serial.println("\n!!! AUTO-REBOOT TRIGGERED !!!");
+    Serial.print("Uptime: ");
+    Serial.print(uptimeHours);
+    Serial.println(" hours");
+    Serial.println("Rebooting in 5 seconds...");
+    
+    delay(5000);
+    
+    // Arduino UNO R4 software reset
+    NVIC_SystemReset();  // ARM Cortex reset
+  }
+}
+
+void checkMemoryHealth() {
+  // Note: Arduino UNO R4 doesn't have freeMemory() built-in
+  // This is a placeholder for monitoring
+  Serial.println("--- Memory Health Check ---");
+  Serial.print("Uptime: ");
+  Serial.print((millis() - bootTime) / 1000);
+  Serial.println(" seconds");
+  Serial.print("WiFi Failures: ");
+  Serial.println(consecutiveWifiFailures);
+  Serial.print("MQTT Failures: ");
+  Serial.println(consecutiveMqttFailures);
+  
+  // If too many failures, force reconnection
+  if (consecutiveMqttFailures >= MAX_MQTT_FAILURES) {
+    Serial.println("!!! Too many MQTT failures - forcing reconnect !!!");
+    mqttClient.disconnect();
+    delay(1000);
+    connectMQTT();
+    consecutiveMqttFailures = 0;
+  }
+}
+
+void resetWatchdog() {
+  // Software watchdog - monitor system health
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("⚠️ Watchdog: WiFi disconnected");
+  }
+  
+  if (!mqttClient.connected() && sendToServer) {
+    Serial.println("⚠️ Watchdog: MQTT disconnected");
+  }
+  
+  // Print periodic heartbeat
+  Serial.print("♥ Watchdog OK | Uptime: ");
+  Serial.print((millis() - bootTime) / 1000);
+  Serial.println("s");
+}
+
+// ===========================
+// WIFI FUNCTIONS - ENHANCED
+// ===========================
+
+void connectWiFi() {
+  Serial.println("\n--- Connecting to WiFi ---");
+  Serial.print("SSID: ");
+  Serial.println(WIFI_SSID);
+  
+  WiFi.disconnect();
+  delay(500);  // Increased delay
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  int attempts = 0;
+  while (WiFi.status() != WL_CONNECTED && attempts < 40) {  // CHANGED: 40 attempts = 20s
+    Serial.print(".");
+    delay(500);
+    attempts++;
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\n✗ WiFi connection failed!");
+    consecutiveWifiFailures++;
+    
+    // Force reboot after max failures
+    if (consecutiveWifiFailures >= MAX_WIFI_FAILURES) {
+      Serial.println("!!! MAX WIFI FAILURES - REBOOTING !!!");
+      delay(5000);
+      NVIC_SystemReset();
+    }
+    
+    delay(5000);
+    return;
+  }
+
+  Serial.println("\n✓ WiFi connected!");
+  consecutiveWifiFailures = 0;
+  
+  // Wait for valid IP
+  attempts = 0;
+  while (WiFi.localIP() == IPAddress(0, 0, 0, 0) && attempts < 20) {
+    delay(500);
+    attempts++;
+  }
+  
+  Serial.print("IP Address: ");
+  Serial.println(WiFi.localIP());
+  Serial.print("Signal Strength: ");
+  Serial.print(WiFi.RSSI());
+  Serial.println(" dBm");
+  
+  connectionActive = true;
+}
+
+void handleWiFiDisconnection() {
+  consecutiveWifiFailures++;
+  connectionActive = false;
+  mqttConnected = false;
+  
+  if (matrixState != CONNECTING) {
+    Serial.println("\n⚠️ WiFi connection lost!");
+    Serial.print("Consecutive failures: ");
+    Serial.println(consecutiveWifiFailures);
+    
+    matrixState = CONNECTING;
+    matrix.loadSequence(LEDMATRIX_ANIMATION_WIFI_SEARCH);
+    matrix.play(true);
+  }
+  
+  connectWiFi();
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    consecutiveWifiFailures = 0;
+    delay(2000);  // ADDED: Wait before MQTT connection
+    connectMQTT();
+  }
+}
+
+// ===========================
+// MQTT FUNCTIONS - ENHANCED
+// ===========================
+
+void connectMQTT() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("✗ Cannot connect MQTT - WiFi down");
+    return;
+  }
+
+  if (mqttClient.connected()) {
+    mqttConnected = true;
+    return;
+  }
+
+  Serial.println("\n--- Connecting to MQTT ---");
+  Serial.print("Broker: ");
+  Serial.print(MQTT_BROKER);
+  Serial.print(":");
+  Serial.println(MQTT_PORT);
+
+  matrixState = MQTT_CONNECTING;
+  matrix.loadSequence(LEDMATRIX_ANIMATION_WIFI_SEARCH);
+  matrix.play(true);
+
+  // Attempt connection with credentials
+  bool connected = mqttClient.connect(
+    MQTT_CLIENT_ID,
+    MQTT_USERNAME,
+    MQTT_PASSWORD,
+    topicStatus.c_str(),  // Last Will topic
+    0,                     // Last Will QoS
+    true,                  // Last Will retain
+    "{\"status\":\"offline\",\"reason\":\"disconnect\"}"  // Last Will message
+  );
+
+  if (connected) {
+    Serial.println("✓ MQTT Connected!");
+    mqttConnected = true;
+    consecutiveMqttFailures = 0;
+    consecutiveFailures = 0;
+
+    // Subscribe to commands
+    if (mqttClient.subscribe(topicCommands.c_str(), 0)) {  // QoS 0
+      Serial.print("✓ Subscribed to: ");
+      Serial.println(topicCommands);
+    } else {
+      Serial.println("✗ Failed to subscribe");
+    }
+
+    if (matrixState == MQTT_CONNECTING) {
+      matrixState = IDLE;
+      matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
+    }
+    
+    // Send online status immediately
+    sendStatusUpdate();
+    
+  } else {
+    Serial.print("✗ MQTT Failed, rc=");
+    Serial.println(mqttClient.state());
+    printMqttError(mqttClient.state());
+    
+    mqttConnected = false;
+    consecutiveMqttFailures++;
+    consecutiveFailures++;
+  }
+}
+
+void printMqttError(int state) {
+  switch (state) {
+    case -4: Serial.println("  MQTT_CONNECTION_TIMEOUT"); break;
+    case -3: Serial.println("  MQTT_CONNECTION_LOST"); break;
+    case -2: Serial.println("  MQTT_CONNECT_FAILED"); break;
+    case -1: Serial.println("  MQTT_DISCONNECTED"); break;
+    case 1: Serial.println("  MQTT_CONNECT_BAD_PROTOCOL"); break;
+    case 2: Serial.println("  MQTT_CONNECT_BAD_CLIENT_ID"); break;
+    case 3: Serial.println("  MQTT_CONNECT_UNAVAILABLE"); break;
+    case 4: Serial.println("  MQTT_CONNECT_BAD_CREDENTIALS"); break;
+    case 5: Serial.println("  MQTT_CONNECT_UNAUTHORIZED"); break;
+    default: Serial.println("  UNKNOWN_ERROR"); break;
+  }
+}
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  Serial.println("\n--- MQTT Message Received ---");
+  Serial.print("Topic: ");
+  Serial.println(topic);
+
+  // Convert payload to string
+  char message[length + 1];
+  memcpy(message, payload, length);
+  message[length] = '\0';
+
+  Serial.print("Payload: ");
+  Serial.println(message);
+
+  // Parse JSON - OPTIMIZED with error handling
+  StaticJsonDocument<256> doc;
+  DeserializationError error = deserializeJson(doc, message);
+
+  if (error) {
+    Serial.print("✗ JSON parse error: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  const char* command = doc["command"];
+  
+  if (command == nullptr) {
+    Serial.println("✗ No command field in message");
+    return;
+  }
+
+  Serial.print("Command: ");
+  Serial.println(command);
+
+  // Process commands
+  if (strcmp(command, "go") == 0) {
+    Serial.println("🎉 GO command received!");
+    isRegistered = true;
+    isApproved = true;
+    
+  } else if (strcmp(command, "deregister") == 0) {
+    Serial.println("⚠️ DEREGISTER command!");
+    isRegistered = false;
+    isApproved = false;
+    
+  } else if (strcmp(command, "wait") == 0) {
+    Serial.println("⏳ WAIT command");
+    isRegistered = true;
+    isApproved = false;
+    
+  } else if (strcmp(command, "restart") == 0) {
+    Serial.println("🔄 RESTART command received!");
+    delay(1000);
+    NVIC_SystemReset();  // System reset
+    
+  } else if (strcmp(command, "calibrate") == 0) {
+    Serial.println("🔧 CALIBRATE command");
+    isCalibrationMode = true;
+    
+  } else if (strcmp(command, "stop_calibrate") == 0) {
+    Serial.println("✓ Stop calibration");
+    isCalibrationMode = false;
+    
+  } else {
+    Serial.print("⚠️ Unknown command: ");
+    Serial.println(command);
+  }
+}
+
+// ===========================
+// MQTT PUBLISH FUNCTIONS - ENHANCED
+// ===========================
+
+void publishSensorDataMQTT() {
+  if (!mqttClient.connected()) {
+    Serial.println("✗ MQTT not connected");
+    consecutiveMqttFailures++;
+    return;
+  }
+
+  // Create JSON payload - OPTIMIZED
+  StaticJsonDocument<256> doc;
+  doc["deviceId"] = DEVICE_ID;
+  doc["timestamp"] = millis();
+  doc["tds"] = round(tds * 10) / 10.0;
+  doc["pH"] = round(ph * 100) / 100.0;
+  doc["turbidity"] = round(turbidity * 10) / 10.0;
+  doc["messageType"] = "sensor_data";
+
+  String payload;
+  serializeJson(doc, payload);
+
+  Serial.println("--- Publishing Sensor Data ---");
+  Serial.println(payload);
+
+  // Publish with QoS 0 for speed
+  bool published = mqttClient.publish(topicData.c_str(), payload.c_str(), false);
+
+  if (published) {
+    Serial.println("✓ Data published!");
+    consecutiveFailures = 0;
+    consecutiveMqttFailures = 0;
+  } else {
+    Serial.println("✗ Publish failed!");
+    consecutiveFailures++;
+    consecutiveMqttFailures++;
+    
+    // Try to reconnect after failures
+    if (consecutiveMqttFailures >= MAX_MQTT_FAILURES) {
+      Serial.println("!!! Too many failures - reconnecting MQTT !!!");
+      mqttClient.disconnect();
+      delay(1000);
+      connectMQTT();
+    }
+  }
+}
+
+void sendRegistration() {
+  if (!mqttClient.connected()) {
+    Serial.println("✗ MQTT not connected - cannot register");
+    return;
+  }
+
+  Serial.println("\n--- Sending Registration ---");
+
+  StaticJsonDocument<512> doc;  // INCREASED size for registration
+  doc["deviceId"] = DEVICE_ID;
+  doc["name"] = DEVICE_NAME;
+  doc["type"] = DEVICE_TYPE;
+  doc["firmwareVersion"] = FIRMWARE_VERSION;
+  doc["timestamp"] = millis();
+  doc["messageType"] = "registration";
+  doc["uptime"] = (millis() - bootTime) / 1000;
+
+  // MAC Address
+  uint8_t macRaw[6];
+  WiFi.macAddress(macRaw);
+  char mac[18];
+  snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
+           macRaw[0], macRaw[1], macRaw[2], macRaw[3], macRaw[4], macRaw[5]);
+  doc["macAddress"] = mac;
+  doc["ipAddress"] = WiFi.localIP().toString();
+  doc["rssi"] = WiFi.RSSI();
+
+  JsonArray sensorsArray = doc.createNestedArray("sensors");
+  sensorsArray.add("pH");
+  sensorsArray.add("turbidity");
+  sensorsArray.add("tds");
+
+  String payload;
+  serializeJson(doc, payload);
+
+  Serial.println(payload);
+
+  // Publish with QoS 1 and retain for registration
+  if (mqttClient.publish(topicRegister.c_str(), payload.c_str(), true)) {
+    Serial.println("✓ Registration sent!");
+  } else {
+    Serial.println("✗ Registration failed!");
+  }
+}
+
+void sendStatusUpdate() {
+  if (!mqttClient.connected()) {
+    return;
+  }
+
+  Serial.println("--- Sending Status ---");
+
+  StaticJsonDocument<384> doc;
+  doc["deviceId"] = DEVICE_ID;
+  doc["timestamp"] = millis();
+  doc["status"] = "online";
+  doc["uptime"] = (millis() - bootTime) / 1000;
+  doc["wifiRSSI"] = WiFi.RSSI();
+  doc["firmwareVersion"] = FIRMWARE_VERSION;
+  doc["messageType"] = "device_status";
+  doc["isApproved"] = isApproved;
+  doc["mqttFailures"] = consecutiveMqttFailures;
+
+  String payload;
+  serializeJson(doc, payload);
+
+  Serial.println(payload);
+
+  if (mqttClient.publish(topicStatus.c_str(), payload.c_str(), false)) {
+    Serial.println("✓ Status sent!");
+  } else {
+    Serial.println("✗ Status failed!");
+  }
+}
+
+// ===========================
+// CALIBRATION FUNCTIONS (UNCHANGED)
 // ===========================
 
 void computeCalibrationParams() {
@@ -301,314 +761,15 @@ void computeCalibrationParams() {
 }
 
 void printCalibrationInfo() {
-  Serial.println("=== CALIBRATION PARAMETERS ===");
-  Serial.print("TDS Linear fit: slope=");
-  Serial.print(fitSlope, 4);
-  Serial.print(" intercept=");
+  Serial.println("\n=== CALIBRATION INFO ===");
+  Serial.print("TDS Slope: ");
+  Serial.println(fitSlope, 4);
+  Serial.print("TDS Intercept: ");
   Serial.println(fitIntercept, 2);
   Serial.print("TDS Factor: ");
   Serial.println(TDS_CALIBRATION_FACTOR, 3);
-  Serial.println("================================");
+  Serial.println("========================\n");
 }
-
-void handleWiFiDisconnection() {
-  mqttConnected = false;
-  consecutiveFailures++;
-  connectionActive = false;
-  
-  if (matrixState != CONNECTING) {
-    Serial.println("WiFi lost! Reconnecting...");
-    matrixState = CONNECTING;
-    matrix.loadSequence(LEDMATRIX_ANIMATION_WIFI_SEARCH);
-    matrix.play(true);
-  }
-  
-  connectWiFi();
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    consecutiveFailures = 0;
-    connectMQTT();
-  }
-}
-
-// ===========================
-// MQTT FUNCTIONS
-// ===========================
-
-void connectMQTT() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("Cannot connect to MQTT - WiFi not connected");
-    return;
-  }
-
-  if (mqttClient.connected()) {
-    return;
-  }
-
-  Serial.println("--- Connecting to MQTT Broker ---");
-  Serial.print("Broker: ");
-  Serial.println(MQTT_BROKER);
-  Serial.print("Port: ");
-  Serial.println(MQTT_PORT);
-
-  matrixState = MQTT_CONNECTING;
-  matrix.loadSequence(LEDMATRIX_ANIMATION_WIFI_SEARCH);
-  matrix.play(true);
-
-  // Attempt MQTT connection
-  bool connected = false;
-  if (strlen(MQTT_USERNAME) > 0) {
-    connected = mqttClient.connect(MQTT_CLIENT_ID, MQTT_USERNAME, MQTT_PASSWORD);
-  } else {
-    connected = mqttClient.connect(MQTT_CLIENT_ID);
-  }
-
-  if (connected) {
-    Serial.println("✓ MQTT connected!");
-    mqttConnected = true;
-    consecutiveFailures = 0;
-
-    // Subscribe to commands topic
-    if (mqttClient.subscribe(topicCommands.c_str())) {
-      Serial.println("✓ Subscribed to commands topic");
-    } else {
-      Serial.println("✗ Failed to subscribe to commands");
-    }
-
-    if (matrixState == MQTT_CONNECTING) {
-      matrixState = IDLE;
-      matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
-    }
-  } else {
-    Serial.print("✗ MQTT connection failed, rc=");
-    Serial.println(mqttClient.state());
-    mqttConnected = false;
-    consecutiveFailures++;
-  }
-}
-
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.println("--- MQTT Message Received ---");
-  Serial.print("Topic: ");
-  Serial.println(topic);
-
-  // Convert payload to string
-  char message[length + 1];
-  memcpy(message, payload, length);
-  message[length] = '\0';
-
-  Serial.print("Message: ");
-  Serial.println(message);
-
-  // Parse JSON message
-  StaticJsonDocument<256> doc;
-  DeserializationError error = deserializeJson(doc, message);
-
-  if (!error) {
-    String command = doc["command"] | "";
-
-    if (command == "go") {
-      Serial.println("🎉 GO command received!");
-      isRegistered = true;
-      isApproved = true;
-    } else if (command == "deregister") {
-      Serial.println("⚠️ DEREGISTER command!");
-      isRegistered = false;
-      isApproved = false;
-    } else if (command == "wait") {
-      Serial.println("⏳ WAIT command");
-      isRegistered = true;
-      isApproved = false;
-    } else if (command == "restart") {
-      Serial.println("🔄 RESTART command received!");
-      delay(1000);
-      // Software reset would go here if supported
-    } else {
-      Serial.println("Unknown command: " + command);
-    }
-  } else {
-    Serial.println("Failed to parse JSON message");
-  }
-}
-
-// ===========================
-// MQTT PUBLISH FUNCTIONS
-// ===========================
-
-void publishSensorDataMQTT() {
-  if (!mqttClient.connected()) {
-    Serial.println("✗ MQTT not connected");
-    return;
-  }
-
-  // Prepare JSON payload (use stack allocation for efficiency)
-  StaticJsonDocument<256> doc;
-  doc["deviceId"] = DEVICE_ID;
-  doc["timestamp"] = millis();
-  doc["tds"] = round(tds * 10) / 10.0;        // Round to 1 decimal
-  doc["pH"] = round(ph * 100) / 100.0;        // Round to 2 decimals
-  doc["turbidity"] = round(turbidity * 10) / 10.0;
-  doc["messageType"] = "sensor_data";
-
-  String payload;
-  serializeJson(doc, payload);
-
-  Serial.println("--- Publishing Sensor Data ---");
-  Serial.println(payload);
-
-  // Publish to MQTT topic
-  if (mqttClient.publish(topicData.c_str(), payload.c_str(), false)) {  // QoS 0
-    Serial.println("✓ Sensor data published!");
-    consecutiveFailures = 0;
-  } else {
-    Serial.println("✗ Failed to publish sensor data");
-    consecutiveFailures++;
-  }
-
-  // Retry logic
-  if (consecutiveFailures >= MAX_FAILURES) {
-    Serial.println("Multiple failures - reconnecting MQTT");
-    mqttClient.disconnect();
-    connectMQTT();
-    consecutiveFailures = 0;
-  }
-}
-
-void sendRegistration() {
-  if (!mqttClient.connected()) {
-    Serial.println("✗ MQTT not connected - cannot register");
-    return;
-  }
-
-  Serial.println("--- Sending Registration ---");
-
-  StaticJsonDocument<384> doc;
-  doc["deviceId"] = DEVICE_ID;
-  doc["name"] = DEVICE_NAME;
-  doc["type"] = DEVICE_TYPE;
-  doc["firmwareVersion"] = FIRMWARE_VERSION;
-  doc["timestamp"] = millis();
-  doc["messageType"] = "registration";
-
-  uint8_t macRaw[6];
-  WiFi.macAddress(macRaw);
-  char mac[18];
-  snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
-           macRaw[0], macRaw[1], macRaw[2], macRaw[3], macRaw[4], macRaw[5]);
-  doc["macAddress"] = mac;
-  doc["ipAddress"] = WiFi.localIP().toString();
-
-  JsonArray sensorsArray = doc.createNestedArray("sensors");
-  sensorsArray.add("pH");
-  sensorsArray.add("turbidity");
-  sensorsArray.add("tds");
-
-  String payload;
-  serializeJson(doc, payload);
-
-  Serial.println(payload);
-
-  if (mqttClient.publish(topicRegister.c_str(), payload.c_str(), true)) {  // QoS 1 for registration
-    Serial.println("✓ Registration sent!");
-  } else {
-    Serial.println("✗ Registration failed!");
-  }
-}
-
-void sendStatusUpdate() {
-  if (!mqttClient.connected()) {
-    Serial.println("✗ MQTT not connected - cannot send status");
-    return;
-  }
-
-  Serial.println("--- Sending Status Update ---");
-
-  StaticJsonDocument<256> doc;
-  doc["deviceId"] = DEVICE_ID;
-  doc["timestamp"] = millis();
-  doc["status"] = "online";
-  doc["uptime"] = millis() / 1000;  // uptime in seconds
-  doc["wifiRSSI"] = WiFi.RSSI();
-  doc["messageType"] = "device_status";
-  doc["firmwareVersion"] = FIRMWARE_VERSION;
-
-  String payload;
-  serializeJson(doc, payload);
-
-  Serial.println(payload);
-
-  if (mqttClient.publish(topicStatus.c_str(), payload.c_str(), false)) {  // QoS 0
-    Serial.println("✓ Status update sent!");
-  } else {
-    Serial.println("✗ Status update failed!");
-  }
-}
-
-// ===========================
-// LED MATRIX & HELPER FUNCTIONS
-// ===========================
-
-void updateMatrixState() {
-  if (matrixState == HEARTBEAT && matrix.sequenceDone()) {
-    matrixState = IDLE;
-    matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
-  }
-  
-  if (matrixState != previousState) {
-    previousState = matrixState;
-  }
-}
-
-void connectWiFi() {
-  Serial.print("Connecting to: ");
-  Serial.println(WIFI_SSID);
-  
-  WiFi.disconnect();
-  delay(100);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
-    Serial.print(".");
-    delay(500);
-    attempts++;
-  }
-
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("\n✗ WiFi failed!");
-    delay(5000);
-    connectWiFi();
-  } else {
-    Serial.println("\n✓ WiFi connected!");
-    
-    // Wait for valid IP
-    attempts = 0;
-    while (WiFi.localIP() == IPAddress(0, 0, 0, 0) && attempts < 20) {
-      delay(500);
-      attempts++;
-    }
-    
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
-    Serial.print("RSSI: ");
-    Serial.print(WiFi.RSSI());
-    Serial.println(" dBm");
-  }
-}
-
-void testMQTTConnection() {
-  Serial.println("Testing MQTT connection...");
-  
-  if (connectMQTT()) {
-    Serial.println("✓ MQTT connection test successful!");
-  } else {
-    Serial.println("✗ MQTT connection test failed!");
-  }
-}
-
-// ===========================
-// CALIBRATION FUNCTIONS
-// ===========================
 
 float adcToPPM(int adc) {
   if (CALIB_COUNT <= 0) return 0.0;
@@ -685,8 +846,19 @@ String getTurbidityStatus(float ntu) {
   return (ntu < 35.0) ? "Very Clean" : "Very Cloudy";
 }
 
+void updateMatrixState() {
+  if (matrixState == HEARTBEAT && matrix.sequenceDone()) {
+    matrixState = IDLE;
+    matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
+  }
+  
+  if (matrixState != previousState) {
+    previousState = matrixState;
+  }
+}
+
 // ===========================
-// SENSOR READING
+// SENSOR READING (UNCHANGED)
 // ===========================
 
 void readSensors() {
@@ -732,35 +904,15 @@ void readSensors() {
   ph = phValue;
   turbidity = ntu;
 
-  // Only print detailed output if NOT in calibration mode
   if (!isCalibrationMode) {
-    Serial.print("A0(raw): ");
-    Serial.print(value0);
-    Serial.print(" | A0(avg): ");
-    Serial.print(averagedADC);
-    Serial.print(" | V: ");
-    Serial.print(voltage, 3);
-    Serial.print(" | TDS: ");
+    Serial.print("TDS: ");
     Serial.print(calibratedPPM, 1);
-    Serial.println(" ppm");
-
-    Serial.print("A1(raw): ");
-    Serial.print(value1);
-    Serial.print(" | A1(avg): ");
-    Serial.print(averagedPHADC);
-    Serial.print(" | pH: ");
-    Serial.println(phValue, 2);
-
-    Serial.print("A2(raw): ");
-    Serial.print(value2);
-    Serial.print(" | A2(avg): ");
-    Serial.print(averagedTurbADC);
+    Serial.print(" ppm | pH: ");
+    Serial.print(phValue, 2);
     Serial.print(" | Turbidity: ");
     Serial.print(ntu, 2);
-    Serial.print(" NTU | ");
-    Serial.println(getTurbidityStatus(ntu));
+    Serial.println(" NTU");
   } else {
-    // Minimal output for calibration mode - fast readings
     Serial.print("TDS:");
     Serial.print(calibratedPPM, 1);
     Serial.print(" pH:");
@@ -769,15 +921,3 @@ void readSensors() {
     Serial.println(ntu, 2);
   }
 }
-
-// ===========================
-// LEGACY HTTP/SSE FUNCTIONS - REPLACED BY MQTT
-// ===========================
-
-/*
- * The following functions have been replaced by MQTT equivalents:
- * - sendRegistrationRequest() -> sendRegistration()
- * - connectSSE() & processSSEMessages() -> mqttCallback()
- *
- * These legacy functions are kept for reference but are no longer used.
- */

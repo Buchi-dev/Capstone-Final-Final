@@ -7,7 +7,7 @@ const CacheService = require('../utils/cache.service');
 const { NotFoundError, ValidationError, AppError } = require('../errors');
 const ResponseHelper = require('../utils/responses');
 const asyncHandler = require('../middleware/asyncHandler');
-const { sendCommandToDevice, isDeviceConnected } = require('../utils/mqtt.service');
+const mqttService = require('../utils/mqtt.service');
 
 /**
  * Get all devices
@@ -240,13 +240,13 @@ const deleteDevice = asyncHandler(async (req, res) => {
       });
     }
 
-    // Send deregister command to device if connected via SSE
-    if (isDeviceConnected(device.deviceId)) {
+    // Send deregister command to device if connected via MQTT
+    if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(device.deviceId)) {
       logger.info('[Device Controller] Sending deregister command to device', {
         deviceId: device.deviceId,
       });
       
-      sendCommandToDevice(device.deviceId, 'deregister', {
+      mqttService.sendCommandToDevice(device.deviceId, 'deregister', {
         message: 'Device has been removed from the system',
         reason: 'admin_deletion',
       });
@@ -254,8 +254,10 @@ const deleteDevice = asyncHandler(async (req, res) => {
       // Give device a moment to receive the command
       await new Promise(resolve => setTimeout(resolve, 1000));
     } else {
-      logger.warn('[Device Controller] Device not connected via SSE, cannot send deregister command', {
+      logger.warn('[Device Controller] MQTT service not available or device not connected, cannot send deregister command', {
         deviceId: device.deviceId,
+        mqttServiceAvailable: !!mqttService,
+        isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
       });
     }
 
@@ -550,6 +552,26 @@ const deviceRegister = asyncHandler(async (req, res) => {
       id: device._id 
     });
 
+    // Send "wait" command to device via MQTT if connected
+    if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(trimmedDeviceId)) {
+      const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'wait', {
+        message: 'Device registration received. Waiting for admin approval.',
+        device: device.toPublicProfile(),
+      });
+      
+      if (commandSent) {
+        logger.info('[Device Controller] "wait" command sent to device', {
+          deviceId: trimmedDeviceId,
+        });
+      }
+    } else {
+      logger.warn('[Device Controller] MQTT service not available or device not connected, "wait" command not sent', {
+        deviceId: trimmedDeviceId,
+        mqttServiceAvailable: !!mqttService,
+        isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
+      });
+    }
+
     return ResponseHelper.success(res, {
       device: device.toPublicProfile(),
       message: 'Device registration pending admin approval',
@@ -570,6 +592,26 @@ const deviceRegister = asyncHandler(async (req, res) => {
 
     // Check registration status
     if (device.isRegistered) {
+      // Send "go" command to device via MQTT if connected
+      if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(trimmedDeviceId)) {
+        const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'go', {
+          message: 'Device is registered and approved. You can start sending sensor data.',
+          device: device.toPublicProfile(),
+        });
+        
+        if (commandSent) {
+          logger.info('[Device Controller] "go" command sent to device', {
+            deviceId: trimmedDeviceId,
+          });
+        }
+      } else {
+        logger.warn('[Device Controller] MQTT service not available or device not connected, "go" command not sent', {
+          deviceId: trimmedDeviceId,
+          mqttServiceAvailable: !!mqttService,
+          isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
+        });
+      }
+
       return ResponseHelper.success(res, {
         device: device.toPublicProfile(),
         message: 'Device is registered and approved',
@@ -578,6 +620,26 @@ const deviceRegister = asyncHandler(async (req, res) => {
         command: 'go', // Tell device it can start sending sensor data
       }, 'Device registration approved');
     } else {
+      // Send "wait" command to device via MQTT if connected
+      if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(trimmedDeviceId)) {
+        const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'wait', {
+          message: 'Device registration pending admin approval.',
+          device: device.toPublicProfile(),
+        });
+        
+        if (commandSent) {
+          logger.info('[Device Controller] "wait" command sent to device', {
+            deviceId: trimmedDeviceId,
+          });
+        }
+      } else {
+        logger.warn('[Device Controller] MQTT service not available or device not connected, "wait" command not sent', {
+          deviceId: trimmedDeviceId,
+          mqttServiceAvailable: !!mqttService,
+          isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
+        });
+      }
+
       return ResponseHelper.success(res, {
         device: device.toPublicProfile(),
         message: 'Device registration pending admin approval',
@@ -631,9 +693,9 @@ const approveDeviceRegistration = asyncHandler(async (req, res) => {
     id: device._id,
   });
 
-  // Send "go" command to device via SSE if connected
-  if (isDeviceConnected(device.deviceId)) {
-    const commandSent = sendCommandToDevice(device.deviceId, 'go', {
+  // Send "go" command to device via MQTT if connected
+  if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(device.deviceId)) {
+    const commandSent = mqttService.sendCommandToDevice(device.deviceId, 'go', {
       message: 'Device registration approved. You can now start sending sensor data.',
       device: device.toPublicProfile(),
     });
@@ -644,8 +706,10 @@ const approveDeviceRegistration = asyncHandler(async (req, res) => {
       });
     }
   } else {
-    logger.warn('[Device Controller] Device not connected via SSE, "go" command not sent', {
+    logger.warn('[Device Controller] MQTT service not available or device not connected, "go" command not sent', {
       deviceId: device.deviceId,
+      mqttServiceAvailable: !!mqttService,
+      isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
     });
   }
 

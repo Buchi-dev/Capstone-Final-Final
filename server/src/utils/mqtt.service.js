@@ -246,7 +246,7 @@ class MQTTService {
     try {
       this.client.publish(topic, JSON.stringify(message), {
         qos: MQTT_CONFIG.QOS.AT_LEAST_ONCE,
-        retain: false,
+        retain: true,  // Changed to true so devices receive commands even if offline
       });
 
       logger.info(`[MQTT Service] Command sent to device ${deviceId}:`, { command, topic });
@@ -287,9 +287,10 @@ class MQTTService {
    * Check if device is connected (based on recent messages)
    */
   isDeviceConnected(deviceId) {
-    // This is a simple implementation - in production you might want
-    // to track device heartbeats and connection status
-    return this.deviceSubscriptions.has(deviceId);
+    // Since MQTT doesn't provide connection status for subscribers,
+    // we assume devices are connected if the MQTT broker is connected
+    // In production, you might want to track device heartbeats
+    return this.connected;
   }
 
   /**
