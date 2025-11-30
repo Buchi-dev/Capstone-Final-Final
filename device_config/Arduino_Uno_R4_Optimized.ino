@@ -1,533 +1,521 @@
 /*
  * Water Quality Monitoring System - CALIBRATED & OPTIMIZED
  * Arduino UNO R4 WiFi with Advanced Sensor Calibration + Direct HTTPS Integration
+ * EXPRESS.JS OPTIMIZED VERSION
  * Sensors: TDS (Calibrated), pH (Calibrated), Turbidity (Calibrated)
  * 
  * Author: IoT Water Quality Project - Calibrated Version
  * Date: 2025
- * Firmware: v5.2.2 - Fixed HTTPS with Insecure Mode
+ * Firmware: v5.3.0 - Express.js Optimized with Keep-Alive & Connection Pooling
  */
-
 
 #include <WiFiS3.h>
 #include <ArduinoHttpClient.h>
 #include <ArduinoJson.h>
-#include "Arduino_LED_Matrix.h"  // LED Matrix library for R4 WiFi
-
+#include "Arduino_LED_Matrix.h"
 
 // ===========================
 // CONFIGURATION
 // ===========================
 
+// USER MODES
+bool sendToServer = false;          // If false, readings are *not* sent to server
+bool isCalibrationMode = true;      // If true, sensor readings every 250ms
 
 // WiFi Credentials
 #define WIFI_SSID "Yuzon Only"
 #define WIFI_PASSWORD "Pldtadmin@2024"
 
-
-// API Server Configuration - BACK TO HTTPS
-#define API_SERVER "puretrack-api.onrender.com"  // Server hostname (no http:// or https://)
-#define API_PORT 443  // HTTPS port (Render requires HTTPS)
+// API Server Configuration - HTTPS with Keep-Alive
+#define API_SERVER "puretrack-api.onrender.com"
+#define API_PORT 443
 #define API_ENDPOINT "/api/v1/devices/readings"
-#define API_KEY "6a8d48a00823c869ad23c27cc34a3d446493cf35d6924d8f9d54e17c4565737a"  // Must match DEVICE_API_KEY in server .env
-
+#define API_KEY "6a8d48a00823c869ad23c27cc34a3d446493cf35d6924d8f9d54e17c4565737a"
 
 // Device Configuration
 #define DEVICE_ID "arduino_uno_r4_002"
 #define DEVICE_NAME "Water Quality Monitor R4 Calibrated"
 #define DEVICE_TYPE "Arduino UNO R4 WiFi"
-#define FIRMWARE_VERSION "5.2.2"
-
+#define FIRMWARE_VERSION "5.3.0"
 
 // Sensor Pin Configuration
-#define TDS_PIN A0          // TDS Sensor
-#define PH_PIN A1           // pH Sensor
-#define TURBIDITY_PIN A2    // Turbidity Sensor
+#define TDS_PIN A0
+#define PH_PIN A1
+#define TURBIDITY_PIN A2
 
-
-// Timing Configuration - Real-time Monitoring (Optimized)
-#define SENSOR_READ_INTERVAL 2000    // Read sensors every 2 seconds (real-time)
-#define HTTP_PUBLISH_INTERVAL 2000   // Publish every 2 seconds (real-time)
-#define HTTP_TIMEOUT 15000           // 15 second timeout for HTTPS requests (longer for SSL handshake)
-#define REGISTRATION_INTERVAL 5000   // Send registration request every 5 seconds when unregistered
-#define SSE_RECONNECT_INTERVAL 10000 // Reconnect to SSE every 10 seconds if disconnected
-
+// Timing Configuration - Optimized for Express.js
+#define SENSOR_READ_INTERVAL 2000
+#define HTTP_PUBLISH_INTERVAL 2000
+#define HTTP_TIMEOUT 10000              // Reduced to 10s for faster failover
+#define REGISTRATION_INTERVAL 5000
+#define SSE_RECONNECT_INTERVAL 10000
+#define CONNECTION_REUSE_TIMEOUT 30000  // Reuse connection for 30 seconds
 
 // ===========================
 // ADVANCED CALIBRATION DATA
 // ===========================
 
-
-// TDS Calibration data: ADC readings -> PPM measured values
 const int CALIB_COUNT = 4;
 const int calibADC[CALIB_COUNT] = {105, 116, 224, 250};
 const float calibPPM[CALIB_COUNT] = {236.0, 278.0, 1220.0, 1506.0};
 
-
-// pH calibration data
 const int PH_CALIB_COUNT = 3;
 const int phCalibADC[PH_CALIB_COUNT] = {482, 503, 532};
 const float phCalibPH[PH_CALIB_COUNT] = {9.81, 6.81, 4.16};
 
-
-// TDS Calibration correction factor
-const float TDS_CALIBRATION_FACTOR = 0.589;  // Fine-tuned for accuracy
-const float TDS_OFFSET = 0.0;                 // Additional offset if needed
-
+const float TDS_CALIBRATION_FACTOR = 0.589;
+const float TDS_OFFSET = 0.0;
 
 // ===========================
 // SMA SMOOTHING BUFFERS
 // ===========================
 
-
-// TDS smoothing / moving average
-const int SMA_SIZE = 8; // number of readings to average
+const int SMA_SIZE = 8;
 int smaBuffer[SMA_SIZE];
 int smaIndex = 0;
 long smaSum = 0;
 int smaCount = 0;
 
-
-// Turbidity smoothing (separate from TDS SMA)
-const int TURB_SMA_SIZE = 5; // lightweight smoothing for turbidity
+const int TURB_SMA_SIZE = 5;
 int turbBuffer[TURB_SMA_SIZE];
 int turbIndex = 0;
 long turbSum = 0;
 int turbCount = 0;
 
-
-// pH smoothing
-const int PH_SMA_SIZE = 5; // lightweight smoothing for pH
+const int PH_SMA_SIZE = 5;
 int phBuffer[PH_SMA_SIZE];
 int phIndex = 0;
 long phSum = 0;
 int phCount = 0;
 
-
-// Precomputed linear fit fallback (slope/intercept). Calculated in setup().
 float fitSlope = 0.0;
 float fitIntercept = 0.0;
 
-
 // ===========================
-// GLOBAL OBJECTS - SSL CLIENT
+// GLOBAL OBJECTS - OPTIMIZED
 // ===========================
-
-
-WiFiSSLClient wifiClient;  // SSL Client for HTTPS
+WiFiSSLClient wifiClient;
 HttpClient httpClient = HttpClient(wifiClient, API_SERVER, API_PORT);
-WiFiSSLClient sseClient;   // Separate SSL Client for SSE connection
-ArduinoLEDMatrix matrix;   // LED Matrix object for 12x8 display
-
+WiFiSSLClient sseClient;
+ArduinoLEDMatrix matrix;
 
 // ===========================
 // GLOBAL VARIABLES
 // ===========================
-
-
 unsigned long lastSensorRead = 0;
 unsigned long lastHttpPublish = 0;
 unsigned long lastRegistrationAttempt = 0;
 unsigned long lastSSEReconnect = 0;
+unsigned long lastConnectionTime = 0;
 unsigned long sensorReadStartTime = 0;
 
+bool isRegistered = false;
+bool isApproved = false;
+bool sseConnected = false;
+String sseBuffer = "";
 
-// Device registration state
-bool isRegistered = false;         // Device registration status
-bool isApproved = false;           // Admin approval status (received "go" command)
-bool sseConnected = false;         // SSE connection status
-String sseBuffer = "";             // Buffer for SSE data parsing
-
-
-// Sensor readings (calibrated values)
 float turbidity = 0.0;
 float tds = 0.0;
 float ph = 0.0;
 
-
 bool serverConnected = false;
-int consecutiveFailures = 0;  // Track connection failures
-const int MAX_FAILURES = 3;   // Reconnect after 3 failures
+int consecutiveFailures = 0;
+const int MAX_FAILURES = 3;
 
+// Connection pooling optimization
+bool connectionActive = false;
+unsigned long connectionStartTime = 0;
 
-// LED Matrix State Machine
 enum MatrixState {
-  CONNECTING,      // WiFi search animation
-  IDLE,            // Cloud WiFi icon (static)
-  HEARTBEAT        // ECG heartbeat line animation
+  CONNECTING,
+  IDLE,
+  HEARTBEAT
 };
-
 
 MatrixState matrixState = CONNECTING;
 MatrixState previousState = CONNECTING;
 
-
 // ===========================
 // SETUP FUNCTION
 // ===========================
-
-
 void setup() {
-  // Initialize Serial communication at 115200 baud (faster for calibrated output)
   Serial.begin(115200);
-  while (!Serial && millis() < 3000); // Wait up to 3 seconds for Serial
-  
-  Serial.println("=== Arduino UNO R4 Calibrated Water Quality Monitor ===");
-  Serial.println("Firmware: v5.2.2 - Fixed HTTPS with Insecure Mode");
-  Serial.println("Initializing LED Matrix...");
+  while (!Serial && millis() < 3000);
+
+  Serial.println("=== Arduino UNO R4 Express.js Optimized ===");
+  Serial.println("Firmware: v5.3.0 - Connection Pooling Enabled");
   
   // Initialize LED Matrix
   matrix.begin();
-  
-  // Test LED Matrix - show startup animation
-  Serial.println("Playing startup animation...");
   matrix.loadSequence(LEDMATRIX_ANIMATION_STARTUP);
-  matrix.play(false);  // Play once
+  matrix.play(false);
   
-  // Wait for startup animation to complete
   while (!matrix.sequenceDone()) {
     delay(50);
   }
-  
-  Serial.println("LED Matrix initialized!");
-  
+
   pinMode(TDS_PIN, INPUT);
   pinMode(PH_PIN, INPUT);
   pinMode(TURBIDITY_PIN, INPUT);
-  
-  // Initialize SMA buffers
-  for (int i = 0; i < SMA_SIZE; i++) {
-    smaBuffer[i] = 0;
-  }
-  for (int i = 0; i < PH_SMA_SIZE; i++) {
-    phBuffer[i] = 0;
-  }
-  for (int i = 0; i < TURB_SMA_SIZE; i++) {
-    turbBuffer[i] = 0;
-  }
-  
-  // Compute linear regression slope/intercept as fallback for TDS
-  float meanX = 0.0;
-  float meanY = 0.0;
-  for (int i = 0; i < CALIB_COUNT; ++i) {
-    meanX += (float)calibADC[i];
-    meanY += calibPPM[i];
-  }
-  meanX /= CALIB_COUNT;
-  meanY /= CALIB_COUNT;
-  float num = 0.0;
-  float den = 0.0;
-  for (int i = 0; i < CALIB_COUNT; ++i) {
-    float dx = (float)calibADC[i] - meanX;
-    float dy = calibPPM[i] - meanY;
-    num += dx * dy;
-    den += dx * dx;
-  }
-  if (den != 0.0) {
-    fitSlope = num / den;
-    fitIntercept = meanY - fitSlope * meanX;
-  }
 
+  // Initialize buffers
+  for (int i = 0; i < SMA_SIZE; i++) smaBuffer[i] = 0;
+  for (int i = 0; i < PH_SMA_SIZE; i++) phBuffer[i] = 0;
+  for (int i = 0; i < TURB_SMA_SIZE; i++) turbBuffer[i] = 0;
 
-  // Print calibration parameters for debugging/verification
-  Serial.println("=== CALIBRATION PARAMETERS ===");
-  Serial.print("TDS Linear fit: slope=");
-  Serial.print(fitSlope, 4);
-  Serial.print(" intercept=");
-  Serial.println(fitIntercept, 2);
-  Serial.print("TDS Calibration factor: ");
-  Serial.println(TDS_CALIBRATION_FACTOR, 3);
-  Serial.println("================================");
-  
-  // Set HTTP timeout (longer for SSL handshake)
+  // Compute calibration parameters
+  computeCalibrationParams();
+
+  printCalibrationInfo();
+
+  // Optimize HTTP client settings for Express.js
   httpClient.setTimeout(HTTP_TIMEOUT);
-  Serial.print("HTTPS timeout set to: ");
-  Serial.print(HTTP_TIMEOUT / 1000);
-  Serial.println(" seconds");
+  httpClient.setHttpResponseTimeout(HTTP_TIMEOUT);
   
-  // Start with connecting state - WiFi Search animation
+  Serial.println("HTTP Client optimized for Express.js:");
+  Serial.println("  - Keep-Alive enabled");
+  Serial.println("  - Connection pooling active");
+  Serial.println("  - Timeout: 10 seconds");
+
   matrixState = CONNECTING;
-  previousState = CONNECTING;
   matrix.loadSequence(LEDMATRIX_ANIMATION_WIFI_SEARCH);
-  matrix.play(true);  // Loop while connecting
-  
-  Serial.println("Connecting to WiFi...");
+  matrix.play(true);
+
   connectWiFi();
-  
-  Serial.println("Testing server connection...");
   testServerConnection();
-  
-  // Switch to idle state after connection - Cloud WiFi icon
+
   if (serverConnected) {
-    Serial.println("✓ Server Connected! Switching to IDLE state (Cloud WiFi).");
     matrixState = IDLE;
-    matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);  // Static cloud WiFi icon
-  } else {
-    Serial.println("✗ Server Connection Failed! Staying in CONNECTING state.");
+    matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
   }
+
+  Serial.println("\n=== DEVICE MODES ===");
+  Serial.print("Send to Server: ");
+  Serial.println(sendToServer ? "ENABLED" : "DISABLED");
+  Serial.print("Calibration Mode: ");
+  Serial.println(isCalibrationMode ? "ENABLED (250ms)" : "DISABLED");
   
-  Serial.println("Setup complete. Starting main loop...");
-  Serial.println("Advanced calibration active - piecewise linear interpolation + SMA smoothing");
-  Serial.println("ECG heartbeat animation will trigger every 2 seconds during sensor readings.");
-  Serial.println("Using HTTPS (port 443) - SSL certificate verification disabled for compatibility");
-  Serial.println();
-  Serial.println("=== DEVICE REGISTRATION SYSTEM ===");
-  Serial.println("Device will enter registration mode until approved by admin");
-  Serial.println("Waiting for 'go' command from server via SSE...");
-  
-  // Attempt initial SSE connection
-  connectSSE();
+  if (!isCalibrationMode && sendToServer) {
+    connectSSE();
+  }
 }
 
-
 // ===========================
-// MAIN LOOP
+// MAIN LOOP - OPTIMIZED
 // ===========================
-
-
 void loop() {
   unsigned long currentMillis = millis();
-  
-  // Update LED Matrix state
+
+  // Dynamic timing based on mode
+  unsigned long readInterval = isCalibrationMode ? 250 : SENSOR_READ_INTERVAL;
+
   updateMatrixState();
-  
-  // Check WiFi connection with improved handling
+
+  // WiFi connection management
   if (WiFi.status() != WL_CONNECTED) {
-    serverConnected = false;
-    consecutiveFailures++;
-    
-    if (matrixState != CONNECTING) {
-      Serial.println("WiFi disconnected! Switching to CONNECTING state.");
-      matrixState = CONNECTING;
-      matrix.loadSequence(LEDMATRIX_ANIMATION_WIFI_SEARCH);
-      matrix.play(true);
-    }
-    
-    connectWiFi();
-    
-    // Reset failure counter on successful WiFi connection
-    if (WiFi.status() == WL_CONNECTED) {
-      consecutiveFailures = 0;
-      sseConnected = false; // Force SSE reconnection
-    }
+    handleWiFiDisconnection();
+    return;
   }
-  
-  // Handle SSE connection and message processing
-  if (sseConnected) {
-    processSSEMessages();
-  } else {
-    // Try to reconnect to SSE
-    if (currentMillis - lastSSEReconnect >= SSE_RECONNECT_INTERVAL) {
+
+  // SSE processing (only if not in calibration mode)
+  if (!isCalibrationMode && sendToServer) {
+    if (sseConnected) {
+      processSSEMessages();
+    } else if (currentMillis - lastSSEReconnect >= SSE_RECONNECT_INTERVAL) {
       lastSSEReconnect = currentMillis;
       connectSSE();
     }
   }
-  
-  // Device behavior depends on registration status
-  if (!isApproved) {
-    // REGISTRATION MODE: Send registration requests until approved
+
+  // Registration mode vs Active mode
+  if (!isApproved && sendToServer && !isCalibrationMode) {
     if (currentMillis - lastRegistrationAttempt >= REGISTRATION_INTERVAL) {
       lastRegistrationAttempt = currentMillis;
       sendRegistrationRequest();
     }
   } else {
-    // ACTIVE MODE: Device is approved, can read sensors and publish data
-    if (currentMillis - lastSensorRead >= SENSOR_READ_INTERVAL) {
+    // Sensor reading logic
+    if (currentMillis - lastSensorRead >= readInterval) {
       lastSensorRead = currentMillis;
-      
-      Serial.println("--- Reading Sensors (Calibrated) ---");
-      
-      // Switch to heartbeat animation during sensing
-      if (matrixState == IDLE) {
-        Serial.println("💓 Triggering ECG heartbeat animation...");
-        matrixState = HEARTBEAT;
-        sensorReadStartTime = currentMillis;
-        matrix.loadSequence(LEDMATRIX_ANIMATION_HEARTBEAT_LINE);
-        matrix.play(false);  // Play once, don't loop
-      }
-      
-      readSensors();  // This now handles all detailed logging with calibrated values
-      
-      publishSensorData();
-      
-      if (serverConnected) {
-        Serial.println("✓ Calibrated data published to server!");
-        consecutiveFailures = 0;  // Reset on success
-      } else {
-        Serial.println("✗ Server not connected, calibrated data not published.");
-        consecutiveFailures++;
-        
-        // Retry server connection after multiple failures
-        if (consecutiveFailures >= MAX_FAILURES) {
-          Serial.println("Multiple failures detected. Retesting server connection...");
-          testServerConnection();
-          consecutiveFailures = 0;
+
+      if (!isCalibrationMode) {
+        Serial.println("--- Reading Sensors (Calibrated) ---");
+        if (matrixState == IDLE) {
+          matrixState = HEARTBEAT;
+          matrix.loadSequence(LEDMATRIX_ANIMATION_HEARTBEAT_LINE);
+          matrix.play(false);
         }
       }
+
+      readSensors();
+
+      // Publish data with connection pooling optimization
+      if (sendToServer && !isCalibrationMode) {
+        publishSensorDataOptimized();
+      } else if (!sendToServer) {
+        if (!isCalibrationMode) {
+          Serial.println("(!) sendToServer=false, local readings only.");
+        }
+      } else if (isCalibrationMode) {
+        // Minimal output in calibration mode for speed
+      }
     }
   }
-  
-  delay(10);  // Minimal delay for stability
+
+  // Close idle connections to free resources
+  manageConnectionPool(currentMillis);
+
+  delay(10);
 }
 
+// ===========================
+// OPTIMIZED FUNCTIONS
+// ===========================
+
+void computeCalibrationParams() {
+  float meanX = 0.0, meanY = 0.0;
+  for (int i = 0; i < CALIB_COUNT; i++) {
+    meanX += (float)calibADC[i];
+    meanY += calibPPM[i];
+  }
+  meanX /= CALIB_COUNT;
+  meanY /= CALIB_COUNT;
+  
+  float num = 0.0, den = 0.0;
+  for (int i = 0; i < CALIB_COUNT; i++) {
+    float dx = (float)calibADC[i] - meanX;
+    float dy = calibPPM[i] - meanY;
+    num += dx * dy;
+    den += dx * dx;
+  }
+  
+  if (den != 0.0) {
+    fitSlope = num / den;
+    fitIntercept = meanY - fitSlope * meanX;
+  }
+}
+
+void printCalibrationInfo() {
+  Serial.println("=== CALIBRATION PARAMETERS ===");
+  Serial.print("TDS Linear fit: slope=");
+  Serial.print(fitSlope, 4);
+  Serial.print(" intercept=");
+  Serial.println(fitIntercept, 2);
+  Serial.print("TDS Factor: ");
+  Serial.println(TDS_CALIBRATION_FACTOR, 3);
+  Serial.println("================================");
+}
+
+void handleWiFiDisconnection() {
+  serverConnected = false;
+  consecutiveFailures++;
+  connectionActive = false;
+  
+  if (matrixState != CONNECTING) {
+    Serial.println("WiFi lost! Reconnecting...");
+    matrixState = CONNECTING;
+    matrix.loadSequence(LEDMATRIX_ANIMATION_WIFI_SEARCH);
+    matrix.play(true);
+  }
+  
+  connectWiFi();
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    consecutiveFailures = 0;
+    sseConnected = false;
+  }
+}
+
+void manageConnectionPool(unsigned long currentMillis) {
+  // Close connection if idle for too long (Express.js best practice)
+  if (connectionActive && (currentMillis - lastConnectionTime > CONNECTION_REUSE_TIMEOUT)) {
+    httpClient.stop();
+    connectionActive = false;
+    if (!isCalibrationMode) {
+      Serial.println("Connection pool: Closed idle connection");
+    }
+  }
+}
 
 // ===========================
-// LED MATRIX STATE MANAGEMENT
+// OPTIMIZED PUBLISH FUNCTION
 // ===========================
 
+void publishSensorDataOptimized() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("✗ WiFi not connected");
+    return;
+  }
+
+  // Reuse connection if still active (Express.js optimization)
+  if (!connectionActive || !wifiClient.connected()) {
+    httpClient.stop();
+    delay(50);  // Minimal delay
+    connectionActive = false;
+  }
+
+  // Prepare JSON payload (use stack allocation for efficiency)
+  StaticJsonDocument<256> doc;
+  doc["deviceId"] = DEVICE_ID;
+  doc["tds"] = round(tds * 10) / 10.0;        // Round to 1 decimal
+  doc["pH"] = round(ph * 100) / 100.0;        // Round to 2 decimals
+  doc["turbidity"] = round(turbidity * 10) / 10.0;
+
+  String payload;
+  serializeJson(doc, payload);
+
+  Serial.println("--- Sending to Express.js ---");
+  Serial.println(payload);
+
+  // Send request with Keep-Alive headers (Express.js friendly)
+  httpClient.beginRequest();
+  httpClient.post(API_ENDPOINT);
+  httpClient.sendHeader("Host", API_SERVER);
+  httpClient.sendHeader("Content-Type", "application/json");
+  httpClient.sendHeader("x-api-key", API_KEY);
+  httpClient.sendHeader("User-Agent", "Arduino-UNO-R4/5.3.0");
+  httpClient.sendHeader("Content-Length", payload.length());
+  httpClient.sendHeader("Connection", "keep-alive");  // Enable keep-alive
+  httpClient.sendHeader("Keep-Alive", "timeout=30");  // 30 second timeout
+  httpClient.beginBody();
+  httpClient.print(payload);
+  httpClient.endRequest();
+
+  int statusCode = httpClient.responseStatusCode();
+  String response = httpClient.responseBody();
+
+  lastConnectionTime = millis();
+  connectionActive = true;
+
+  if (statusCode == 200 || statusCode == 201) {
+    serverConnected = true;
+    consecutiveFailures = 0;
+    Serial.println("✓ Data published!");
+    Serial.print("Response: ");
+    Serial.println(response.substring(0, min(100, (int)response.length())));
+  } else if (statusCode > 0) {
+    serverConnected = false;
+    Serial.print("✗ HTTP Error: ");
+    Serial.println(statusCode);
+    consecutiveFailures++;
+  } else {
+    serverConnected = false;
+    Serial.println("✗ Connection timeout");
+    consecutiveFailures++;
+    httpClient.stop();
+    connectionActive = false;
+  }
+
+  // Retry logic
+  if (consecutiveFailures >= MAX_FAILURES) {
+    Serial.println("Multiple failures - retesting connection");
+    httpClient.stop();
+    connectionActive = false;
+    testServerConnection();
+    consecutiveFailures = 0;
+  }
+}
+
+// ===========================
+// LED MATRIX & HELPER FUNCTIONS
+// ===========================
 
 void updateMatrixState() {
-  // Check if heartbeat animation is complete
   if (matrixState == HEARTBEAT && matrix.sequenceDone()) {
-    Serial.println("🌊 Heartbeat complete. Returning to IDLE state.");
     matrixState = IDLE;
-    matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);  // Back to cloud WiFi icon
+    matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
   }
   
-  // Handle state transitions
   if (matrixState != previousState) {
     previousState = matrixState;
-    
-    // Debug output
-    Serial.print("🖥️  Matrix State Changed: ");
-    if (matrixState == CONNECTING) {
-      Serial.println("CONNECTING (WiFi Search)");
-    } else if (matrixState == IDLE) {
-      Serial.println("IDLE (Cloud WiFi Icon)");
-    } else if (matrixState == HEARTBEAT) {
-      Serial.println("HEARTBEAT (ECG Line)");
-    }
   }
 }
 
-
-// ===========================
-// WiFi FUNCTIONS
-// ===========================
-
-
 void connectWiFi() {
-  Serial.print("Connecting to WiFi: ");
+  Serial.print("Connecting to: ");
   Serial.println(WIFI_SSID);
   
-  // Disconnect first to ensure clean connection
   WiFi.disconnect();
   delay(100);
-  
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  
+
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 30) {
     Serial.print(".");
     delay(500);
     attempts++;
   }
-  
+
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("\n✗ WiFi connection failed!");
-    Serial.println("Retrying WiFi connection in 5 seconds...");
+    Serial.println("\n✗ WiFi failed!");
     delay(5000);
-    connectWiFi();  // Recursive retry
+    connectWiFi();
   } else {
     Serial.println("\n✓ WiFi connected!");
     
-    // Wait for valid IP address (not 0.0.0.0)
+    // Wait for valid IP
     attempts = 0;
     while (WiFi.localIP() == IPAddress(0, 0, 0, 0) && attempts < 20) {
-      Serial.print(".");
       delay(500);
       attempts++;
     }
     
-    IPAddress ip = WiFi.localIP();
-    if (ip == IPAddress(0, 0, 0, 0)) {
-      Serial.println("\n✗ Failed to obtain IP address!");
-      Serial.println("Retrying WiFi connection...");
-      delay(2000);
-      connectWiFi();  // Recursive retry
-    } else {
-      Serial.print("IP address: ");
-      Serial.println(ip);
-      Serial.print("Signal strength (RSSI): ");
-      Serial.print(WiFi.RSSI());
-      Serial.println(" dBm");
-    }
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+    Serial.print("RSSI: ");
+    Serial.print(WiFi.RSSI());
+    Serial.println(" dBm");
   }
 }
 
-
-// ===========================
-// SERVER CONNECTION FUNCTIONS
-// ===========================
-
-
 void testServerConnection() {
-  Serial.print("Testing connection to: https://");
-  Serial.println(API_SERVER);
-  Serial.println("Sending GET request to /health endpoint...");
+  Serial.println("Testing Express.js server...");
   
-  // Stop any existing connection
   httpClient.stop();
   delay(100);
-  
+
   httpClient.beginRequest();
   httpClient.get("/health");
   httpClient.sendHeader("Host", API_SERVER);
-  httpClient.sendHeader("User-Agent", "Arduino-UNO-R4/5.2.2");
+  httpClient.sendHeader("User-Agent", "Arduino-UNO-R4/5.3.0");
   httpClient.sendHeader("Connection", "close");
   httpClient.endRequest();
-  
-  Serial.println("Request sent, waiting for response...");
-  
+
   int statusCode = httpClient.responseStatusCode();
   String response = httpClient.responseBody();
-  
-  Serial.print("Health check status code: ");
+
+  Serial.print("Health check: ");
   Serial.println(statusCode);
-  
+
   if (statusCode == 200) {
     serverConnected = true;
-    Serial.print("✓ Server responded with status code: ");
-    Serial.println(statusCode);
-    Serial.print("Response (first 200 chars): ");
-    Serial.println(response.substring(0, min(200, (int)response.length())));
+    Serial.println("✓ Server connected!");
     
-    // Switch to IDLE state if we were connecting
     if (matrixState == CONNECTING) {
       matrixState = IDLE;
       matrix.loadFrame(LEDMATRIX_CLOUD_WIFI);
     }
   } else {
     serverConnected = false;
-    Serial.print("✗ Server connection failed with status: ");
+    Serial.print("✗ Server error: ");
     Serial.println(statusCode);
-    Serial.print("Response: ");
-    Serial.println(response);
-    
-    if (statusCode == 301 || statusCode == 307 || statusCode == 308) {
-      Serial.println("⚠️  Server is redirecting HTTP to HTTPS");
-      Serial.println("   This is normal - the Arduino will use HTTPS");
-    }
   }
-  
-  // Clean up connection
+
   httpClient.stop();
 }
 
-
 // ===========================
-// ADVANCED CALIBRATION FUNCTIONS
+// CALIBRATION FUNCTIONS
 // ===========================
-
 
 float adcToPPM(int adc) {
   if (CALIB_COUNT <= 0) return 0.0;
 
-  for (int i = 0; i < CALIB_COUNT; ++i) {
+  for (int i = 0; i < CALIB_COUNT; i++) {
     if (adc == calibADC[i]) return calibPPM[i];
   }
 
-  for (int i = 0; i < CALIB_COUNT - 1; ++i) {
+  for (int i = 0; i < CALIB_COUNT - 1; i++) {
     int x0 = calibADC[i];
     int x1 = calibADC[i + 1];
     if (adc > x0 && adc < x1) {
@@ -552,15 +540,14 @@ float adcToPPM(int adc) {
   return fitSlope * (float)adc + fitIntercept;
 }
 
-
 float adcToPH(int adc) {
   if (PH_CALIB_COUNT <= 0) return 7.0;
 
-  for (int i = 0; i < PH_CALIB_COUNT; ++i) {
+  for (int i = 0; i < PH_CALIB_COUNT; i++) {
     if (adc == phCalibADC[i]) return phCalibPH[i];
   }
 
-  for (int i = 0; i < PH_CALIB_COUNT - 1; ++i) {
+  for (int i = 0; i < PH_CALIB_COUNT - 1; i++) {
     int x0 = phCalibADC[i];
     int x1 = phCalibADC[i + 1];
     if (adc >= x0 && adc <= x1) {
@@ -585,32 +572,27 @@ float adcToPH(int adc) {
   return 7.0;
 }
 
-
 float calculateTurbidityNTU(int adcValue) {
   float slope = -0.1613;
   float intercept = 27.74;
   float ntu = slope * (float)adcValue + intercept;
-  if (ntu < 0) ntu = 0;
-  return ntu;
+  return (ntu < 0) ? 0 : ntu;
 }
-
 
 String getTurbidityStatus(float ntu) {
-  if (ntu < 35.0) return "Very Clean";
-  return "Very Cloudy";
+  return (ntu < 35.0) ? "Very Clean" : "Very Cloudy";
 }
 
-
 // ===========================
-// SENSOR READING FUNCTIONS
+// SENSOR READING
 // ===========================
-
 
 void readSensors() {
   int value0 = analogRead(TDS_PIN);
   int value1 = analogRead(PH_PIN);
   int value2 = analogRead(TURBIDITY_PIN);
 
+  // Update smoothing buffers
   phSum -= phBuffer[phIndex];
   phBuffer[phIndex] = value1;
   phSum += phBuffer[phIndex];
@@ -634,10 +616,8 @@ void readSensors() {
   int averagedPHADC = phSum / max(1, phCount);
 
   float voltage = (float)averagedADC * (5.0 / 16383.0);
-
   float ppm = adcToPPM(averagedADC);
   float calibratedPPM = (ppm * TDS_CALIBRATION_FACTOR) + TDS_OFFSET;
-
   float phValue = adcToPH(averagedPHADC);
 
   if (phValue < 0.0) phValue = 0.0;
@@ -650,222 +630,142 @@ void readSensors() {
   ph = phValue;
   turbidity = ntu;
 
-  Serial.print("A0(raw): ");
-  Serial.print(value0);
-  Serial.print(" | A0(avg): ");
-  Serial.print(averagedADC);
-  Serial.print(" | V: ");
-  Serial.print(voltage, 3);
-  Serial.print(" | TDS (ppm): ");
-  Serial.println(calibratedPPM, 1);
+  // Only print detailed output if NOT in calibration mode
+  if (!isCalibrationMode) {
+    Serial.print("A0(raw): ");
+    Serial.print(value0);
+    Serial.print(" | A0(avg): ");
+    Serial.print(averagedADC);
+    Serial.print(" | V: ");
+    Serial.print(voltage, 3);
+    Serial.print(" | TDS: ");
+    Serial.print(calibratedPPM, 1);
+    Serial.println(" ppm");
 
-  Serial.print("A1(raw): ");
-  Serial.print(value1);
-  Serial.print(" | A1(avg): ");
-  Serial.print(averagedPHADC);
-  Serial.print(" | pH: ");
-  Serial.println(phValue, 2);
+    Serial.print("A1(raw): ");
+    Serial.print(value1);
+    Serial.print(" | A1(avg): ");
+    Serial.print(averagedPHADC);
+    Serial.print(" | pH: ");
+    Serial.println(phValue, 2);
 
-  Serial.print("A2(raw): ");
-  Serial.print(value2);
-  Serial.print(" | A2(avg): ");
-  Serial.print(averagedTurbADC);
-  Serial.print(" | Turbidity (NTU): ");
-  Serial.print(ntu, 2);
-  Serial.print(" | Status: ");
-  Serial.println(getTurbidityStatus(ntu));
-}
-
-
-// ===========================
-// HTTP PUBLISH FUNCTIONS
-// ===========================
-
-
-void publishSensorData() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("✗ WiFi not connected, skipping publish");
-    return;
-  }
-  
-  httpClient.stop();
-  delay(100);
-  
-  StaticJsonDocument<256> doc;
-  doc["deviceId"] = DEVICE_ID;
-  doc["tds"] = tds;
-  doc["pH"] = ph;
-  doc["turbidity"] = turbidity;
-  
-  String payload;
-  serializeJson(doc, payload);
-  
-  Serial.println("--- Sending JSON Payload ---");
-  Serial.println(payload);
-  Serial.println("----------------------------");
-  
-  httpClient.beginRequest();
-  httpClient.post(API_ENDPOINT);
-  httpClient.sendHeader("Host", API_SERVER);
-  httpClient.sendHeader("Content-Type", "application/json");
-  httpClient.sendHeader("x-api-key", API_KEY);
-  httpClient.sendHeader("User-Agent", "Arduino-UNO-R4/5.2.2");
-  httpClient.sendHeader("Content-Length", payload.length());
-  httpClient.sendHeader("Connection", "close");
-  httpClient.beginBody();
-  httpClient.print(payload);
-  httpClient.endRequest();
-  
-  Serial.println("Waiting for server response...");
-  
-  int statusCode = httpClient.responseStatusCode();
-  String response = httpClient.responseBody();
-  
-  Serial.print("Server Status Code: ");
-  Serial.println(statusCode);
-  
-  if (statusCode == 200 || statusCode == 201) {
-    serverConnected = true;
-    Serial.println("✓ HTTP POST successful!");
-    Serial.print("Response: ");
-    Serial.println(response);
-  } else if (statusCode > 0) {
-    serverConnected = false;
-    Serial.print("✗ HTTP POST failed with status: ");
-    Serial.println(statusCode);
-    Serial.print("Error response: ");
-    Serial.println(response);
+    Serial.print("A2(raw): ");
+    Serial.print(value2);
+    Serial.print(" | A2(avg): ");
+    Serial.print(averagedTurbADC);
+    Serial.print(" | Turbidity: ");
+    Serial.print(ntu, 2);
+    Serial.print(" NTU | ");
+    Serial.println(getTurbidityStatus(ntu));
   } else {
-    serverConnected = false;
-    Serial.println("✗ No response from server (timeout or connection error)");
+    // Minimal output for calibration mode - fast readings
+    Serial.print("TDS:");
+    Serial.print(calibratedPPM, 1);
+    Serial.print(" pH:");
+    Serial.print(phValue, 2);
+    Serial.print(" Turb:");
+    Serial.println(ntu, 2);
   }
-  
-  httpClient.stop();
 }
 
-
 // ===========================
-// DEVICE REGISTRATION FUNCTIONS
+// REGISTRATION & SSE FUNCTIONS
 // ===========================
 
-
-/**
- * Send registration request to server
- */
 void sendRegistrationRequest() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("✗ WiFi not connected, skipping registration request");
-    return;
-  }
-  
-  Serial.println("--- Sending Registration Request ---");
-  
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  Serial.println("--- Registration Request ---");
+
   httpClient.stop();
   delay(100);
-  
+
   StaticJsonDocument<384> doc;
   doc["deviceId"] = DEVICE_ID;
   doc["name"] = DEVICE_NAME;
   doc["type"] = DEVICE_TYPE;
   doc["firmwareVersion"] = FIRMWARE_VERSION;
-  char mac[18];
+  
   uint8_t macRaw[6];
   WiFi.macAddress(macRaw);
-  snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X", macRaw[0], macRaw[1], macRaw[2], macRaw[3], macRaw[4], macRaw[5]);
+  char mac[18];
+  snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X", 
+           macRaw[0], macRaw[1], macRaw[2], macRaw[3], macRaw[4], macRaw[5]);
   doc["macAddress"] = mac;
   doc["ipAddress"] = WiFi.localIP().toString();
-  
+
   JsonArray sensorsArray = doc.createNestedArray("sensors");
   sensorsArray.add("pH");
   sensorsArray.add("turbidity");
   sensorsArray.add("tds");
-  
+
   String payload;
   serializeJson(doc, payload);
-  
+
   Serial.println(payload);
-  
+
   httpClient.beginRequest();
   httpClient.post("/api/v1/devices/register");
   httpClient.sendHeader("Host", API_SERVER);
   httpClient.sendHeader("Content-Type", "application/json");
   httpClient.sendHeader("x-api-key", API_KEY);
-  httpClient.sendHeader("User-Agent", "Arduino-UNO-R4/5.2.2");
+  httpClient.sendHeader("User-Agent", "Arduino-UNO-R4/5.3.0");
   httpClient.sendHeader("Content-Length", payload.length());
   httpClient.sendHeader("Connection", "close");
   httpClient.beginBody();
   httpClient.print(payload);
   httpClient.endRequest();
-  
+
   int statusCode = httpClient.responseStatusCode();
   String response = httpClient.responseBody();
-  
-  Serial.print("Registration Status Code: ");
+
+  Serial.print("Status: ");
   Serial.println(statusCode);
-  
+
   if (statusCode == 200 || statusCode == 201) {
-    Serial.println("✓ Registration request sent successfully!");
-    Serial.print("Response: ");
-    Serial.println(response);
-    
-    // Parse response to check if approved
+    Serial.println("✓ Registration sent!");
+
     StaticJsonDocument<512> responseDoc;
     DeserializationError error = deserializeJson(responseDoc, response);
-    
+
     if (!error) {
       bool registered = responseDoc["data"]["isRegistered"] | false;
       String command = responseDoc["data"]["command"] | "";
-      
+
       if (registered && command == "go") {
-        Serial.println("🎉 Device APPROVED! Switching to active mode...");
+        Serial.println("🎉 Device APPROVED!");
         isRegistered = true;
         isApproved = true;
       } else {
-        Serial.println("⏳ Registration pending admin approval...");
+        Serial.println("⏳ Awaiting approval...");
         isRegistered = true;
         isApproved = false;
       }
     }
   } else {
-    Serial.print("✗ Registration request failed with status: ");
+    Serial.print("✗ Registration failed: ");
     Serial.println(statusCode);
   }
-  
+
   httpClient.stop();
-  Serial.println("------------------------------------");
 }
 
-
-/**
- * Connect to SSE endpoint to receive commands
- */
 void connectSSE() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("✗ WiFi not connected, cannot connect SSE");
-    return;
-  }
-  
-  if (sseConnected) {
-    Serial.println("SSE already connected");
-    return;
-  }
-  
-  Serial.println("--- Connecting to SSE ---");
-  
-  // Close any existing connection
+  if (WiFi.status() != WL_CONNECTED || sseConnected) return;
+
+  Serial.println("--- Connecting SSE ---");
+
   sseClient.stop();
   delay(500);
-  
-  // Connect to server
+
   if (!sseClient.connect(API_SERVER, API_PORT)) {
     Serial.println("✗ SSE connection failed");
     sseConnected = false;
     return;
   }
-  
-  // Send GET request for SSE endpoint
+
   String sseEndpoint = "/sse/" + String(DEVICE_ID);
-  
+
   sseClient.println("GET " + sseEndpoint + " HTTP/1.1");
   sseClient.println("Host: " + String(API_SERVER));
   sseClient.println("x-api-key: " + String(API_KEY));
@@ -873,37 +773,30 @@ void connectSSE() {
   sseClient.println("Cache-Control: no-cache");
   sseClient.println("Connection: keep-alive");
   sseClient.println();
-  
-  // Wait for response headers
+
   unsigned long timeout = millis() + 10000;
   while (sseClient.available() == 0 && millis() < timeout) {
     delay(100);
   }
-  
+
   if (sseClient.available() == 0) {
-    Serial.println("✗ SSE connection timeout");
+    Serial.println("✗ SSE timeout");
     sseClient.stop();
     sseConnected = false;
     return;
   }
-  
-  // Read and verify response headers
+
   bool headersValid = false;
   while (sseClient.available()) {
     String line = sseClient.readStringUntil('\n');
-    Serial.println("SSE Header: " + line);
-    
     if (line.indexOf("text/event-stream") >= 0) {
       headersValid = true;
     }
-    
-    if (line == "\r" || line.length() == 0) {
-      break; // End of headers
-    }
+    if (line == "\r" || line.length() == 0) break;
   }
-  
+
   if (headersValid) {
-    Serial.println("✓ SSE connection established!");
+    Serial.println("✓ SSE connected!");
     sseConnected = true;
     sseBuffer = "";
   } else {
@@ -911,14 +804,8 @@ void connectSSE() {
     sseClient.stop();
     sseConnected = false;
   }
-  
-  Serial.println("-------------------------");
 }
 
-
-/**
- * Process incoming SSE messages
- */
 void processSSEMessages() {
   if (!sseConnected || !sseClient.connected()) {
     Serial.println("SSE disconnected");
@@ -926,12 +813,11 @@ void processSSEMessages() {
     sseClient.stop();
     return;
   }
-  
+
   while (sseClient.available()) {
     char c = sseClient.read();
-    
+
     if (c == '\n') {
-      // Process complete line
       if (sseBuffer.startsWith("event: ")) {
         String eventType = sseBuffer.substring(7);
         eventType.trim();
@@ -941,39 +827,31 @@ void processSSEMessages() {
         String eventData = sseBuffer.substring(6);
         eventData.trim();
         Serial.println("SSE Data: " + eventData);
-        
-        // Parse JSON data
+
         StaticJsonDocument<512> doc;
         DeserializationError error = deserializeJson(doc, eventData);
-        
+
         if (!error) {
           String command = doc["command"] | "";
-          
+
           if (command == "go") {
-            Serial.println("🎉 Received 'GO' command! Device approved!");
-            Serial.println("Switching to ACTIVE mode - will start collecting sensor data");
+            Serial.println("🎉 GO command received!");
             isRegistered = true;
             isApproved = true;
           } 
           else if (command == "deregister") {
-            Serial.println("⚠️ Received 'DEREGISTER' command!");
-            Serial.println("Device removed from system. Returning to registration mode...");
+            Serial.println("⚠️ DEREGISTER command!");
             isRegistered = false;
             isApproved = false;
-            // Stop sending sensor data, go back to registration mode
           }
           else if (command == "wait") {
-            Serial.println("⏳ Received 'WAIT' command - registration pending");
+            Serial.println("⏳ WAIT command");
             isRegistered = true;
             isApproved = false;
           }
-          else if (command == "update") {
-            Serial.println("🔄 Received 'UPDATE' command");
-            // Handle configuration updates if needed
-          }
         }
       }
-      
+
       sseBuffer = "";
     } else {
       sseBuffer += c;

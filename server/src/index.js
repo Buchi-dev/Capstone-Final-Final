@@ -21,7 +21,7 @@ const { setupSwagger } = require('./configs/swagger.config');
 const logger = require('./utils/logger');
 const { initializeEmailQueue, closeEmailQueue } = require('./utils/email.queue');
 const { API_VERSION } = require('./utils/constants');
-const { closeAllConnections: closeSSE } = require('./utils/sseConfig');
+const mqttService = require('./utils/mqtt.service');
 const { initializeChangeStreams, closeChangeStreams } = require('./utils/changeStreams');
 const { errorHandler, notFoundHandler } = require('./errors/errorHandler');
 const { getSupportedVersions } = require('./middleware/apiVersion.middleware');
@@ -40,7 +40,6 @@ const alertRoutes = require('./alerts/alert.Routes');
 const deviceRoutes = require('./devices/device.Routes');
 const reportRoutes = require('./reports/report.Routes');
 const analyticsRoutes = require('./analytics/analytics.Routes');
-const sseRoutes = require('./utils/sseRoutes');
 
 // Initialize Express app
 const app = express();
@@ -75,6 +74,7 @@ const allowedOrigins = [
   'https://smupuretrack.web.app',
   'https://smupuretrack.firebaseapp.com',
   'http://localhost:5173',
+  'http://192.168.88.249:5173',
   process.env.CLIENT_URL || 'http://localhost:5173'
 ].filter(Boolean);
 
@@ -119,6 +119,9 @@ async function initializeApp() {
     initializeEmailQueue(process.env.REDIS_URL);
   }
 
+  // Connect to MQTT Broker (HiveMQ)
+  await mqttService.connect();
+
   // Add user context for logging (Firebase token-based)
   app.use(addUserContext);
 
@@ -157,9 +160,6 @@ async function initializeApp() {
   // Health check routes
   app.use('/health', healthRoutes);
 
-  // SSE (Server-Sent Events) routes for real-time updates
-  app.use('/sse', sseRoutes);
-
   // API Routes with versioning
   app.use('/auth', authRoutes);
   app.use(`${API_VERSION.PREFIX}/users`, userRoutes);
@@ -194,7 +194,7 @@ initializeApp().then(() => {
   server = http.createServer(app);
   
   // Start server
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     const envSummary = getEnvironmentSummary();
     const isProduction = process.env.NODE_ENV === 'production';
     
@@ -204,7 +204,7 @@ initializeApp().then(() => {
       logger.info('Water Quality Monitoring API - PRODUCTION');
       logger.info('========================================');
       logger.info(`Port: ${PORT} | Environment: ${envSummary.nodeEnv} | API: ${API_VERSION.CURRENT}`);
-      logger.info(`Services: MongoDB ✓ | Redis ✓ | SMTP ✓ | Firebase ✓ | SSE ✓`);
+      logger.info(`Services: MongoDB ✓ | Redis ✓ | SMTP ✓ | Firebase ✓ | MQTT ✓`);
       logger.info(`Health: http://localhost:${PORT}/health`);
       logger.info('========================================');
     } else {
@@ -223,7 +223,7 @@ initializeApp().then(() => {
       logger.info(`   SMTP:        ${envSummary.smtpConfigured ? '[OK]' : '[WARN] Not configured'}`);
       logger.info(`   Firebase:    ${envSummary.firebaseConfigured ? '[OK]' : '[FAIL]'}`);
       logger.info(`   API Key:     ${envSummary.apiKeyConfigured ? '[OK]' : '[FAIL]'}`);
-      logger.info(`   SSE:         [OK]`);
+      logger.info(`   MQTT:        [OK]`);
       logger.info('');
       logger.info('[DOCS] Documentation: http://localhost:' + PORT + '/api-docs');
       logger.info('[HEALTH] Health Check:  http://localhost:' + PORT + '/health');
@@ -262,8 +262,8 @@ const gracefulShutdown = async (signal) => {
     // Close change streams
     await closeChangeStreams();
 
-    // Disconnect all SSE clients
-    closeSSE();
+    // Disconnect from MQTT broker
+    await mqttService.disconnect();
 
     // Close email queue
     await closeEmailQueue();

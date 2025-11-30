@@ -9,8 +9,8 @@
  */
 
 // ==================== API VERSION ====================
-// Use /api in development (proxied), /api/v1 in production
-const API_VERSION = import.meta.env.PROD ? '/api/v1' : '/api';
+// Always use /api/v1 since we're not using proxy anymore
+const API_VERSION = '/api/v1';
 
 // ==================== AUTHENTICATION ====================
 export const AUTH_ENDPOINTS = {

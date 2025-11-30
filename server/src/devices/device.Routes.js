@@ -84,13 +84,13 @@ router.post('/readings', ensureApiKey, validateSensorData, processSensorData);
 router.post('/register', ensureApiKey, deviceRegister);
 
 /**
- * @route   GET /api/v1/devices/sse/:deviceId
- * @desc    Establish SSE connection for device to receive commands
+ * @route   GET /api/v1/devices/status/:deviceId
+ * @desc    Get device status for MQTT polling (replaces SSE)
  * @access  Requires API key authentication
  * @security ApiKeyAuth
- * @note    Devices maintain SSE connection to receive 'go', 'deregister', and other commands
+ * @note    Devices poll this endpoint to check registration status and receive commands
  */
-router.get('/sse/:deviceId', ensureApiKey, deviceSSEConnection);
+router.get('/status/:deviceId', ensureApiKey, deviceSSEConnection);
 
 /**
  * @route   POST /api/v1/devices/:deviceId/approve

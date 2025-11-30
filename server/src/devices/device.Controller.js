@@ -7,7 +7,7 @@ const CacheService = require('../utils/cache.service');
 const { NotFoundError, ValidationError, AppError } = require('../errors');
 const ResponseHelper = require('../utils/responses');
 const asyncHandler = require('../middleware/asyncHandler');
-const { sendCommandToDevice, isDeviceConnected } = require('../utils/sseConfig');
+const { sendCommandToDevice, isDeviceConnected } = require('../utils/mqtt.service');
 
 /**
  * Get all devices
@@ -658,7 +658,12 @@ const approveDeviceRegistration = asyncHandler(async (req, res) => {
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const deviceSSEConnection = asyncHandler(async (req, res) => {
+/**
+ * Get device status for MQTT polling (replaces SSE)
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const getDeviceStatus = asyncHandler(async (req, res) => {
   const { deviceId } = req.params;
   const trimmedDeviceId = deviceId?.trim();
 
@@ -670,44 +675,34 @@ const deviceSSEConnection = asyncHandler(async (req, res) => {
   const device = await Device.findOne({ deviceId: trimmedDeviceId });
 
   if (!device) {
-    return ResponseHelper.error(res, 
-      'Device not found. Please register first.', 
+    return ResponseHelper.error(res,
+      'Device not found. Please register first.',
       404,
       'DEVICE_NOT_FOUND'
     );
   }
 
-  // Import setupDeviceSSEConnection
-  const { setupDeviceSSEConnection } = require('../utils/sseConfig');
-
-  // Setup SSE connection for this device
-  setupDeviceSSEConnection(trimmedDeviceId, res, {
-    name: device.name,
-    type: device.type,
-    firmwareVersion: device.firmwareVersion,
-  });
-
-  logger.info('[Device Controller] Device SSE connection established', {
+  // Return device status for MQTT polling
+  const status = {
     deviceId: trimmedDeviceId,
+    isRegistered: device.isRegistered,
+    isApproved: device.isRegistered, // Same as isRegistered for backward compatibility
+    status: device.status,
+    registrationStatus: device.registrationStatus,
+    lastSeen: device.lastSeen,
+    command: device.isRegistered ? 'go' : 'wait',
+    message: device.isRegistered
+      ? 'Device is registered. You can send sensor data via MQTT.'
+      : 'Device registration pending approval. Please wait.',
+  };
+
+  logger.debug('[Device Controller] Device status requested', {
+    deviceId: trimmedDeviceId,
+    status: status.status,
+    isRegistered: status.isRegistered,
   });
 
-  // Send initial status
-  const { sendCommandToDevice: sendCmd } = require('../utils/sseConfig');
-  
-  // Send device status after a short delay
-  setTimeout(() => {
-    if (device.isRegistered) {
-      sendCmd(trimmedDeviceId, 'go', {
-        message: 'Device is registered. You can send sensor data.',
-        device: device.toPublicProfile(),
-      });
-    } else {
-      sendCmd(trimmedDeviceId, 'wait', {
-        message: 'Device registration pending approval. Please wait.',
-        device: device.toPublicProfile(),
-      });
-    }
-  }, 500);
+  ResponseHelper.success(res, status, 'Device status retrieved');
 });
 
 module.exports = {
@@ -720,5 +715,5 @@ module.exports = {
   getDeviceStats,
   deviceRegister,
   approveDeviceRegistration,
-  deviceSSEConnection,
+  deviceSSEConnection: getDeviceStatus,
 };

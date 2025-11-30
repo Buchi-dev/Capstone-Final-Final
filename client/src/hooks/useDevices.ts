@@ -28,7 +28,7 @@ import {
 } from '../services/devices.Service';
 import type { DeviceWithReadings, SensorReading } from '../schemas';
 import { useVisibilityPolling } from './useVisibilityPolling';
-import { addEventListener, removeEventListener, subscribeToChannel, isConnected } from '../utils/sse';
+import { subscribeToTopic, unsubscribeFromTopic, MQTT_TOPICS } from '../utils/mqtt';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -126,64 +126,71 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
     }
   );
 
-  // SSE subscription for real-time updates
+  // MQTT subscription for real-time updates
   // Uses ref to prevent multiple subscriptions from the same component
   useEffect(() => {
     if (!enabled || !realtime) return;
 
-    if (!isConnected()) {
+    // Handle device data messages (real-time sensor readings)
+    const handleDeviceData = (_topic: string, data: any) => {
       if (import.meta.env.DEV) {
-        console.warn('[useDevices] SSE not connected, using polling fallback');
+        console.log('[useDevices] Device data via MQTT:', data);
       }
-      return;
-    }
+      // Update local state with new reading
+      mutate((currentDevices) => {
+        if (!currentDevices) return currentDevices;
+        
+        // Update the device with latest reading
+        return currentDevices.map((device: any) => {
+          if (device.deviceId === data.deviceId) {
+            return {
+              ...device,
+              latestReading: data,
+              lastSeen: new Date().toISOString(),
+            };
+          }
+          return device;
+        });
+      });
+    };
 
-    // Subscribe to devices channel
-    subscribeToChannel('devices').catch(error => {
-      console.error('[useDevices] Failed to subscribe to devices channel:', error);
-    });
-    
+    // Handle device status messages
+    const handleDeviceStatus = (_topic: string, data: any) => {
+      if (import.meta.env.DEV) {
+        console.log('[useDevices] Device status via MQTT:', data);
+      }
+      // Update device status
+      mutate((currentDevices) => {
+        if (!currentDevices) return currentDevices;
+        
+        return currentDevices.map((device: any) => {
+          if (device.deviceId === data.deviceId) {
+            return {
+              ...device,
+              status: data.status,
+              lastSeen: new Date().toISOString(),
+            };
+          }
+          return device;
+        });
+      });
+    };
+
+    // Subscribe to device topics for real-time data
+    subscribeToTopic(MQTT_TOPICS.DEVICE_DATA, handleDeviceData);
+    subscribeToTopic(MQTT_TOPICS.DEVICE_STATUS, handleDeviceStatus);
+
     if (import.meta.env.DEV) {
-      console.log('[useDevices] Subscribed to real-time devices via SSE');
+      console.log('[useDevices] Subscribed to real-time devices via MQTT');
     }
-
-    // Handle device updates
-    const handleDeviceUpdated = (data: { deviceId?: string }) => {
-      if (import.meta.env.DEV) {
-        console.log('[useDevices] Device updated:', data.deviceId);
-      }
-      mutate(); // Revalidate cache
-    };
-
-    // Handle new readings
-    const handleNewReading = (data: { reading?: { deviceId?: string } }) => {
-      if (import.meta.env.DEV) {
-        console.log('[useDevices] New reading:', data.reading?.deviceId);
-      }
-      mutate(); // Revalidate cache to update latest reading
-    };
-
-    // Handle new devices
-    const handleNewDevice = (data: { device?: { deviceId?: string } }) => {
-      if (import.meta.env.DEV) {
-        console.log('[useDevices] New device registered:', data.device?.deviceId);
-      }
-      mutate(); // Revalidate cache
-    };
-
-    // Register SSE event listeners
-    addEventListener('device:updated', handleDeviceUpdated);
-    addEventListener('device:new', handleNewDevice);
-    addEventListener('reading:new', handleNewReading);
 
     return () => {
-      // Remove event listeners on cleanup
-      removeEventListener('device:updated', handleDeviceUpdated);
-      removeEventListener('device:new', handleNewDevice);
-      removeEventListener('reading:new', handleNewReading);
-      
+      // Remove topic listeners on cleanup
+      unsubscribeFromTopic(MQTT_TOPICS.DEVICE_DATA, handleDeviceData);
+      unsubscribeFromTopic(MQTT_TOPICS.DEVICE_STATUS, handleDeviceStatus);
+
       if (import.meta.env.DEV) {
-        console.log('[useDevices] Cleaned up SSE event listeners');
+        console.log('[useDevices] Cleaned up MQTT topic listeners');
       }
     };
   }, [enabled, realtime, mutate]);

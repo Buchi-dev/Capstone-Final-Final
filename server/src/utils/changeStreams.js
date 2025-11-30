@@ -19,7 +19,7 @@ const User = require('../users/user.Model');
 const logger = require('./logger');
 const { SENSOR_THRESHOLDS } = require('./constants');
 const { queueAlertEmail } = require('./email.queue');
-const { broadcastToChannel } = require('./sseConfig');
+const mqttService = require('./mqtt.service');
 
 // Store change stream references
 let alertChangeStream;
@@ -78,14 +78,14 @@ async function initializeChangeStreams() {
             timestamp: newAlert.timestamp,
           });
 
-          // Broadcast to all clients subscribed to alerts via SSE
-          broadcastToChannel('alerts', 'alert:new', {
+          // Publish to MQTT topic for real-time client updates
+          mqttService.publish('water-quality/alerts/new', {
             alert: newAlert,
           });
 
-          // Broadcast to specific device channel if available
+          // Publish to device-specific topic if available
           if (newAlert.deviceId) {
-            broadcastToChannel(`device:${newAlert.deviceId}`, 'alert:new', {
+            mqttService.publish(`water-quality/devices/${newAlert.deviceId}/alerts`, {
               alert: newAlert,
             });
           }
@@ -167,7 +167,8 @@ async function initializeChangeStreams() {
           const updatedAlert = change.fullDocument;
           const updatedFields = change.updateDescription?.updatedFields || {};
 
-          broadcastToChannel('alerts', 'alert:updated', {
+          // Publish alert update to MQTT
+          mqttService.publish('water-quality/alerts/updated', {
             alertId: change.documentKey._id,
             updates: updatedFields,
             fullDocument: updatedAlert,
@@ -220,12 +221,12 @@ async function initializeChangeStreams() {
 
         if (change.operationType === 'insert') {
           // New device registered
-          broadcastToChannel('devices', 'device:new', {
+          mqttService.publish('water-quality/devices/new', {
             device,
           });
 
           if (verboseMode) {
-            logger.info('[Change Streams] Broadcast new device:', {
+            logger.info('[Change Streams] Published new device:', {
               deviceId: device.deviceId,
               name: device.deviceName,
             });
@@ -235,21 +236,21 @@ async function initializeChangeStreams() {
           // Device updated (status, location, etc.)
           const updatedFields = change.updateDescription?.updatedFields || {};
 
-          // Broadcast to devices channel
-          broadcastToChannel('devices', 'device:updated', {
+          // Publish to devices topic
+          mqttService.publish('water-quality/devices/updated', {
             deviceId: device.deviceId,
             updates: updatedFields,
             fullDocument: device,
           });
 
-          // Broadcast to specific device channel
-          broadcastToChannel(`device:${device.deviceId}`, 'device:updated', {
+          // Publish to device-specific topic
+          mqttService.publish(`water-quality/devices/${device.deviceId}/updated`, {
             updates: updatedFields,
             fullDocument: device,
           });
 
           if (verboseMode) {
-            logger.info('[Change Streams] Broadcast device update:', {
+            logger.info('[Change Streams] Published device update:', {
               deviceId: device.deviceId,
               updates: Object.keys(updatedFields),
             });
@@ -285,29 +286,29 @@ async function initializeChangeStreams() {
         if (change.operationType === 'insert') {
           const reading = change.fullDocument;
 
-          // Broadcast to all clients subscribed to devices via SSE
-          broadcastToChannel('devices', 'reading:new', {
+          // Publish to MQTT for real-time client updates
+          mqttService.publish('water-quality/readings/new', {
             reading,
           });
 
-          // Broadcast to specific device channel
+          // Publish to device-specific topic
           if (reading.deviceId) {
-            broadcastToChannel(`device:${reading.deviceId}`, 'reading:new', {
+            mqttService.publish(`water-quality/devices/${reading.deviceId}/readings`, {
               reading,
             });
           }
 
-          // Check for anomalies and broadcast warnings
+          // Check for anomalies and publish warnings
           const hasAnomalies = checkForAnomalies(reading);
           if (hasAnomalies.length > 0) {
-            broadcastToChannel('devices', 'reading:anomaly', {
+            mqttService.publish('water-quality/readings/anomaly', {
               deviceId: reading.deviceId,
               anomalies: hasAnomalies,
               reading,
             });
           }
 
-          logger.debug('[Change Streams] Broadcast new reading:', {
+          logger.debug('[Change Streams] Published new reading:', {
             deviceId: reading.deviceId,
             parameters: Object.keys(reading).filter(k => 
               ['pH', 'turbidity', 'tds', 'temperature'].includes(k)
@@ -345,16 +346,16 @@ async function initializeChangeStreams() {
           const user = change.fullDocument;
           const updatedFields = change.updateDescription?.updatedFields || {};
 
-          // Only broadcast if role or status changed (important updates)
+          // Only publish if role or status changed (important updates)
           if (updatedFields.role || updatedFields.status) {
-            broadcastToChannel('admin', 'user:updated', {
+            mqttService.publish('water-quality/users/updated', {
               userId: user.uid,
               updates: updatedFields,
             });
 
             const isProduction = process.env.NODE_ENV === 'production';
             if (!isProduction) {
-              logger.info('[Change Streams] Broadcast user update:', {
+              logger.info('[Change Streams] Published user update:', {
                 userId: user.uid,
                 updates: Object.keys(updatedFields),
               });

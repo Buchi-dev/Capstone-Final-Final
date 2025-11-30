@@ -5,10 +5,8 @@
 import axios, { type AxiosInstance } from 'axios';
 import { auth } from './firebase.config';
 
-// API Base URL - use relative paths in development (proxied by Vite), or when served from same domain in production
-export const API_BASE_URL = import.meta.env.PROD
-  ? (import.meta.env.VITE_API_BASE_URL || '')
-  : '';
+// API Base URL - use environment variable for both development and production
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 // Log API configuration on startup
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
