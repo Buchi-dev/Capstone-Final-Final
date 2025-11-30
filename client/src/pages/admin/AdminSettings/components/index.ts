@@ -13,5 +13,4 @@ export { default as QuietHoursCard } from './QuietHoursCard';
 export { default as AlertSeveritiesFilter } from './AlertSeveritiesFilter';
 export { default as WaterParametersFilter } from './WaterParametersFilter';
 export { default as DevicesFilter } from './DevicesFilter';
-export { default as ScheduledReportsInfo } from './ScheduledReportsInfo';
 export { default as SavePreferencesButton } from './SavePreferencesButton';

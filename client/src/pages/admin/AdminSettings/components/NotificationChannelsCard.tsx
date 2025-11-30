@@ -55,33 +55,6 @@ export default function NotificationChannelsCard() {
           </Form.Item>
         </div>
 
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          padding: '16px',
-          background: '#fafafa',
-          borderRadius: '8px',
-        }}>
-          <Space size="middle">
-            <MailOutlined style={{ fontSize: 24, color: '#52c41a' }} />
-            <div>
-              <div style={{ fontSize: '15px', fontWeight: 600, marginBottom: '4px' }}>
-                Scheduled Analytics Reports
-              </div>
-              <Text type="secondary" style={{ fontSize: 13 }}>
-                Receive daily, weekly, and monthly analytics via email
-              </Text>
-            </div>
-          </Space>
-          <Form.Item
-            name="sendScheduledAlerts"
-            valuePropName="checked"
-            style={{ marginBottom: 0 }}
-          >
-            <Switch size="default" />
-          </Form.Item>
-        </div>
       </Space>
     </Card>
   );
