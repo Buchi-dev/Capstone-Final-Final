@@ -12,7 +12,7 @@ import {
   Spin,
   Typography,
 } from 'antd';
-import { useAuth, useDevices, useUserPreferences, useUserMutations } from '../../../hooks';
+import { useAuth, useUserPreferences, useUserMutations } from '../../../hooks';
 
 // Extracted components
 import {
