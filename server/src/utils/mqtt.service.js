@@ -11,7 +11,6 @@ class MQTTService {
   constructor() {
     this.client = null;
     this.connected = false;
-    this.messageHandlers = new Map();
     this.deviceSubscriptions = new Set();
     this.presenceResponses = new Map(); // Track presence responses during queries
     this.presenceQueryActive = false;
@@ -87,18 +86,6 @@ class MQTTService {
           logger.info(`[MQTT Service] Attempting to reconnect to MQTT broker... (attempt #${this.reconnectCount + 1})`);
         });
 
-        this.client.on('packetsend', (packet) => {
-          if (packet.cmd === 'pingreq') {
-            logger.debug('[MQTT Service] Sending PINGREQ (keepalive)');
-          }
-        });
-
-        this.client.on('packetreceive', (packet) => {
-          if (packet.cmd === 'pingresp') {
-            logger.debug('[MQTT Service] Received PINGRESP (keepalive acknowledged)');
-          }
-        });
-
         // Handle incoming messages
         this.client.on('message', this.handleMessage.bind(this));
       });
@@ -132,10 +119,9 @@ class MQTTService {
   subscribeToDeviceTopics() {
     const topics = [
       MQTT_CONFIG.TOPICS.ALL_DEVICE_DATA,
-      // MQTT_CONFIG.TOPICS.ALL_DEVICE_STATUS, // Removed per spec - backend doesn't need status
       MQTT_CONFIG.TOPICS.ALL_DEVICE_REGISTER,
-      MQTT_CONFIG.TOPICS.ALL_PRESENCE_RESPONSES, // Presence responses from devices
-      MQTT_CONFIG.TOPICS.ALL_DEVICE_PRESENCE,     // Individual device presence (retained)
+      MQTT_CONFIG.TOPICS.ALL_PRESENCE_RESPONSES,
+      MQTT_CONFIG.TOPICS.ALL_DEVICE_PRESENCE,
     ];
 
     topics.forEach(topic => {
@@ -169,8 +155,6 @@ class MQTTService {
       // Route message based on topic type
       if (topic.includes('/data')) {
         this.handleSensorData(deviceId, data);
-      } else if (topic.includes('/status')) {
-        this.handleDeviceStatus(deviceId, data);
       } else if (topic.includes('/register')) {
         this.handleDeviceRegistration(deviceId, data);
       } else if (topic.includes('/presence')) {
@@ -225,20 +209,6 @@ class MQTTService {
     } catch (error) {
       logger.error(`[MQTT Service] Error processing sensor data from ${deviceId}:`, error);
     }
-  }
-
-  /**
-   * Handle device status messages
-   */
-  handleDeviceStatus(deviceId, data) {
-    // Only log status updates in verbose mode
-    if (process.env.VERBOSE_LOGGING === 'true') {
-      logger.info(`[MQTT Service] Device status update: ${deviceId}`, data);
-    }
-
-    // Update device last seen status
-    // This could trigger device status updates in the database
-    this.emit('deviceStatus', { deviceId, ...data });
   }
 
   /**
@@ -434,34 +404,7 @@ class MQTTService {
    * Check if device is connected (based on recent messages)
    */
   isDeviceConnected(deviceId) {
-    // Since MQTT doesn't provide connection status for subscribers,
-    // we assume devices are connected if the MQTT broker is connected
-    // In production, you might want to track device heartbeats
-    return this.connected;
-  }
-
-  /**
-   * Register event handler
-   */
-  on(event, handler) {
-    if (!this.messageHandlers.has(event)) {
-      this.messageHandlers.set(event, []);
-    }
-    this.messageHandlers.get(event).push(handler);
-  }
-
-  /**
-   * Emit event to handlers
-   */
-  emit(event, data) {
-    const handlers = this.messageHandlers.get(event) || [];
-    handlers.forEach(handler => {
-      try {
-        handler(data);
-      } catch (error) {
-        logger.error(`[MQTT Service] Error in event handler for ${event}:`, error);
-      }
-    });
+    return this.deviceSubscriptions.has(deviceId);
   }
 
   /**
@@ -548,22 +491,6 @@ class MQTTService {
     };
 
     return this.publish(topic, message, { qos: 1 });
-  }
-
-  /**
-   * Set up Last Will and Testament for a device (called when device connects)
-   * @param {string} deviceId - Device ID
-   */
-  setupDeviceLWT(deviceId) {
-    // Publish retained "online" message for the device
-    const topic = `devices/${deviceId}/presence`;
-    this.publish(topic, {
-      deviceId,
-      status: 'online',
-      timestamp: new Date().toISOString(),
-    }, { qos: 1, retain: true });
-
-    logger.debug(`[MQTT Presence] Set up LWT for device ${deviceId}`);
   }
 
   /**

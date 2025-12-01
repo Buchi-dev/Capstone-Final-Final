@@ -379,11 +379,6 @@ const processSensorData = asyncHandler(async (req, res) => {
   
   await device.save();
 
-  // Set up MQTT Last Will and Testament for presence detection
-  if (mqttService && mqttService.setupDeviceLWT) {
-    mqttService.setupDeviceLWT(trimmedDeviceId);
-  }
-
   // Save sensor reading with trimmed deviceId
   const reading = new SensorReading({
     deviceId: trimmedDeviceId,
@@ -587,7 +582,7 @@ const deviceRegister = asyncHandler(async (req, res) => {
       macAddress: macAddress || '',
       ipAddress: ipAddress || '',
       sensors: sensors || ['pH', 'turbidity', 'tds'],
-      status: 'online',
+      status: 'offline', // Start as offline - will be marked online when first sensor data arrives
       registrationStatus: 'pending',
       isRegistered: false,
       lastSeen: new Date(),
@@ -628,8 +623,8 @@ const deviceRegister = asyncHandler(async (req, res) => {
     }, 'Device registration request received');
   } else {
     // Device exists - update last seen and metadata
+    // DO NOT set status to online here - only sensor data or presence responses should do that
     device.lastSeen = new Date();
-    device.status = 'online';
     
     // Update metadata if provided
     if (firmwareVersion) device.firmwareVersion = firmwareVersion;
@@ -638,10 +633,9 @@ const deviceRegister = asyncHandler(async (req, res) => {
     
     await device.save();
 
-    // Set up MQTT Last Will and Testament for presence detection
-    if (mqttService && mqttService.setupDeviceLWT) {
-      mqttService.setupDeviceLWT(trimmedDeviceId);
-    }
+    // NOTE: Do NOT call setupDeviceLWT here - it publishes a retained "online" message
+    // which would persist on the broker even if device goes offline.
+    // Only sensor data submission should publish presence messages.
 
     // Check registration status
     if (device.isRegistered) {
