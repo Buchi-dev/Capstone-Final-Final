@@ -42,7 +42,6 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
   onViewDetails,
   onAcknowledge,
   onBatchAcknowledge,
-  isAcknowledging = false,
 }) => {
   const token = useThemeToken();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);

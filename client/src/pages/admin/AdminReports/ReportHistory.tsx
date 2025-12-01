@@ -435,7 +435,7 @@ const ReportHistory: React.FC = () => {
                   pageSizeOptions: ['10', '20', '50'],
                   showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} reports`,
                   onChange: (page, pageSize) => loadReports(page, pageSize),
-                  onShowSizeChange: (current, size) => loadReports(1, size),
+                  onShowSizeChange: (size) => loadReports(1, size),
                 }}
                 loading={loading}
               />
