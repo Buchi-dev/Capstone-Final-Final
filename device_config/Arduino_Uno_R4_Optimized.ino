@@ -540,9 +540,60 @@ uint8_t getWiFiStatus() {
 // ═══════════════════════════════════════════════════════════════════════════
 //                    CALIBRATION MODE FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
+// 
+// Calibration mode enables fast sensor readings for accurate calibration
+// against known reference solutions. This mode is critical for ensuring
+// accurate water quality measurements in production.
+// 
+// CALIBRATION MODE BEHAVIOR:
+//   • Fast sensor readings (255ms vs 60s normal)
+//   • MQTT connection DISABLED (no data transmission)
+//   • Real-time Serial output for immediate feedback
+//   • All sensors active (pH, TDS, Turbidity)
+//   • No scheduled transmissions or time sync required
+// 
+// NORMAL MODE BEHAVIOR:
+//   • Standard sensor readings (60s interval)
+//   • Full MQTT connectivity enabled
+//   • Scheduled data transmission every 30 minutes
+//   • Time synchronization active
+//   • Server communication functional
+// 
+// HOW TO USE CALIBRATION MODE:
+//   1. Set CALIBRATION_MODE = true at top of file
+//   2. Upload firmware to device
+//   3. Open Serial Monitor (115200 baud)
+//   4. Immerse sensors in known reference solutions
+//   5. Record ADC values and computed sensor values
+//   6. Update calibration constants in code
+//   7. Set CALIBRATION_MODE = false for production
+//   8. Re-upload firmware
+// 
+// CALIBRATION REFERENCES:
+//   • pH: Use pH 4.0, 7.0, and 10.0 buffer solutions
+//   • TDS: Use 342 ppm, 1413 ppm calibration solutions
+//   • Turbidity: Use clear water (0 NTU) and formazin standards
+// 
+// ═══════════════════════════════════════════════════════════════════════════
 
 // ───────────────────────────────────────────────────────────────────────────
-// Set Calibration Mode (Enable/Disable)
+// Set Calibration Mode (Runtime Toggle)
+// ───────────────────────────────────────────────────────────────────────────
+// Enables or disables calibration mode during runtime.
+// Changes sensor read interval and displays mode information.
+// 
+// PARAMETERS:
+//   enabled - true to enable calibration mode, false for normal operation
+// 
+// EFFECTS:
+//   • Updates isCalibrationMode flag
+//   • Changes sensorReadInterval (255ms or 60000ms)
+//   • Prints status message to Serial Monitor
+//   • Does NOT reconnect MQTT automatically
+// 
+// NOTE:
+//   Changing mode at runtime may cause unexpected behavior.
+//   Recommended to set CALIBRATION_MODE constant before upload.
 // ───────────────────────────────────────────────────────────────────────────
 void setCalibrationMode(bool enabled) {
   isCalibrationMode = enabled;
@@ -556,6 +607,12 @@ void setCalibrationMode(bool enabled) {
     Serial.println(F("ms"));
     Serial.println(F("✓ Data displayed locally only"));
     Serial.println(F("✓ Fast loop timing activated"));
+    Serial.println(F(""));
+    Serial.println(F("CALIBRATION INSTRUCTIONS:"));
+    Serial.println(F("1. Immerse sensors in reference solution"));
+    Serial.println(F("2. Wait 30 seconds for stabilization"));
+    Serial.println(F("3. Record ADC values from Serial output"));
+    Serial.println(F("4. Update calibration arrays in code"));
     Serial.println(F("================================\n"));
   } else {
     sensorReadInterval = SENSOR_READ_INTERVAL;
@@ -565,11 +622,17 @@ void setCalibrationMode(bool enabled) {
     Serial.print(SENSOR_READ_INTERVAL);
     Serial.println(F("ms"));
     Serial.println(F("✓ Normal operation resumed"));
+    Serial.println(F("✓ Will reconnect to MQTT automatically"));
     Serial.println(F("=================================\n"));
   }
 }
 
-
+// ───────────────────────────────────────────────────────────────────────────
+// Toggle Calibration Mode (Convenience Function)
+// ───────────────────────────────────────────────────────────────────────────
+// Switches between calibration and normal mode.
+// Can be called via MQTT command or Serial interface.
+// ───────────────────────────────────────────────────────────────────────────
 void toggleCalibrationMode() {
   setCalibrationMode(!isCalibrationMode);
 }
