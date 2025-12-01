@@ -58,7 +58,6 @@ const reportSchema = new mongoose.Schema(
     // GridFS file storage metadata
     gridFsFileId: {
       type: mongoose.Schema.Types.ObjectId,
-      index: true,
     },
     fileSize: {
       type: Number,

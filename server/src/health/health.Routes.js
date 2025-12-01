@@ -1,10 +1,11 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const { pingRedis, isRedisAvailable } = require('../configs/redis.Config');
-const { getQueueStats } = require('../utils/email.queue');
+const { getQueueStats, getFailedJobs, retryFailedJobs, removeFailedJobs } = require('../utils/email.queue');
 const logger = require('../utils/logger');
 const { HTTP_STATUS } = require('../utils/constants');
 const { diagnoseAuth } = require('../utils/diagnostics');
+const { ensureAuthenticated, ensureAdmin } = require('../auth/auth.Middleware');
 
 const router = express.Router();
 
@@ -225,5 +226,94 @@ router.get('/readiness', async (req, res) => {
  * @access  Public (but requires token in header to diagnose)
  */
 router.post('/diagnose-auth', diagnoseAuth);
+
+/**
+ * @route   GET /health/queue/failed
+ * @desc    Get all failed email jobs
+ * @access  Admin only
+ */
+router.get('/queue/failed', ensureAdmin, async (req, res) => {
+  try {
+    const failedJobs = await getFailedJobs();
+    
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      count: failedJobs.length,
+      jobs: failedJobs,
+    });
+  } catch (error) {
+    logger.error('Failed to get failed jobs:', { error: error.message });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: 'Failed to retrieve failed jobs',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   POST /health/queue/retry
+ * @desc    Retry failed email jobs
+ * @access  Admin only
+ */
+router.post('/queue/retry', ensureAdmin, async (req, res) => {
+  try {
+    const { jobId } = req.body;
+    
+    const result = await retryFailedJobs(jobId);
+    
+    if (result.success) {
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: result.message,
+        retriedCount: result.retriedCount,
+      });
+    } else {
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: result.message || result.error,
+      });
+    }
+  } catch (error) {
+    logger.error('Failed to retry jobs:', { error: error.message });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: 'Failed to retry jobs',
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * @route   DELETE /health/queue/failed
+ * @desc    Remove failed email jobs
+ * @access  Admin only
+ */
+router.delete('/queue/failed', ensureAdmin, async (req, res) => {
+  try {
+    const { jobId } = req.body;
+    
+    const result = await removeFailedJobs(jobId);
+    
+    if (result.success) {
+      res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: result.message,
+      });
+    } else {
+      res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        message: result.message || result.error,
+      });
+    }
+  } catch (error) {
+    logger.error('Failed to remove jobs:', { error: error.message });
+    res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+      success: false,
+      message: 'Failed to remove jobs',
+      error: error.message,
+    });
+  }
+});
 
 module.exports = router;

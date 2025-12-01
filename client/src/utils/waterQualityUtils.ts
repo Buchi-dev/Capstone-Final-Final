@@ -45,7 +45,31 @@ export function calculateDeviceStatus(
   deviceStatus: string,
   reading: SensorReading | null | undefined
 ): DeviceStatusType {
-  if (deviceStatus !== 'online' || !reading) {
+  // Debug logging
+  if (import.meta.env.DEV) {
+    console.log('[calculateDeviceStatus] Input:', {
+      deviceStatus,
+      hasReading: !!reading,
+      reading: reading ? {
+        ph: reading.ph,
+        turbidity: reading.turbidity,
+        tds: reading.tds,
+        timestamp: reading.timestamp,
+      } : null,
+    });
+  }
+
+  // Check if device is actually online (case-insensitive)
+  const isOnline = deviceStatus?.toLowerCase() === 'online';
+  
+  if (!isOnline || !reading) {
+    if (import.meta.env.DEV) {
+      console.log('[calculateDeviceStatus] Device offline:', {
+        isOnline,
+        hasReading: !!reading,
+        deviceStatus,
+      });
+    }
     return 'offline';
   }
 
@@ -62,9 +86,19 @@ export function calculateDeviceStatus(
     reading.tds && reading.tds > WATER_QUALITY_THRESHOLDS.tds.warning;
 
   if (hasPhWarning || hasTurbidityWarning || hasTdsWarning) {
+    if (import.meta.env.DEV) {
+      console.log('[calculateDeviceStatus] Device has warnings:', {
+        hasPhWarning,
+        hasTurbidityWarning,
+        hasTdsWarning,
+      });
+    }
     return 'warning';
   }
 
+  if (import.meta.env.DEV) {
+    console.log('[calculateDeviceStatus] Device online and normal');
+  }
   return 'online';
 }
 

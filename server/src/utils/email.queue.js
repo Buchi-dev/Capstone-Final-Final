@@ -308,6 +308,105 @@ const cleanCompletedJobs = async (grace = 3600000) => {
 };
 
 /**
+ * Get failed jobs
+ * @returns {Promise<Array>}
+ */
+const getFailedJobs = async () => {
+  if (!emailQueue) {
+    return [];
+  }
+
+  try {
+    const failedJobs = await emailQueue.getFailed();
+    return failedJobs.map(job => ({
+      id: job.id,
+      data: job.data,
+      failedReason: job.failedReason,
+      attemptsMade: job.attemptsMade,
+      timestamp: job.timestamp,
+      processedOn: job.processedOn,
+      finishedOn: job.finishedOn,
+    }));
+  } catch (error) {
+    logger.error('Failed to get failed jobs:', { error: error.message });
+    return [];
+  }
+};
+
+/**
+ * Retry failed jobs
+ * @param {string} jobId - Optional job ID to retry specific job, otherwise retry all
+ * @returns {Promise<Object>}
+ */
+const retryFailedJobs = async (jobId = null) => {
+  if (!emailQueue) {
+    return { success: false, message: 'Email queue not available' };
+  }
+
+  try {
+    if (jobId) {
+      // Retry specific job
+      const job = await emailQueue.getJob(jobId);
+      if (job && job.isFailed()) {
+        await job.retry();
+        logger.info('Retried failed job:', { jobId });
+        return { success: true, jobId, message: 'Job retried successfully' };
+      } else {
+        return { success: false, jobId, message: 'Job not found or not failed' };
+      }
+    } else {
+      // Retry all failed jobs
+      const failedJobs = await emailQueue.getFailed();
+      let retried = 0;
+      
+      for (const job of failedJobs) {
+        await job.retry();
+        retried++;
+      }
+      
+      logger.info('Retried all failed jobs:', { count: retried });
+      return { success: true, retriedCount: retried, message: `${retried} jobs retried` };
+    }
+  } catch (error) {
+    logger.error('Failed to retry jobs:', { error: error.message });
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Remove failed jobs
+ * @param {string} jobId - Optional job ID to remove specific job, otherwise remove all
+ * @returns {Promise<Object>}
+ */
+const removeFailedJobs = async (jobId = null) => {
+  if (!emailQueue) {
+    return { success: false, message: 'Email queue not available' };
+  }
+
+  try {
+    if (jobId) {
+      // Remove specific job
+      const job = await emailQueue.getJob(jobId);
+      if (job) {
+        await job.remove();
+        logger.info('Removed failed job:', { jobId });
+        return { success: true, jobId, message: 'Job removed successfully' };
+      } else {
+        return { success: false, jobId, message: 'Job not found' };
+      }
+    } else {
+      // Remove all failed jobs
+      await emailQueue.clean(0, 'failed');
+      logger.info('Removed all failed jobs');
+      return { success: true, message: 'All failed jobs removed' };
+    }
+  } catch (error) {
+    logger.error('Failed to remove jobs:', { error: error.message });
+    return { success: false, error: error.message };
+  }
+};
+
+/**
  * Close email queue
  */
 const closeEmailQueue = async () => {
@@ -326,5 +425,8 @@ module.exports = {
   queueAlertEmail,
   getQueueStats,
   cleanCompletedJobs,
+  getFailedJobs,
+  retryFailedJobs,
+  removeFailedJobs,
   closeEmailQueue,
 };

@@ -7,6 +7,8 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
+    "clear-failed-jobs": "node scripts/clear-failed-jobs.js",
+    "deep-clean-redis": "node scripts/deep-clean-redis.js",
     "docker:build": "docker build -t server-app .",
     "docker:up": "docker compose up --build -d",
     "docker:down": "docker compose down",

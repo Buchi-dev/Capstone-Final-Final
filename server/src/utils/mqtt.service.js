@@ -16,6 +16,9 @@ class MQTTService {
     this.presenceResponses = new Map(); // Track presence responses during queries
     this.presenceQueryActive = false;
     this.presenceTimeout = null;
+    this.reconnectCount = 0;
+    this.lastReconnectTime = null;
+    this.processedRegistrations = new Map(); // Track recently processed registrations to avoid duplicates
   }
 
   /**
@@ -35,7 +38,12 @@ class MQTTService {
 
       return new Promise((resolve, reject) => {
         this.client.on('connect', () => {
-          logger.info('[MQTT Service] Connected to HiveMQ successfully');
+          this.reconnectCount = 0;
+          this.lastReconnectTime = new Date();
+          logger.info('[MQTT Service] Connected to HiveMQ successfully', {
+            clientId: MQTT_CONFIG.CLIENT_ID,
+            keepalive: MQTT_CONFIG.OPTIONS.keepalive
+          });
           this.connected = true;
 
           // Subscribe to all device topics
@@ -45,18 +53,50 @@ class MQTTService {
         });
 
         this.client.on('error', (error) => {
-          logger.error('[MQTT Service] Connection error:', error);
+          logger.error('[MQTT Service] Connection error:', {
+            error: error.message,
+            code: error.code,
+            stack: error.stack
+          });
           this.connected = false;
-          reject(error);
+          
+          // Only reject on initial connection, not reconnection attempts
+          if (this.reconnectCount === 0) {
+            reject(error);
+          }
         });
 
         this.client.on('offline', () => {
-          logger.warn('[MQTT Service] MQTT client went offline');
+          this.reconnectCount++;
+          logger.warn(`[MQTT Service] MQTT client went offline (reconnect attempt #${this.reconnectCount})`, {
+            lastConnected: this.lastReconnectTime,
+            secondsConnected: this.lastReconnectTime ? Math.floor((Date.now() - this.lastReconnectTime.getTime()) / 1000) : 'N/A'
+          });
           this.connected = false;
         });
 
+        this.client.on('close', () => {
+          logger.warn('[MQTT Service] MQTT connection closed');
+        });
+
+        this.client.on('end', () => {
+          logger.warn('[MQTT Service] MQTT client ended');
+        });
+
         this.client.on('reconnect', () => {
-          logger.info('[MQTT Service] Attempting to reconnect to MQTT broker...');
+          logger.info(`[MQTT Service] Attempting to reconnect to MQTT broker... (attempt #${this.reconnectCount + 1})`);
+        });
+
+        this.client.on('packetsend', (packet) => {
+          if (packet.cmd === 'pingreq') {
+            logger.debug('[MQTT Service] Sending PINGREQ (keepalive)');
+          }
+        });
+
+        this.client.on('packetreceive', (packet) => {
+          if (packet.cmd === 'pingresp') {
+            logger.debug('[MQTT Service] Received PINGRESP (keepalive acknowledged)');
+          }
         });
 
         // Handle incoming messages
@@ -133,6 +173,8 @@ class MQTTService {
         this.handleDeviceStatus(deviceId, data);
       } else if (topic.includes('/register')) {
         this.handleDeviceRegistration(deviceId, data);
+      } else if (topic.includes('/presence')) {
+        this.handleDevicePresence(deviceId, data);
       } else if (topic === MQTT_CONFIG.TOPICS.PRESENCE_RESPONSE) {
         this.handlePresenceResponse(data);
       }
@@ -150,7 +192,10 @@ class MQTTService {
    * Handle sensor data messages from devices
    */
   async handleSensorData(deviceId, data) {
-    logger.info(`[MQTT Service] Processing sensor data from device: ${deviceId}`);
+    // Only log in verbose mode - sensor data processing happens frequently
+    if (process.env.VERBOSE_LOGGING === 'true') {
+      logger.info(`[MQTT Service] Processing sensor data from device: ${deviceId}`);
+    }
 
     // Import device controller dynamically to avoid circular dependencies
     const { processSensorData } = require('../devices/device.Controller');
@@ -169,15 +214,9 @@ class MQTTService {
 
       const mockRes = {
         status: (code) => ({
-          json: (data) => {
-            logger.debug(`[MQTT Service] Sensor data processed for ${deviceId}:`, data);
-            return data;
-          },
+          json: (data) => data,
         }),
-        json: (data) => {
-          logger.debug(`[MQTT Service] Sensor data processed for ${deviceId}:`, data);
-          return data;
-        },
+        json: (data) => data,
       };
 
       // Process the sensor data using existing controller logic
@@ -192,7 +231,10 @@ class MQTTService {
    * Handle device status messages
    */
   handleDeviceStatus(deviceId, data) {
-    logger.info(`[MQTT Service] Device status update: ${deviceId}`, data);
+    // Only log status updates in verbose mode
+    if (process.env.VERBOSE_LOGGING === 'true') {
+      logger.info(`[MQTT Service] Device status update: ${deviceId}`, data);
+    }
 
     // Update device last seen status
     // This could trigger device status updates in the database
@@ -203,7 +245,29 @@ class MQTTService {
    * Handle device registration messages
    */
   async handleDeviceRegistration(deviceId, data) {
+    // Check if we've recently processed this registration (within last 30 seconds)
+    const registrationKey = `${deviceId}-${data.macAddress || ''}-${data.firmwareVersion || ''}`;
+    const lastProcessed = this.processedRegistrations.get(registrationKey);
+    const now = Date.now();
+    
+    if (lastProcessed && (now - lastProcessed) < 30000) {
+      logger.debug(`[MQTT Service] Ignoring duplicate registration for ${deviceId} (processed ${Math.floor((now - lastProcessed) / 1000)}s ago)`);
+      return;
+    }
+
     logger.info(`[MQTT Service] Device registration request: ${deviceId}`, data);
+
+    // Mark as processed
+    this.processedRegistrations.set(registrationKey, now);
+    
+    // Clean up old entries (keep last 100)
+    if (this.processedRegistrations.size > 100) {
+      const entries = Array.from(this.processedRegistrations.entries());
+      entries.sort((a, b) => a[1] - b[1]);
+      entries.slice(0, entries.length - 100).forEach(([key]) => {
+        this.processedRegistrations.delete(key);
+      });
+    }
 
     // Import device controller dynamically
     const { deviceRegister } = require('../devices/device.Controller');
@@ -235,27 +299,78 @@ class MQTTService {
   }
 
   /**
-   * Handle presence response messages from devices
+   * Handle device presence messages (online/offline status)
+   * NOTE: Presence messages are NOT trusted automatically.
+   * Only responses to presence queries actually update device status.
+   * This handler just logs the announcement for debugging.
    */
-  handlePresenceResponse(data) {
-    // Only process responses if a presence query is active
-    if (!this.presenceQueryActive) {
-      logger.debug('[MQTT Presence] Ignoring presence response - no active query');
-      return;
-    }
+  async handleDevicePresence(deviceId, data) {
+    try {
+      const { status, timestamp } = data;
+      
+      // Log the announcement but don't update status
+      logger.debug(`[MQTT Presence] Device ${deviceId} announced: ${status} (ignored - waiting for query response)`, { timestamp });
 
+      // Only update lastSeen timestamp (not status)
+      const { Device } = require('../devices/device.Model');
+      const device = await Device.findOne({ deviceId: deviceId.trim() });
+      
+      if (device) {
+        device.lastSeen = timestamp ? new Date(timestamp) : new Date();
+        await device.save();
+        
+        // Invalidate cache
+        const CacheService = require('./cache.service');
+        await CacheService.del(`device:${deviceId}`);
+        await CacheService.delPattern('devices:all:*');
+      }
+
+    } catch (error) {
+      logger.error(`[MQTT Presence] Error updating device ${deviceId} lastSeen:`, error);
+    }
+  }
+
+  /**
+   * Handle presence response messages from devices
+   * This is called when devices respond to "who_is_online" queries
+   */
+  async handlePresenceResponse(data) {
     try {
       if (data.response === 'i_am_online' && data.deviceId) {
+        // Store the response
         this.presenceResponses.set(data.deviceId, {
           timestamp: new Date(),
           ...data,
         });
-        logger.debug(`[MQTT Presence] Device ${data.deviceId} responded to presence query`);
+        
+        logger.info(`[MQTT Presence] ✅ Device ${data.deviceId} responded to presence query - marking ONLINE`);
+
+        // Update device status to ONLINE immediately when it responds
+        const { Device } = require('../devices/device.Model');
+        const device = await Device.findOne({ deviceId: data.deviceId.trim() });
+        
+        if (device) {
+          const oldStatus = device.status;
+          device.status = 'online';
+          device.lastSeen = new Date();
+          await device.save();
+
+          if (oldStatus !== 'online') {
+            logger.info(`[MQTT Presence] Device ${data.deviceId} status changed: ${oldStatus} → online`);
+          }
+
+          // Invalidate cache
+          const CacheService = require('./cache.service');
+          await CacheService.del(`device:${data.deviceId}`);
+          await CacheService.delPattern('devices:all:*');
+        } else {
+          logger.warn(`[MQTT Presence] Device ${data.deviceId} responded but not found in database`);
+        }
       } else {
         logger.warn('[MQTT Presence] Invalid presence response format:', data);
       }
     } catch (error) {
-      logger.warn('[MQTT Presence] Failed to process presence response:', error.message);
+      logger.error('[MQTT Presence] Failed to process presence response:', error);
     }
   }
 
@@ -355,37 +470,69 @@ class MQTTService {
    * @returns {Promise<Array>} - Array of device IDs that responded
    */
   async queryDevicePresence(timeoutMs = 10000) {
-    return new Promise((resolve) => {
-      if (!this.connected) {
+    return new Promise((resolve, reject) => {
+      // Double-check connection status
+      if (!this.connected || !this.client || !this.client.connected) {
         logger.warn('[MQTT Presence] Cannot query presence - MQTT not connected');
         resolve([]);
         return;
       }
 
-      // Clear any existing presence data
+      // If there's already an active query, wait for it to complete
+      if (this.presenceQueryActive) {
+        logger.warn('[MQTT Presence] Query already in progress - skipping');
+        resolve([]);
+        return;
+      }
+
+      // Clear any existing presence data and timeout
+      if (this.presenceTimeout) {
+        clearTimeout(this.presenceTimeout);
+        this.presenceTimeout = null;
+      }
       this.presenceResponses.clear();
       this.presenceQueryActive = true;
 
-      logger.info('[MQTT Presence] Publishing presence query...');
+      logger.debug('[MQTT Presence] Publishing presence query...');
 
-      // Publish "who is online?" message
-      this.publish(MQTT_CONFIG.TOPICS.PRESENCE_QUERY, {
-        query: 'who_is_online',
-        timestamp: new Date().toISOString(),
-        serverId: MQTT_CONFIG.CLIENT_ID,
-      }, { qos: 1 });
+      try {
+        // Publish "who is online?" message
+        const published = this.publish(MQTT_CONFIG.TOPICS.PRESENCE_QUERY, {
+          query: 'who_is_online',
+          timestamp: new Date().toISOString(),
+          serverId: MQTT_CONFIG.CLIENT_ID,
+        }, { qos: 1 });
 
-      // Set timeout for collecting responses
-      this.presenceTimeout = setTimeout(() => {
+        if (!published) {
+          logger.warn('[MQTT Presence] Failed to publish presence query');
+          this.presenceQueryActive = false;
+          resolve([]);
+          return;
+        }
+
+        // Set timeout for collecting responses
+        this.presenceTimeout = setTimeout(() => {
+          this.presenceQueryActive = false;
+          const onlineDevices = Array.from(this.presenceResponses.keys());
+          
+          if (onlineDevices.length > 0) {
+            logger.debug(`[MQTT Presence] Query complete - ${onlineDevices.length} devices responded`);
+          } else {
+            logger.debug('[MQTT Presence] Query complete - no devices responded');
+          }
+          
+          resolve(onlineDevices);
+        }, timeoutMs);
+
+      } catch (error) {
+        logger.error('[MQTT Presence] Error during presence query:', error);
         this.presenceQueryActive = false;
-        const onlineDevices = Array.from(this.presenceResponses.keys());
-        logger.info(`[MQTT Presence] Presence query complete. ${onlineDevices.length} devices responded:`, onlineDevices);
-        resolve(onlineDevices);
-      }, timeoutMs);
-
-      // Listen for responses during the query window
-      // Note: Presence responses are handled by the main handleMessage method
-      // We just need to set the query active flag
+        if (this.presenceTimeout) {
+          clearTimeout(this.presenceTimeout);
+          this.presenceTimeout = null;
+        }
+        resolve([]);
+      }
     });
   }
 

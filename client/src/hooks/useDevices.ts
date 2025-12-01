@@ -116,6 +116,23 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
     cacheKey,
     async () => {
       const response = await devicesService.getDevices(filters);
+      
+      // Debug logging to see what data is received
+      if (import.meta.env.DEV && response.data) {
+        console.log('[useDevices] Received devices:', response.data.length);
+        response.data.forEach((device: any, index: number) => {
+          if (index < 3) { // Only log first 3 devices
+            console.log(`[useDevices] Device ${index + 1}:`, {
+              deviceId: device.deviceId,
+              name: device.name,
+              status: device.status,
+              hasLatestReading: !!device.latestReading,
+              lastSeen: device.lastSeen,
+            });
+          }
+        });
+      }
+      
       return response.data;
     },
     {

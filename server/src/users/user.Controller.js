@@ -3,6 +3,8 @@ const logger = require('../utils/logger');
 const { NotFoundError, ValidationError } = require('../errors');
 const ResponseHelper = require('../utils/responses');
 const asyncHandler = require('../middleware/asyncHandler');
+const CacheService = require('../utils/cache.service');
+const { CACHE_TTL } = require('../utils/constants');
 
 /**
  * Get user by ID
@@ -11,6 +13,18 @@ const asyncHandler = require('../middleware/asyncHandler');
  */
 const getUserById = async (req, res) => {
   try {
+    // Try to get from cache
+    const cacheKey = `user:${req.params.id}`;
+    const cached = await CacheService.get(cacheKey);
+    
+    if (cached) {
+      logger.debug(`[User Controller] Returning cached user: ${req.params.id}`);
+      return res.json({
+        success: true,
+        data: cached,
+      });
+    }
+
     const user = await User.findById(req.params.id)
       .select('-googleId')
       .lean(); // Use lean() for better performance when not modifying data
@@ -22,12 +36,17 @@ const getUserById = async (req, res) => {
       });
     }
 
+    const userData = {
+      ...user,
+      id: user._id,
+    };
+
+    // Cache the result
+    await CacheService.set(cacheKey, userData, CACHE_TTL.USERS);
+
     res.json({
       success: true,
-      data: {
-        ...user,
-        id: user._id,
-      },
+      data: userData,
     });
   } catch (error) {
     res.status(500).json({
@@ -51,6 +70,19 @@ const getAllUsers = async (req, res) => {
     if (role) filter.role = role;
     if (status) filter.status = status;
 
+    // Try to get from cache
+    const cacheKey = `users:all:${JSON.stringify(filter)}:page${page}:limit${limit}`;
+    const cached = await CacheService.get(cacheKey);
+    
+    if (cached) {
+      logger.debug('[User Controller] Returning cached users list');
+      return res.json({
+        success: true,
+        data: cached.data,
+        pagination: cached.pagination,
+      });
+    }
+
     // Use lean() and select to optimize query
     const users = await User.find(filter)
       .select('-googleId -firebaseUid') // Exclude sensitive fields
@@ -67,14 +99,21 @@ const getAllUsers = async (req, res) => {
       id: user._id,
     }));
 
-    res.json({
-      success: true,
+    const responseData = {
       data: usersWithId,
       pagination: {
         total: count,
         page: parseInt(page),
         pages: Math.ceil(count / limit),
       },
+    };
+
+    // Cache the result
+    await CacheService.set(cacheKey, responseData, CACHE_TTL.USERS);
+
+    res.json({
+      success: true,
+      ...responseData,
     });
   } catch (error) {
     res.status(500).json({
@@ -113,6 +152,11 @@ const updateUserRole = async (req, res) => {
         message: 'User not found',
       });
     }
+
+    // Invalidate cache
+    await CacheService.del(`user:${req.params.id}`);
+    await CacheService.delPattern('users:all:*');
+    logger.debug(`[User Controller] Cache invalidated for user: ${req.params.id}`);
 
     // Check if admin is modifying their own role (requires logout)
     const requiresLogout = req.user._id.toString() === req.params.id;
@@ -160,6 +204,11 @@ const updateUserStatus = async (req, res) => {
         message: 'User not found',
       });
     }
+
+    // Invalidate cache
+    await CacheService.del(`user:${req.params.id}`);
+    await CacheService.delPattern('users:all:*');
+    logger.debug(`[User Controller] Cache invalidated for user: ${req.params.id}`);
 
     // Check if admin is modifying their own status (requires logout)
     const requiresLogout = req.user._id.toString() === req.params.id;
@@ -215,6 +264,11 @@ const updateUserProfile = async (req, res) => {
         message: 'User not found',
       });
     }
+
+    // Invalidate cache
+    await CacheService.del(`user:${req.params.id}`);
+    await CacheService.delPattern('users:all:*');
+    logger.debug(`[User Controller] Cache invalidated for user: ${req.params.id}`);
 
     res.json({
       success: true,
@@ -325,6 +379,11 @@ const deleteUser = asyncHandler(async (req, res) => {
     throw new NotFoundError('User', req.params.id);
   }
 
+  // Invalidate cache
+  await CacheService.del(`user:${req.params.id}`);
+  await CacheService.delPattern('users:all:*');
+  logger.debug(`[User Controller] Cache invalidated for deleted user: ${req.params.id}`);
+
   ResponseHelper.success(res, { userId: req.params.id }, 'User deleted successfully');
 });
 
@@ -401,6 +460,10 @@ const updateUserPreferences = asyncHandler(async (req, res) => {
   if (!user) {
     throw new NotFoundError('User', req.params.id);
   }
+
+  // Invalidate cache
+  await CacheService.del(`user:${req.params.id}`);
+  logger.debug(`[User Controller] Cache invalidated for user preferences: ${req.params.id}`);
 
   ResponseHelper.success(res, user.notificationPreferences, 'Notification preferences updated successfully');
 });

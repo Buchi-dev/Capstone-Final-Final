@@ -3,6 +3,8 @@ const logger = require('../utils/logger');
 const { NotFoundError, ConflictError, ValidationError } = require('../errors');
 const ResponseHelper = require('../utils/responses');
 const asyncHandler = require('../middleware/asyncHandler');
+const CacheService = require('../utils/cache.service');
+const { CACHE_TTL } = require('../utils/constants');
 
 /**
  * Get all alerts with filters
@@ -33,6 +35,15 @@ const getAllAlerts = asyncHandler(async (req, res) => {
     if (endDate) filter.timestamp.$lte = new Date(endDate);
   }
 
+  // Try to get from cache
+  const cacheKey = `alerts:all:${JSON.stringify(filter)}:page${page}:limit${limit}`;
+  const cached = await CacheService.get(cacheKey);
+  
+  if (cached) {
+    logger.debug('[Alert Controller] Returning cached alerts list');
+    return ResponseHelper.paginated(res, cached.data, cached.pagination);
+  }
+
   const alerts = await Alert.find(filter)
     .populate('acknowledgedBy', 'displayName email')
     .populate('resolvedBy', 'displayName email')
@@ -42,12 +53,21 @@ const getAllAlerts = asyncHandler(async (req, res) => {
 
   const count = await Alert.countDocuments(filter);
 
-  ResponseHelper.paginated(res, alerts.map(alert => alert.toPublicProfile()), {
-    total: count,
-    page: parseInt(page),
-    pages: Math.ceil(count / limit),
-    limit: parseInt(limit),
-  });
+  const alertsData = alerts.map(alert => alert.toPublicProfile());
+  const responseData = {
+    data: alertsData,
+    pagination: {
+      total: count,
+      page: parseInt(page),
+      pages: Math.ceil(count / limit),
+      limit: parseInt(limit),
+    },
+  };
+
+  // Cache the result
+  await CacheService.set(cacheKey, responseData, CACHE_TTL.ALERTS);
+
+  ResponseHelper.paginated(res, alertsData, responseData.pagination);
 });
 
 /**
@@ -56,6 +76,15 @@ const getAllAlerts = asyncHandler(async (req, res) => {
  * @param {Object} res - Express response object
  */
 const getAlertById = asyncHandler(async (req, res) => {
+  // Try to get from cache
+  const cacheKey = `alert:${req.params.id}`;
+  const cached = await CacheService.get(cacheKey);
+  
+  if (cached) {
+    logger.debug(`[Alert Controller] Returning cached alert: ${req.params.id}`);
+    return ResponseHelper.success(res, cached);
+  }
+
   const alert = await Alert.findById(req.params.id)
     .populate('acknowledgedBy', 'displayName email')
     .populate('resolvedBy', 'displayName email');
@@ -64,7 +93,12 @@ const getAlertById = asyncHandler(async (req, res) => {
     throw new NotFoundError('Alert', req.params.id);
   }
 
-  ResponseHelper.success(res, alert.toPublicProfile());
+  const alertData = alert.toPublicProfile();
+
+  // Cache the result
+  await CacheService.set(cacheKey, alertData, CACHE_TTL.ALERTS);
+
+  ResponseHelper.success(res, alertData);
 });
 
 /**
@@ -97,6 +131,11 @@ const acknowledgeAlert = asyncHandler(async (req, res) => {
 
   // Populate user data
   await alert.populate('acknowledgedBy', 'displayName email');
+
+  // Invalidate cache
+  await CacheService.del(`alert:${req.params.id}`);
+  await CacheService.delPattern('alerts:all:*');
+  logger.debug(`[Alert Controller] Cache invalidated for acknowledged alert: ${req.params.id}`);
 
   ResponseHelper.success(res, alert.toPublicProfile(), 'Alert acknowledged successfully');
 });
@@ -133,6 +172,11 @@ const resolveAlert = asyncHandler(async (req, res) => {
   // Populate user data
   await alert.populate('acknowledgedBy', 'displayName email');
   await alert.populate('resolvedBy', 'displayName email');
+
+  // Invalidate cache
+  await CacheService.del(`alert:${req.params.id}`);
+  await CacheService.delPattern('alerts:all:*');
+  logger.debug(`[Alert Controller] Cache invalidated for resolved alert: ${req.params.id}`);
 
   ResponseHelper.success(res, alert.toPublicProfile(), 'Alert resolved successfully');
 });
@@ -181,6 +225,10 @@ const createAlert = asyncHandler(async (req, res) => {
 
   await alert.save();
 
+  // Invalidate alerts list cache (new alert created)
+  await CacheService.delPattern('alerts:all:*');
+  logger.debug('[Alert Controller] Cache invalidated for new alert creation');
+
   ResponseHelper.created(res, alert.toPublicProfile(), 'Alert created successfully');
 });
 
@@ -195,6 +243,11 @@ const deleteAlert = asyncHandler(async (req, res) => {
   if (!alert) {
     throw new NotFoundError('Alert', req.params.id);
   }
+
+  // Invalidate cache
+  await CacheService.del(`alert:${req.params.id}`);
+  await CacheService.delPattern('alerts:all:*');
+  logger.debug(`[Alert Controller] Cache invalidated for deleted alert: ${req.params.id}`);
 
   ResponseHelper.success(res, null, 'Alert deleted successfully');
 });

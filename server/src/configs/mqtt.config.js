@@ -8,7 +8,7 @@ const mqtt = require('mqtt');
 // MQTT Broker Configuration
 const MQTT_CONFIG = {
   // HiveMQ Cloud Cluster Configuration
-  BROKER_URL: process.env.MQTT_BROKER_URL || 'mqtt://0331c5286d084675b9198021329c7573.s1.eu.hivemq.cloud:8883',
+  BROKER_URL: process.env.MQTT_BROKER_URL || 'mqtts://0331c5286d084675b9198021329c7573.s1.eu.hivemq.cloud:8883',
   CLIENT_ID: process.env.MQTT_CLIENT_ID || `water-quality-server-${Date.now()}`,
 
   // Connection Options
@@ -16,13 +16,19 @@ const MQTT_CONFIG = {
     // Only include username/password if they are actually set
     ...(process.env.MQTT_USERNAME && { username: process.env.MQTT_USERNAME }),
     ...(process.env.MQTT_PASSWORD && { password: process.env.MQTT_PASSWORD }),
-    clean: true,
-    connectTimeout: 15000, // Increased timeout for cloud connection
-    reconnectPeriod: 5000,  // Increased reconnect period
-    keepalive: 60,
+    clean: true, // Clean session - start fresh each time
+    connectTimeout: 30000, // 30 second timeout for cloud connection
+    reconnectPeriod: 10000,  // 10 second reconnect period (increased to avoid rapid reconnects)
+    keepalive: 30, // 30 second keepalive - shorter interval for faster detection
     protocolVersion: 4, // MQTT v3.1.1
     // SSL/TLS options for HiveMQ Cloud
-    rejectUnauthorized: false, // For self-signed certificates (if any)
+    rejectUnauthorized: true, // Validate HiveMQ certificates properly
+    will: {
+      topic: 'server/status',
+      payload: JSON.stringify({ status: 'offline', timestamp: new Date().toISOString() }),
+      qos: 1,
+      retain: true
+    }
   },
 
   // Quality of Service

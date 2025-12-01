@@ -1,7 +1,7 @@
 /*
  * Water Quality Monitoring System - OPTIMIZED VERSION
  * Arduino UNO R4 WiFi - Clock-Synchronized 30 Minute Data Transmission
- * Firmware: v6.9.2 - Manual Calibration Mode Control
+ * Firmware: v7.0.0 - Server Polling Mode (No LWT)
  * 
  * OPTIMIZATIONS:
  * - F() macro for all string constants (saves ~500 bytes RAM)
@@ -10,10 +10,11 @@
  * - Reduced String concatenation
  * - Cached frequently accessed values
  * 
- * NEW FEATURES:
+ * FEATURES:
  * - Calibration Mode: 255ms sensor readings, no MQTT transmission
  * - Manual control via code (change CALIBRATION_MODE below)
- * - Remote control via MQTT commands (optional)
+ * - Server Polling: Responds to "who_is_online" queries instead of LWT
+ * - No Last Will Testament - explicit presence control
  */
 
 
@@ -57,7 +58,7 @@
 #define DEVICE_ID "arduino_uno_r4_002"
 #define DEVICE_NAME "Water Quality Monitor R4"
 #define DEVICE_TYPE "Arduino UNO R4 WiFi"
-#define FIRMWARE_VERSION "6.9.2"
+#define FIRMWARE_VERSION "7.0.0"  // No LWT - Server polling mode
 
 
 // Sensor Pin Configuration
@@ -632,32 +633,17 @@ void connectMQTT() {
   Serial.println(F("Establishing SSL handshake..."));
 
 
-  // Create LWT payload - Optimized size
-  StaticJsonDocument<200> lwtDoc;
-  lwtDoc["deviceId"] = DEVICE_ID;
-  lwtDoc["deviceName"] = DEVICE_NAME;
-  lwtDoc["status"] = "offline";
-  lwtDoc["timestamp"] = "disconnected";
-  lwtDoc["reason"] = "unexpected_disconnect";
-
-
-  char lwtPayload[200];
-  serializeJson(lwtDoc, lwtPayload, sizeof(lwtPayload));
-
-
+  // Connect WITHOUT Last Will Testament (LWT)
+  // Server will poll for presence instead of relying on broker LWT
   bool connected = mqttClient.connect(
     MQTT_CLIENT_ID,
     MQTT_USERNAME,
-    MQTT_PASSWORD,
-    topicPresence,
-    1,
-    true,
-    lwtPayload
+    MQTT_PASSWORD
   );
 
 
   if (connected) {
-    Serial.println(F("✓ MQTT SSL Connected!"));
+    Serial.println(F("✓ MQTT SSL Connected! (No LWT - Polling mode)"));
     mqttConnected = true;
     consecutiveMqttFailures = 0;
 
@@ -668,16 +654,18 @@ void connectMQTT() {
     }
 
 
-    // Subscribe to presence query topic
+    // Subscribe to presence query topic - SERVER WILL POLL US
     char presenceQueryTopic[30];
     strcpy_P(presenceQueryTopic, PRESENCE_QUERY_TOPIC);
     
     if (mqttClient.subscribe(presenceQueryTopic, 1)) {
       Serial.print(F("✓ Subscribed: "));
       Serial.println(presenceQueryTopic);
+      Serial.println(F("  Waiting for server presence polls..."));
     }
 
 
+    // Announce we're online (will be validated by server polls)
     publishPresenceOnline();
     
   } else {
@@ -1155,8 +1143,9 @@ void publishPresenceOnline() {
   serializeJson(presenceDoc, presencePayload, sizeof(presencePayload));
 
 
-  if (mqttClient.publish(topicPresence, presencePayload, true)) {
-    Serial.println(F("✓ Presence status: online (retained)"));
+  // Publish WITHOUT retained flag - server will poll to verify
+  if (mqttClient.publish(topicPresence, presencePayload, false)) {
+    Serial.println(F("✓ Presence status: online (NOT retained)"));
   } else {
     Serial.println(F("✗ Failed to publish presence status"));
     Serial.print(F("MQTT state: "));
