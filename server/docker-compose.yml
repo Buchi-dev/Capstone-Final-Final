@@ -13,6 +13,23 @@ services:
       - firebase_credentials
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/firebase_credentials
+      - TZ=Asia/Manila
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "com.capstone.app=water-quality-server"
+      - "com.capstone.restart.schedule=saturday-midnight"
+      - "com.capstone.restart.timezone=Asia/Manila"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 secrets:
   firebase_credentials:
     file: ./firebase-service-account.json
