@@ -16,6 +16,7 @@ const crypto = require('crypto');
  */
 const generateWaterQualityReport = async (req, res) => {
   const startTime = Date.now();
+  let reportId; // Declare outside try block for catch access
   
   try {
     const { startDate, endDate, deviceIds } = req.body;
@@ -31,7 +32,7 @@ const generateWaterQualityReport = async (req, res) => {
     const end = new Date(endDate);
 
     // Create report document
-    const reportId = uuidv4();
+    reportId = uuidv4();
     const report = new Report({
       reportId,
       type: 'water-quality',
@@ -349,8 +350,7 @@ const generateWaterQualityReport = async (req, res) => {
     });
     
     // Try to update report status to failed if it exists
-    // Note: reportId is only available if report was created before error
-    if (typeof reportId !== 'undefined') {
+    if (reportId) {
       try {
         const failedReport = await Report.findOne({ reportId });
         if (failedReport) {
@@ -381,6 +381,7 @@ const generateWaterQualityReport = async (req, res) => {
  */
 const generateDeviceStatusReport = async (req, res) => {
   const startTime = Date.now();
+  let reportId; // Declare outside try block for catch access
   
   try {
     const { startDate, endDate, deviceIds } = req.body;
@@ -396,7 +397,7 @@ const generateDeviceStatusReport = async (req, res) => {
     const end = new Date(endDate);
 
     // Create report document
-    const reportId = uuidv4();
+    reportId = uuidv4();
     const report = new Report({
       reportId,
       type: 'device-status',

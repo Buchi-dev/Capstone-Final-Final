@@ -11,361 +11,271 @@ const { CACHE_TTL } = require('../utils/constants');
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const getUserById = async (req, res) => {
-  try {
-    // Try to get from cache
-    const cacheKey = `user:${req.params.id}`;
-    const cached = await CacheService.get(cacheKey);
-    
-    if (cached) {
-      logger.debug(`[User Controller] Returning cached user: ${req.params.id}`);
-      return res.json({
-        success: true,
-        data: cached,
-      });
-    }
-
-    const user = await User.findById(req.params.id)
-      .select('-googleId')
-      .lean(); // Use lean() for better performance when not modifying data
-    
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    const userData = {
-      ...user,
-      id: user._id,
-    };
-
-    // Cache the result
-    await CacheService.set(cacheKey, userData, CACHE_TTL.USERS);
-
-    res.json({
-      success: true,
-      data: userData,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching user',
-      error: error.message,
-    });
+const getUserById = asyncHandler(async (req, res) => {
+  // Try to get from cache
+  const cacheKey = `user:${req.params.id}`;
+  const cached = await CacheService.get(cacheKey);
+  
+  if (cached) {
+    logger.debug(`[User Controller] Returning cached user: ${req.params.id}`);
+    return ResponseHelper.success(res, cached);
   }
-};
+
+  const user = await User.findById(req.params.id)
+    .select('-googleId')
+    .lean();
+  
+  if (!user) {
+    throw new NotFoundError('User', req.params.id);
+  }
+
+  const userData = {
+    ...user,
+    id: user._id,
+  };
+
+  // Cache the result
+  await CacheService.set(cacheKey, userData, CACHE_TTL.USERS);
+
+  ResponseHelper.success(res, userData);
+});
 
 /**
  * Get all users (Admin only)
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const getAllUsers = async (req, res) => {
-  try {
-    const { role, status, page = 1, limit = 10 } = req.query;
-    
-    const filter = {};
-    if (role) filter.role = role;
-    if (status) filter.status = status;
+const getAllUsers = asyncHandler(async (req, res) => {
+  const { role, status, page = 1, limit = 10 } = req.query;
+  
+  const filter = {};
+  if (role) filter.role = role;
+  if (status) filter.status = status;
 
-    // Try to get from cache
-    const cacheKey = `users:all:${JSON.stringify(filter)}:page${page}:limit${limit}`;
-    const cached = await CacheService.get(cacheKey);
-    
-    if (cached) {
-      logger.debug('[User Controller] Returning cached users list');
-      return res.json({
-        success: true,
-        data: cached.data,
-        pagination: cached.pagination,
-      });
-    }
-
-    // Use lean() and select to optimize query
-    const users = await User.find(filter)
-      .select('-googleId -firebaseUid') // Exclude sensitive fields
-      .limit(limit * 1)
-      .skip((page - 1) * limit)
-      .sort({ createdAt: -1 })
-      .lean(); // Better performance for read-only data
-
-    const count = await User.countDocuments(filter);
-
-    // Add id field mapping
-    const usersWithId = users.map(user => ({
-      ...user,
-      id: user._id,
-    }));
-
-    const responseData = {
-      data: usersWithId,
-      pagination: {
-        total: count,
-        page: parseInt(page),
-        pages: Math.ceil(count / limit),
-      },
-    };
-
-    // Cache the result
-    await CacheService.set(cacheKey, responseData, CACHE_TTL.USERS);
-
-    res.json({
-      success: true,
-      ...responseData,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error fetching users',
-      error: error.message,
-    });
+  // Try to get from cache
+  const cacheKey = `users:all:${JSON.stringify(filter)}:page${page}:limit${limit}`;
+  const cached = await CacheService.get(cacheKey);
+  
+  if (cached) {
+    logger.debug('[User Controller] Returning cached users list');
+    return ResponseHelper.paginated(res, cached.data, cached.pagination);
   }
-};
+
+  // Use lean() and select to optimize query
+  const users = await User.find(filter)
+    .select('-googleId -firebaseUid')
+    .limit(limit * 1)
+    .skip((page - 1) * limit)
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const count = await User.countDocuments(filter);
+
+  // Add id field mapping
+  const usersWithId = users.map(user => ({
+    ...user,
+    id: user._id,
+  }));
+
+  const pagination = {
+    total: count,
+    page: parseInt(page),
+    pages: Math.ceil(count / limit),
+    limit: parseInt(limit),
+  };
+
+  // Cache the result
+  await CacheService.set(cacheKey, { data: usersWithId, pagination }, CACHE_TTL.USERS);
+
+  ResponseHelper.paginated(res, usersWithId, pagination);
+});
 
 /**
  * Update user role (Admin only)
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const updateUserRole = async (req, res) => {
-  try {
-    const { role } = req.body;
-    
-    if (!['admin', 'staff'].includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid role',
-      });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { role },
-      { new: true }
-    ).select('-googleId');
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    // Invalidate cache
-    await CacheService.del(`user:${req.params.id}`);
-    await CacheService.delPattern('users:all:*');
-    logger.debug(`[User Controller] Cache invalidated for user: ${req.params.id}`);
-
-    // Check if admin is modifying their own role (requires logout)
-    const requiresLogout = req.user._id.toString() === req.params.id;
-
-    res.json({
-      success: true,
-      message: 'User role updated successfully',
-      data: user.toPublicProfile(),
-      requiresLogout,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating user role',
-      error: error.message,
-    });
+const updateUserRole = asyncHandler(async (req, res) => {
+  const { role } = req.body;
+  
+  if (!['admin', 'staff'].includes(role)) {
+    throw new ValidationError('Invalid role. Must be admin or staff');
   }
-};
+
+  const user = await User.findByIdAndUpdate(
+    req.params.id,
+    { role },
+    { new: true }
+  ).select('-googleId');
+
+  if (!user) {
+    throw new NotFoundError('User', req.params.id);
+  }
+
+  // Invalidate cache
+  await CacheService.del(`user:${req.params.id}`);
+  await CacheService.delPattern('users:all:*');
+  logger.debug(`[User Controller] Cache invalidated for user: ${req.params.id}`);
+
+  // Check if admin is modifying their own role (requires logout)
+  const requiresLogout = req.user._id.toString() === req.params.id;
+
+  ResponseHelper.success(
+    res, 
+    { ...user.toPublicProfile(), requiresLogout },
+    'User role updated successfully'
+  );
+});
 
 /**
  * Update user status (Admin only)
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const updateUserStatus = async (req, res) => {
-  try {
-    const { status } = req.body;
-    
-    if (!['active', 'pending', 'suspended'].includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid status. Must be active, pending, or suspended',
-      });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    ).select('-googleId');
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    // Invalidate cache
-    await CacheService.del(`user:${req.params.id}`);
-    await CacheService.delPattern('users:all:*');
-    logger.debug(`[User Controller] Cache invalidated for user: ${req.params.id}`);
-
-    // Check if admin is modifying their own status (requires logout)
-    const requiresLogout = req.user._id.toString() === req.params.id;
-
-    res.json({
-      success: true,
-      message: 'User status updated successfully',
-      data: user.toPublicProfile(),
-      requiresLogout,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating user status',
-      error: error.message,
-    });
+const updateUserStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  
+  if (!['active', 'pending', 'suspended'].includes(status)) {
+    throw new ValidationError('Invalid status. Must be active, pending, or suspended');
   }
-};
+
+  const user = await User.findByIdAndUpdate(
+    req.params.id,
+    { status },
+    { new: true }
+  ).select('-googleId');
+
+  if (!user) {
+    throw new NotFoundError('User', req.params.id);
+  }
+
+  // Invalidate cache
+  await CacheService.del(`user:${req.params.id}`);
+  await CacheService.delPattern('users:all:*');
+  logger.debug(`[User Controller] Cache invalidated for user: ${req.params.id}`);
+
+  // Check if admin is modifying their own status (requires logout)
+  const requiresLogout = req.user._id.toString() === req.params.id;
+
+  ResponseHelper.success(
+    res,
+    { ...user.toPublicProfile(), requiresLogout },
+    'User status updated successfully'
+  );
+});
 
 /**
  * Update user profile (Admin only)
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const updateUserProfile = async (req, res) => {
-  try {
-    const { displayName, firstName, lastName, middleName, department, phoneNumber } = req.body;
-    
-    const updates = {};
-    if (displayName !== undefined) updates.displayName = displayName;
-    if (firstName !== undefined) updates.firstName = firstName;
-    if (lastName !== undefined) updates.lastName = lastName;
-    if (middleName !== undefined) updates.middleName = middleName;
-    if (department !== undefined) updates.department = department;
-    if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
+const updateUserProfile = asyncHandler(async (req, res) => {
+  const { displayName, firstName, lastName, middleName, department, phoneNumber } = req.body;
+  
+  const updates = {};
+  if (displayName !== undefined) updates.displayName = displayName;
+  if (firstName !== undefined) updates.firstName = firstName;
+  if (lastName !== undefined) updates.lastName = lastName;
+  if (middleName !== undefined) updates.middleName = middleName;
+  if (department !== undefined) updates.department = department;
+  if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
 
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No valid fields to update',
-      });
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      { new: true, runValidators: true }
-    ).select('-googleId');
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    // Invalidate cache
-    await CacheService.del(`user:${req.params.id}`);
-    await CacheService.delPattern('users:all:*');
-    logger.debug(`[User Controller] Cache invalidated for user: ${req.params.id}`);
-
-    res.json({
-      success: true,
-      message: 'User profile updated successfully',
-      data: user.toPublicProfile(),
-      updates,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error updating user profile',
-      error: error.message,
-    });
+  if (Object.keys(updates).length === 0) {
+    throw new ValidationError('No valid fields to update');
   }
-};
+
+  const user = await User.findByIdAndUpdate(
+    req.params.id,
+    updates,
+    { new: true, runValidators: true }
+  ).select('-googleId');
+
+  if (!user) {
+    throw new NotFoundError('User', req.params.id);
+  }
+
+  // Invalidate cache
+  await CacheService.del(`user:${req.params.id}`);
+  await CacheService.delPattern('users:all:*');
+  logger.debug(`[User Controller] Cache invalidated for user: ${req.params.id}`);
+
+  ResponseHelper.success(
+    res,
+    { ...user.toPublicProfile(), updates },
+    'User profile updated successfully'
+  );
+});
 
 /**
  * Complete user profile (Self - for new users)
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
  */
-const completeUserProfile = async (req, res) => {
-  try {
-    const { firstName, lastName, middleName, department, phoneNumber } = req.body;
-    
-    // Get the logged-in user's ID (could be _id or id depending on session serialization)
-    const loggedInUserId = (req.user._id || req.user.id).toString();
-    const targetUserId = req.params.id;
-    
-    // User can only complete their own profile
-    if (loggedInUserId !== targetUserId) {
-      return res.status(403).json({
-        success: false,
-        message: 'Forbidden: You can only complete your own profile',
-      });
-    }
-
-    // Strict validation: Both department and phoneNumber must be provided
-    if (!department || !phoneNumber) {
-      return res.status(400).json({
-        success: false,
-        message: 'Both department and phone number are required to complete your profile',
-      });
-    }
-
-    const updates = {
-      department,
-      phoneNumber,
-    };
-
-    // Also update name fields if provided
-    if (firstName) updates.firstName = firstName;
-    if (lastName) updates.lastName = lastName;
-    if (middleName !== undefined) updates.middleName = middleName;
-
-    // Update displayName if names changed
-    if (firstName || lastName || middleName !== undefined) {
-      const user = await User.findById(req.params.id);
-      if (user) {
-        const updatedFirstName = firstName || user.firstName || '';
-        const updatedLastName = lastName || user.lastName || '';
-        const updatedMiddleName = middleName !== undefined ? middleName : user.middleName || '';
-        
-        updates.displayName = [updatedFirstName, updatedMiddleName, updatedLastName]
-          .filter(name => name.trim())
-          .join(' ')
-          .trim();
-      }
-    }
-
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      { new: true, runValidators: true }
-    ).select('-googleId');
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Profile completed successfully',
-      data: user.toPublicProfile(),
-      updates,
-    });
-  } catch (error) {
-    res.status(500).json({
+const completeUserProfile = asyncHandler(async (req, res) => {
+  const { firstName, lastName, middleName, department, phoneNumber } = req.body;
+  
+  // Get the logged-in user's ID
+  const loggedInUserId = (req.user._id || req.user.id).toString();
+  const targetUserId = req.params.id;
+  
+  // User can only complete their own profile
+  if (loggedInUserId !== targetUserId) {
+    return res.status(403).json({
       success: false,
-      message: 'Error completing user profile',
-      error: error.message,
+      message: 'Forbidden: You can only complete your own profile',
     });
   }
-};
+
+  // Strict validation: Both department and phoneNumber must be provided
+  if (!department || !phoneNumber) {
+    throw new ValidationError('Both department and phone number are required to complete your profile');
+  }
+
+  const updates = {
+    department,
+    phoneNumber,
+  };
+
+  // Also update name fields if provided
+  if (firstName) updates.firstName = firstName;
+  if (lastName) updates.lastName = lastName;
+  if (middleName !== undefined) updates.middleName = middleName;
+
+  // Update displayName if names changed
+  if (firstName || lastName || middleName !== undefined) {
+    const user = await User.findById(req.params.id);
+    if (user) {
+      const updatedFirstName = firstName || user.firstName || '';
+      const updatedLastName = lastName || user.lastName || '';
+      const updatedMiddleName = middleName !== undefined ? middleName : user.middleName || '';
+      
+      updates.displayName = [updatedFirstName, updatedMiddleName, updatedLastName]
+        .filter(name => name.trim())
+        .join(' ')
+        .trim();
+    }
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.params.id,
+    updates,
+    { new: true, runValidators: true }
+  ).select('-googleId');
+
+  if (!user) {
+    throw new NotFoundError('User', req.params.id);
+  }
+
+  // Invalidate cache
+  await CacheService.del(`user:${req.params.id}`);
+  await CacheService.delPattern('users:all:*');
+
+  ResponseHelper.success(
+    res,
+    { ...user.toPublicProfile(), updates },
+    'Profile completed successfully'
+  );
+});
 
 /**
  * Delete user (Admin only)
@@ -463,6 +373,7 @@ const updateUserPreferences = asyncHandler(async (req, res) => {
 
   // Invalidate cache
   await CacheService.del(`user:${req.params.id}`);
+  await CacheService.delPattern('users:all:*');
   logger.debug(`[User Controller] Cache invalidated for user preferences: ${req.params.id}`);
 
   ResponseHelper.success(res, user.notificationPreferences, 'Notification preferences updated successfully');
@@ -503,6 +414,11 @@ const resetUserPreferences = asyncHandler(async (req, res) => {
   if (!user) {
     throw new NotFoundError('User', req.params.id);
   }
+
+  // Invalidate cache
+  await CacheService.del(`user:${req.params.id}`);
+  await CacheService.delPattern('users:all:*');
+  logger.debug(`[User Controller] Cache invalidated for user preferences reset: ${req.params.id}`);
 
   ResponseHelper.success(res, user.notificationPreferences, 'Notification preferences reset to defaults');
 });
