@@ -278,25 +278,16 @@ class MQTTService {
     try {
       const { status, timestamp } = data;
       
-      // Log the announcement but don't update status
-      logger.debug(`[MQTT Presence] Device ${deviceId} announced: ${status} (ignored - waiting for query response)`, { timestamp });
+      // Log the announcement but don't update database
+      // Database updates are handled by handlePresenceResponse() to avoid duplicates
+      logger.debug(`[MQTT Presence] Device ${deviceId} announced: ${status} (announcement only - no DB update)`, { timestamp });
 
-      // Only update lastSeen timestamp (not status)
-      const { Device } = require('../devices/device.Model');
-      const device = await Device.findOne({ deviceId: deviceId.trim() });
-      
-      if (device) {
-        device.lastSeen = timestamp ? new Date(timestamp) : new Date();
-        await device.save();
-        
-        // Invalidate cache
-        const CacheService = require('./cache.service');
-        await CacheService.del(`device:${deviceId}`);
-        await CacheService.delPattern('devices:all:*');
-      }
+      // ⚠️ DO NOT UPDATE DATABASE HERE
+      // This would create duplicate updates since handlePresenceResponse() already handles it
+      // Presence announcements are just for logging/debugging
 
     } catch (error) {
-      logger.error(`[MQTT Presence] Error updating device ${deviceId} lastSeen:`, error);
+      logger.error(`[MQTT Presence] Error processing device ${deviceId} presence announcement:`, error);
     }
   }
 
@@ -307,10 +298,21 @@ class MQTTService {
   async handlePresenceResponse(data) {
     try {
       if (data.response === 'i_am_online' && data.deviceId) {
-        // Store the response
+        // Check if we've already processed this response (prevent duplicates)
+        const existingResponse = this.presenceResponses.get(data.deviceId);
+        if (existingResponse) {
+          const timeDiff = Date.now() - existingResponse.receivedAt;
+          if (timeDiff < 2000) {
+            // Ignore duplicate responses within 2 seconds
+            logger.debug(`[MQTT Presence] Ignoring duplicate response from ${data.deviceId}`);
+            return;
+          }
+        }
+
+        // Store the response with separate receivedAt timestamp
         this.presenceResponses.set(data.deviceId, {
-          timestamp: new Date(),
           ...data,
+          receivedAt: Date.now(), // Use milliseconds timestamp for reliable comparison
         });
         
         logger.info(`[MQTT Presence] ✅ Device ${data.deviceId} responded to presence query - marking ONLINE`);
@@ -321,18 +323,38 @@ class MQTTService {
         
         if (device) {
           const oldStatus = device.status;
+          const now = new Date();
+          
+          // Validate and parse timestamp
+          let lastSeenDate = now;
+          if (data.timestamp) {
+            // Handle Unix timestamp (number) or ISO string
+            const parsedDate = typeof data.timestamp === 'number' 
+              ? new Date(data.timestamp * 1000) // Assuming Unix timestamp in seconds
+              : new Date(data.timestamp);
+            
+            // Only use parsed date if it's valid
+            if (!isNaN(parsedDate.getTime())) {
+              lastSeenDate = parsedDate;
+            } else {
+              logger.warn(`[MQTT Presence] Invalid timestamp from ${data.deviceId}, using current time`, { timestamp: data.timestamp });
+            }
+          }
+
           device.status = 'online';
-          device.lastSeen = new Date();
+          device.lastSeen = lastSeenDate;
           await device.save();
 
           if (oldStatus !== 'online') {
             logger.info(`[MQTT Presence] Device ${data.deviceId} status changed: ${oldStatus} → online`);
           }
 
-          // Invalidate cache
+          // Invalidate cache (single operation)
           const CacheService = require('./cache.service');
-          await CacheService.del(`device:${data.deviceId}`);
-          await CacheService.delPattern('devices:all:*');
+          await Promise.all([
+            CacheService.del(`device:${data.deviceId}`),
+            CacheService.delPattern('devices:all:*')
+          ]);
         } else {
           logger.warn(`[MQTT Presence] Device ${data.deviceId} responded but not found in database`);
         }

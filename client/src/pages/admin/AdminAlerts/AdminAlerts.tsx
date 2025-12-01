@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Layout, Space, message } from 'antd';
+import { Space, message } from 'antd';
 import { BellOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { WaterQualityAlert } from '../../../schemas';
 import { AdminLayout } from '../../../components/layouts/AdminLayout';
@@ -28,8 +28,6 @@ import {
   AlertsTable,
   AlertDetailsDrawer,
 } from './components';
-
-const { Content } = Layout;
 
 export const AdminAlerts = () => {
   const [selectedAlert, setSelectedAlert] = useState<WaterQualityAlert | null>(null);
@@ -90,30 +88,32 @@ export const AdminAlerts = () => {
     setDetailsVisible(true);
   };
 
-  // ✅ Acknowledge alert handler with optimistic update (no manual refresh needed)
+  // ✅ Acknowledge alert handler with cache update and refetch
   const handleAcknowledge = async (alertId: string) => {
     try {
       await acknowledgeAlert(alertId);
       message.success('Alert acknowledged successfully');
-      // No need to refetch - optimistic update handles it
+      // Force refetch to ensure UI is up-to-date
+      await refetch();
     } catch (error) {
       // Error already shown by useEffect
     }
   };
 
-  // ✅ Resolve alert handler with optimistic update (no manual refresh needed)
+  // ✅ Resolve alert handler with cache update and refetch
   const handleResolve = async (alertId: string, notes?: string) => {
     try {
       await resolveAlert(alertId, notes);
       message.success('Alert resolved successfully');
       setDetailsVisible(false); // Close drawer after successful resolution
-      // No need to refetch - optimistic update handles it
+      // Force refetch to ensure UI is up-to-date
+      await refetch();
     } catch (error) {
       // Error already shown by useEffect
     }
   };
 
-  // ✅ Use global write hook for batch operations with optimistic updates
+  // ✅ Use global write hook for batch operations with cache updates
   const handleBatchAcknowledge = async (alertIds: string[]) => {
     try {
       const results = await Promise.allSettled(
@@ -134,7 +134,8 @@ export const AdminAlerts = () => {
         );
       }
       
-      // No need to refetch - optimistic updates handle it
+      // Force refetch to ensure UI is up-to-date
+      await refetch();
     } catch {
       message.error('Failed to acknowledge alerts');
     }
@@ -142,7 +143,7 @@ export const AdminAlerts = () => {
 
   return (
     <AdminLayout>
-      <Content style={{ padding: '24px' }}>
+      <div style={{ padding: '24px' }}>
         <PageHeader
           title="Water Quality Alerts"
           icon={<BellOutlined />}
@@ -195,7 +196,7 @@ export const AdminAlerts = () => {
           isAcknowledging={isOperating}
           isResolving={isOperating}
         />
-      </Content>
+      </div>
     </AdminLayout>
   );
 

@@ -99,9 +99,10 @@ export function useSystemHealth(
     },
     {
       refreshInterval: adjustedPollInterval, // Use adjusted interval
-      revalidateOnFocus: true,
+      revalidateOnFocus: false, // Disabled to prevent duplicate calls on focus
       revalidateOnReconnect: true,
-      dedupingInterval: 3000,
+      dedupingInterval: 60000, // Prevent duplicate requests for 60 seconds (increased from 3s)
+      keepPreviousData: true, // Keep showing old data while fetching
     }
   );
 

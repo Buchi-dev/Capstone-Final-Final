@@ -121,6 +121,10 @@ export const AnalyticsComplianceStatusSchema = z.object({
     min: z.number().optional(),
     max: z.number().optional(),
   }),
+  currentValue: z.number().optional(),
+  minValue: z.number().optional(),
+  maxValue: z.number().optional(),
+  violationType: z.enum(['below_min', 'above_max', 'both', 'none']).optional(),
 });
 
 /**

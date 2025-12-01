@@ -7,6 +7,7 @@ const {
   deleteReport,
   getReportHistory,
   downloadReport,
+  getReportDiagnostics,
 } = require('./report.Controller');
 const { ensureAuthenticated, ensureAdmin } = require('../auth/auth.Middleware');
 const {
@@ -16,6 +17,13 @@ const {
 } = require('../middleware/validation.middleware');
 
 const router = express.Router();
+
+/**
+ * @route   GET /api/v1/reports/diagnostics
+ * @desc    Get report generation diagnostics (data availability check)
+ * @access  Authenticated users (Staff and Admin)
+ */
+router.get('/diagnostics', ensureAuthenticated, getReportDiagnostics);
 
 /**
  * @route   POST /api/v1/reports/water-quality

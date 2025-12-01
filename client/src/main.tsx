@@ -1,4 +1,3 @@
-import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import '@ant-design/v5-patch-for-react-19';
 import { ThemeProvider } from './theme';
@@ -21,10 +20,12 @@ registerSW({
 })
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+  // StrictMode disabled in production to prevent duplicate API calls
+  // Development double-rendering can be re-enabled if needed for debugging
+  // <StrictMode>
     <ThemeProvider themeMode="light">
       <PWAInstallButton />
       <App />
     </ThemeProvider>
-  </StrictMode>,
+  // </StrictMode>,
 )

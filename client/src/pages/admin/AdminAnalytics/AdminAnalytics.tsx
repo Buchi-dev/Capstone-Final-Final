@@ -28,7 +28,8 @@ import type { DeviceWithReadings } from '../../../schemas';
 import { 
   useDevices,
   useAlerts,
-  useSystemHealth
+  useSystemHealth,
+  useAnalyticsSummary
 } from '../../../hooks';
 import { useAnalyticsProcessing, useAnalyticsStats } from './hooks';
 import {
@@ -65,6 +66,12 @@ export const AdminAnalytics = memo(() => {
     isLoading: healthLoading,
     refetch: refetchHealth,
   } = useSystemHealth({ pollInterval: 30000 });
+
+  const {
+    summary: analyticsSummary,
+    isLoading: summaryLoading,
+    refetch: refetchSummary,
+  } = useAnalyticsSummary({ pollInterval: 60000 });
 
   // Enrich devices with required properties for analytics
   const enrichedDevices = useMemo<DeviceWithReadings[]>(() => {
@@ -113,6 +120,12 @@ export const AdminAnalytics = memo(() => {
     aggregatedMetrics,
   } = useAnalyticsStats(enrichedDevices, alerts, systemHealthData);
 
+  // Override totalReadings with the accurate count from server
+  const waterQualityMetricsWithTotal = useMemo(() => ({
+    ...waterQualityMetrics,
+    totalReadings: analyticsSummary?.readings?.total ?? waterQualityMetrics.totalReadings,
+  }), [waterQualityMetrics, analyticsSummary]);
+
   // ✅ LOCAL HOOK - Process data for charts (UI logic only)
   const { 
     timeSeriesData, 
@@ -120,7 +133,7 @@ export const AdminAnalytics = memo(() => {
   } = useAnalyticsProcessing(enrichedDevices);
 
   // Combined loading state
-  const loading = devicesLoading || alertsLoading || healthLoading;
+  const loading = devicesLoading || alertsLoading || healthLoading || summaryLoading;
 
   // Refresh handler with loading state
   const [isRefreshing, setIsRefreshing] = React.useState(false);
@@ -130,7 +143,7 @@ export const AdminAnalytics = memo(() => {
     
     setIsRefreshing(true);
     try {
-      await Promise.all([refetchDevices(), refetchAlerts(), refetchHealth()]);
+      await Promise.all([refetchDevices(), refetchAlerts(), refetchHealth(), refetchSummary()]);
       setTimeout(() => setIsRefreshing(false), 500);
     } catch (error) {
       console.error('Refresh error:', error);
@@ -164,7 +177,7 @@ export const AdminAnalytics = memo(() => {
             systemHealth={systemHealth}
             deviceStats={deviceStats}
             alertStats={alertStats}
-            waterQualityMetrics={waterQualityMetrics}
+            waterQualityMetrics={waterQualityMetricsWithTotal}
             loading={loading}
           />
 
@@ -178,12 +191,12 @@ export const AdminAnalytics = memo(() => {
           />
 
           <WaterQualityMetrics 
-            metrics={waterQualityMetrics}
+            metrics={waterQualityMetricsWithTotal}
             devices={devices}
           />
 
           <WaterQualityAssessment 
-            metrics={waterQualityMetrics}
+            metrics={waterQualityMetricsWithTotal}
             devices={devices}
             alerts={alerts}
           />

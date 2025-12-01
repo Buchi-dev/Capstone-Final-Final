@@ -401,12 +401,39 @@ const processSensorData = asyncHandler(async (req, res) => {
   await device.save();
 
   // Save sensor reading with trimmed deviceId
+  // Validate timestamp from device
+  let validTimestamp = new Date(); // Default to server time
+  
+  if (timestamp) {
+    // Handle Unix timestamp (seconds) or ISO string
+    const parsedDate = typeof timestamp === 'number' 
+      ? new Date(timestamp * 1000) // Unix timestamp in seconds
+      : new Date(timestamp);
+    
+    // Validate: timestamp should be after 2020 and not in future
+    const year2020 = new Date('2020-01-01').getTime();
+    const futureLimit = Date.now() + (24 * 60 * 60 * 1000); // Allow 1 day ahead for timezone differences
+    
+    if (!isNaN(parsedDate.getTime()) && 
+        parsedDate.getTime() > year2020 && 
+        parsedDate.getTime() < futureLimit) {
+      validTimestamp = parsedDate;
+    } else {
+      logger.warn('[Device Controller] Invalid device timestamp, using server time', {
+        deviceId: trimmedDeviceId,
+        receivedTimestamp: timestamp,
+        parsedDate: parsedDate.toISOString(),
+        usingServerTime: validTimestamp.toISOString()
+      });
+    }
+  }
+  
   const reading = new SensorReading({
     deviceId: trimmedDeviceId,
     pH,
     turbidity,
     tds,
-    timestamp: timestamp ? new Date(timestamp) : new Date(),
+    timestamp: validTimestamp,
   });
 
   await reading.save();

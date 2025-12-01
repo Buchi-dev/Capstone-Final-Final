@@ -190,7 +190,7 @@
 #define DEVICE_ID "arduino_uno_r4_002"
 #define DEVICE_NAME "Water Quality Monitor R4"
 #define DEVICE_TYPE "Arduino UNO R4 WiFi"
-#define FIRMWARE_VERSION "7.0.0"
+#define FIRMWARE_VERSION "8.0.0"
 
 // ───────────────────────────────────────────────────────────────────────────
 // Sensor Pin Assignments
@@ -371,6 +371,95 @@ const unsigned long WIFI_CHECK_INTERVAL = 1000;            // Check every 1 seco
 
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SYSTEM READINESS FRAMEWORK
+// ═══════════════════════════════════════════════════════════════════════════
+// 
+// This framework implements a comprehensive initialization tracking system
+// that ensures all critical subsystems are fully operational before the device
+// begins normal operations. Each module reports its initialization state through
+// an enum status, and the global readiness flag only activates when ALL modules
+// are confirmed ready.
+// 
+// PURPOSE:
+//   - Prevent race conditions during startup
+//   - Ensure data integrity by blocking transmissions until all systems stable
+//   - Provide clear diagnostic information via Serial Monitor
+//   - Enable safe recovery from partial initialization failures
+// 
+// MODULE STATES:
+//   UNINITIALIZED - Module has not started initialization
+//   INITIALIZING  - Module is currently initializing
+//   FAILED        - Module failed to initialize (will retry)
+//   READY         - Module is fully operational
+// 
+// CRITICAL MODULES:
+//   1. EEPROM Storage    - Configuration persistence and boot counter
+//   2. WiFi Network      - Network connectivity (including WiFi Manager)
+//   3. NTP Time Sync     - Valid timestamps for data transmission
+//   4. MQTT Broker       - Server communication channel
+//   5. Sensor Subsystem  - pH, TDS, Turbidity hardware initialization
+//   6. Calibration       - Sensor data processing algorithms
+// 
+// OPERATIONAL RULES:
+//   - systemReady flag ONLY activates when ALL modules report READY state
+//   - Data transmission is BLOCKED until systemReady == true
+//   - Failed modules can be retried without full system restart
+//   - Calibration mode bypasses MQTT and NTP requirements
+// 
+// USAGE:
+//   - Call checkSystemReadiness() after any module state change
+//   - Monitor individual module states via printSystemReadiness()
+//   - Use isSystemFullyReady() guard before critical operations
+// 
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ───────────────────────────────────────────────────────────────────────────
+// Module Status Enumeration
+// ───────────────────────────────────────────────────────────────────────────
+enum ModuleStatus {
+  MODULE_UNINITIALIZED = 0,  // Not yet started
+  MODULE_INITIALIZING = 1,   // Currently initializing
+  MODULE_FAILED = 2,         // Initialization failed
+  MODULE_READY = 3           // Fully operational
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// Module Status Tracking (Individual Component States)
+// ───────────────────────────────────────────────────────────────────────────
+struct SystemReadiness {
+  ModuleStatus eeprom;       // EEPROM storage subsystem
+  ModuleStatus wifi;         // WiFi network connectivity
+  ModuleStatus ntp;          // NTP time synchronization
+  ModuleStatus mqtt;         // MQTT broker connection
+  ModuleStatus sensors;      // Sensor hardware (pH, TDS, Turbidity)
+  ModuleStatus calibration;  // Calibration algorithms
+  bool systemReady;          // Global readiness flag (true only when ALL modules READY)
+  unsigned long readyTime;   // Timestamp when system became fully ready
+};
+
+// Global instance
+SystemReadiness moduleReadiness = {
+  MODULE_UNINITIALIZED,  // eeprom
+  MODULE_UNINITIALIZED,  // wifi
+  MODULE_UNINITIALIZED,  // ntp
+  MODULE_UNINITIALIZED,  // mqtt
+  MODULE_UNINITIALIZED,  // sensors
+  MODULE_UNINITIALIZED,  // calibration
+  false,                 // systemReady
+  0                      // readyTime
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// Readiness Check Functions (Forward Declarations)
+// ───────────────────────────────────────────────────────────────────────────
+void checkSystemReadiness();           // Evaluate all module states and update systemReady flag
+void printSystemReadiness();           // Display detailed readiness report
+bool isSystemFullyReady();             // Quick check if system is ready for operations
+const char* getModuleStatusString(ModuleStatus status);  // Convert status enum to string
+void setModuleStatus(ModuleStatus* module, ModuleStatus newStatus, const char* moduleName);
+
+
+// ═══════════════════════════════════════════════════════════════════════════
 // FORWARD FUNCTION DECLARATIONS
 // ═══════════════════════════════════════════════════════════════════════════
 void handlePresenceQuery(const char* message);  // Process "who_is_online" queries
@@ -442,6 +531,191 @@ void toggleCalibrationMode() {
 
 
 // ═══════════════════════════════════════════════════════════════════════════
+//                    SYSTEM READINESS IMPLEMENTATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ───────────────────────────────────────────────────────────────────────────
+// Convert Module Status Enum to Human-Readable String
+// ───────────────────────────────────────────────────────────────────────────
+const char* getModuleStatusString(ModuleStatus status) {
+  switch (status) {
+    case MODULE_UNINITIALIZED: return "UNINITIALIZED";
+    case MODULE_INITIALIZING:  return "INITIALIZING";
+    case MODULE_FAILED:        return "FAILED";
+    case MODULE_READY:         return "READY";
+    default:                   return "UNKNOWN";
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Set Module Status with Logging
+// ───────────────────────────────────────────────────────────────────────────
+// Updates a module's status and logs the change to Serial Monitor
+// Automatically triggers system-wide readiness check
+// ───────────────────────────────────────────────────────────────────────────
+void setModuleStatus(ModuleStatus* module, ModuleStatus newStatus, const char* moduleName) {
+  if (*module == newStatus) return;  // No change
+  
+  ModuleStatus oldStatus = *module;
+  *module = newStatus;
+  
+  Serial.print(F("📦 "));
+  Serial.print(moduleName);
+  Serial.print(F(": "));
+  Serial.print(getModuleStatusString(oldStatus));
+  Serial.print(F(" → "));
+  Serial.println(getModuleStatusString(newStatus));
+  
+  // Automatically check system readiness after any module change
+  checkSystemReadiness();
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Check System-Wide Readiness
+// ───────────────────────────────────────────────────────────────────────────
+// Evaluates all critical module states and updates the global systemReady flag.
+// The system is considered ready ONLY when ALL required modules are in READY state.
+// 
+// CALIBRATION MODE BEHAVIOR:
+//   - MQTT and NTP modules are NOT required (bypassed)
+//   - Only EEPROM, WiFi, Sensors, and Calibration must be ready
+// 
+// NORMAL MODE BEHAVIOR:
+//   - ALL modules must be ready (EEPROM, WiFi, NTP, MQTT, Sensors, Calibration)
+//   - Time sync is MANDATORY for valid timestamps
+//   - MQTT is MANDATORY for data transmission
+// 
+// SIDE EFFECTS:
+//   - Sets moduleReadiness.systemReady flag
+//   - Records timestamp when system becomes ready
+//   - Prints status change notification
+// ───────────────────────────────────────────────────────────────────────────
+void checkSystemReadiness() {
+  bool wasReady = moduleReadiness.systemReady;
+  
+  // In calibration mode, MQTT and NTP are not required
+  bool allReady;
+  if (isCalibrationMode) {
+    allReady = (moduleReadiness.eeprom == MODULE_READY &&
+                moduleReadiness.wifi == MODULE_READY &&
+                moduleReadiness.sensors == MODULE_READY &&
+                moduleReadiness.calibration == MODULE_READY);
+  } else {
+    // Normal mode: ALL modules must be ready
+    allReady = (moduleReadiness.eeprom == MODULE_READY &&
+                moduleReadiness.wifi == MODULE_READY &&
+                moduleReadiness.ntp == MODULE_READY &&
+                moduleReadiness.mqtt == MODULE_READY &&
+                moduleReadiness.sensors == MODULE_READY &&
+                moduleReadiness.calibration == MODULE_READY);
+  }
+  
+  moduleReadiness.systemReady = allReady;
+  
+  // Log state transition
+  if (allReady && !wasReady) {
+    moduleReadiness.readyTime = millis();
+    Serial.println(F("\n╔════════════════════════════════════════════╗"));
+    Serial.println(F("║   ✅ SYSTEM FULLY READY - ALL MODULES OK   ║"));
+    Serial.println(F("╚════════════════════════════════════════════╝"));
+    Serial.print(F("⏱ Ready Time: "));
+    Serial.print((moduleReadiness.readyTime - bootTime) / 1000.0, 2);
+    Serial.println(F(" seconds after boot\n"));
+    
+    if (isCalibrationMode) {
+      Serial.println(F("🔧 Mode: CALIBRATION - Fast sensor readings active"));
+    } else {
+      Serial.println(F("📡 Mode: OPERATIONAL - Data transmission enabled"));
+    }
+  } else if (!allReady && wasReady) {
+    Serial.println(F("\n⚠️ WARNING: System no longer ready - module failure detected"));
+    moduleReadiness.systemReady = false;
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Quick Readiness Check (Guard Function)
+// ───────────────────────────────────────────────────────────────────────────
+// Returns true only if system is fully ready for operations
+// Use this as a guard before critical operations like data transmission
+// ───────────────────────────────────────────────────────────────────────────
+bool isSystemFullyReady() {
+  return moduleReadiness.systemReady;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Print Detailed System Readiness Report
+// ───────────────────────────────────────────────────────────────────────────
+// Displays the current status of all modules and overall system readiness
+// Called during startup and on-demand for diagnostics
+// ───────────────────────────────────────────────────────────────────────────
+void printSystemReadiness() {
+  Serial.println(F("\n╔════════════════════════════════════════════════════════╗"));
+  Serial.println(F("║          SYSTEM READINESS STATUS REPORT                ║"));
+  Serial.println(F("╠════════════════════════════════════════════════════════╣"));
+  
+  // Module statuses
+  Serial.print(F("║  EEPROM Storage:     "));
+  Serial.print(getModuleStatusString(moduleReadiness.eeprom));
+  for (int i = strlen(getModuleStatusString(moduleReadiness.eeprom)); i < 26; i++) Serial.print(F(" "));
+  Serial.println(F("║"));
+  
+  Serial.print(F("║  WiFi Network:       "));
+  Serial.print(getModuleStatusString(moduleReadiness.wifi));
+  for (int i = strlen(getModuleStatusString(moduleReadiness.wifi)); i < 26; i++) Serial.print(F(" "));
+  Serial.println(F("║"));
+  
+  Serial.print(F("║  NTP Time Sync:      "));
+  Serial.print(getModuleStatusString(moduleReadiness.ntp));
+  if (isCalibrationMode) Serial.print(F(" (BYPASSED)"));
+  int len = strlen(getModuleStatusString(moduleReadiness.ntp)) + (isCalibrationMode ? 11 : 0);
+  for (int i = len; i < 26; i++) Serial.print(F(" "));
+  Serial.println(F("║"));
+  
+  Serial.print(F("║  MQTT Broker:        "));
+  Serial.print(getModuleStatusString(moduleReadiness.mqtt));
+  if (isCalibrationMode) Serial.print(F(" (BYPASSED)"));
+  len = strlen(getModuleStatusString(moduleReadiness.mqtt)) + (isCalibrationMode ? 11 : 0);
+  for (int i = len; i < 26; i++) Serial.print(F(" "));
+  Serial.println(F("║"));
+  
+  Serial.print(F("║  Sensor Hardware:    "));
+  Serial.print(getModuleStatusString(moduleReadiness.sensors));
+  for (int i = strlen(getModuleStatusString(moduleReadiness.sensors)); i < 26; i++) Serial.print(F(" "));
+  Serial.println(F("║"));
+  
+  Serial.print(F("║  Calibration Engine: "));
+  Serial.print(getModuleStatusString(moduleReadiness.calibration));
+  for (int i = strlen(getModuleStatusString(moduleReadiness.calibration)); i < 26; i++) Serial.print(F(" "));
+  Serial.println(F("║"));
+  
+  Serial.println(F("╠════════════════════════════════════════════════════════╣"));
+  
+  // Overall status
+  Serial.print(F("║  SYSTEM STATUS:      "));
+  if (moduleReadiness.systemReady) {
+    Serial.print(F("✅ READY"));
+    for (int i = 0; i < 18; i++) Serial.print(F(" "));
+  } else {
+    Serial.print(F("⏳ NOT READY"));
+    for (int i = 0; i < 14; i++) Serial.print(F(" "));
+  }
+  Serial.println(F("║"));
+  
+  if (moduleReadiness.systemReady) {
+    Serial.print(F("║  Uptime Since Ready: "));
+    unsigned long readyUptime = (millis() - moduleReadiness.readyTime) / 1000;
+    Serial.print(readyUptime);
+    Serial.print(F("s"));
+    for (int i = String(readyUptime).length() + 1; i < 26; i++) Serial.print(F(" "));
+    Serial.println(F("║"));
+  }
+  
+  Serial.println(F("╚════════════════════════════════════════════════════════╝\n"));
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
 //                      EEPROM PERSISTENCE FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 // 
@@ -480,6 +754,7 @@ void toggleCalibrationMode() {
 // ───────────────────────────────────────────────────────────────────────────
 void initEEPROM() {
   Serial.println(F("\n=== EEPROM Initialization ==="));
+  setModuleStatus(&moduleReadiness.eeprom, MODULE_INITIALIZING, "EEPROM");
   
   uint16_t magic = (EEPROM.read(EEPROM_ADDR_MAGIC) << 8) | EEPROM.read(EEPROM_ADDR_MAGIC + 1);
   
@@ -496,6 +771,7 @@ void initEEPROM() {
     bootCount = 0;
     
     Serial.println(F("EEPROM initialized"));
+    setModuleStatus(&moduleReadiness.eeprom, MODULE_READY, "EEPROM");
   } else {
     Serial.println(F("EEPROM valid - reading stored values"));
     
@@ -513,6 +789,8 @@ void initEEPROM() {
     if (loadWiFiCredentials(savedSSID, savedPassword)) {
       wifiCredentialsSaved = true;
     }
+    
+    setModuleStatus(&moduleReadiness.eeprom, MODULE_READY, "EEPROM");
   }
   
   Serial.println(F("=============================\n"));
@@ -817,6 +1095,56 @@ void getPhilippineTimeString(char* buffer, size_t bufSize) {
   int seconds = phTime % 60;
   
   snprintf(buffer, bufSize, "%02d:%02d:%02d", hours, minutes, seconds);
+}
+
+
+void getPhilippineDateString(char* buffer, size_t bufSize) {
+  unsigned long epochTime = timeClient.getEpochTime();
+  unsigned long phTime = epochTime + TIMEZONE_OFFSET_SECONDS;
+  
+  // Calculate days since Unix epoch (Jan 1, 1970)
+  unsigned long days = phTime / 86400L;
+  
+  // Calculate year
+  int year = 1970;
+  unsigned long daysInYear;
+  while (true) {
+    // Check if leap year
+    bool isLeap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+    daysInYear = isLeap ? 366 : 365;
+    
+    if (days >= daysInYear) {
+      days -= daysInYear;
+      year++;
+    } else {
+      break;
+    }
+  }
+  
+  // Days in each month
+  int daysInMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  
+  // Adjust February for leap year
+  bool isLeap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+  if (isLeap) {
+    daysInMonth[1] = 29;
+  }
+  
+  // Calculate month and day
+  int month = 1;
+  for (int i = 0; i < 12; i++) {
+    if (days >= daysInMonth[i]) {
+      days -= daysInMonth[i];
+      month++;
+    } else {
+      break;
+    }
+  }
+  
+  int day = days + 1;
+  
+  // Format as YYYY-MM-DD
+  snprintf(buffer, bufSize, "%04d-%02d-%02d", year, month, day);
 }
 
 
@@ -1191,10 +1519,13 @@ void urlDecode(String &str) {
 // Connect to WiFi Network (Requires WiFi Manager Configuration)
 // ───────────────────────────────────────────────────────────────────────────
 void connectWiFi() {
+  setModuleStatus(&moduleReadiness.wifi, MODULE_INITIALIZING, "WiFi");
+  
   // Check if credentials are configured
   if (!wifiCredentialsSaved || savedSSID.length() == 0) {
     Serial.println(F("\n⚠ No WiFi credentials configured!"));
     Serial.println(F("Starting WiFi Manager for configuration..."));
+    setModuleStatus(&moduleReadiness.wifi, MODULE_FAILED, "WiFi");
     startWiFiManager();
     return;
   }
@@ -1221,6 +1552,7 @@ void connectWiFi() {
     Serial.println(F("\nWiFi FAILED"));
     consecutiveWifiFailures++;
     wifiConnectionAttempts++;
+    setModuleStatus(&moduleReadiness.wifi, MODULE_FAILED, "WiFi");
     
     // Start WiFi Manager if enabled and max attempts reached
     if (ENABLE_WIFI_MANAGER && wifiConnectionAttempts >= MAX_WIFI_CONNECTION_ATTEMPTS) {
@@ -1251,6 +1583,7 @@ void connectWiFi() {
   if (WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
     Serial.println(F("\nNo IP assigned - reconnecting"));
     consecutiveWifiFailures++;
+    setModuleStatus(&moduleReadiness.wifi, MODULE_FAILED, "WiFi");
     delay(2000);
     connectWiFi();
     return;
@@ -1263,6 +1596,7 @@ void connectWiFi() {
   
   consecutiveWifiFailures = 0;
   wifiConnectionAttempts = 0;  // Reset counter on success
+  setModuleStatus(&moduleReadiness.wifi, MODULE_READY, "WiFi");
 }
 
 
@@ -1294,23 +1628,29 @@ void connectMQTT() {
   // Skip MQTT in calibration mode (unless you want remote control)
   if (isCalibrationMode) {
     Serial.println(F("Calibration mode - skipping MQTT"));
+    setModuleStatus(&moduleReadiness.mqtt, MODULE_READY, "MQTT (bypassed)");
     return;
   }
   
+  setModuleStatus(&moduleReadiness.mqtt, MODULE_INITIALIZING, "MQTT");
+  
   if (getWiFiStatus() != WL_CONNECTED) {
     Serial.println(F("MQTT: No WiFi"));
+    setModuleStatus(&moduleReadiness.mqtt, MODULE_FAILED, "MQTT");
     return;
   }
 
 
   if (WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
     Serial.println(F("MQTT: No IP address"));
+    setModuleStatus(&moduleReadiness.mqtt, MODULE_FAILED, "MQTT");
     return;
   }
 
 
   if (mqttClient.connected()) {
     mqttConnected = true;
+    setModuleStatus(&moduleReadiness.mqtt, MODULE_READY, "MQTT");
     return;
   }
 
@@ -1359,6 +1699,7 @@ void connectMQTT() {
     // Announce we're online (will be validated by server polls)
     publishPresenceOnline();
     
+    setModuleStatus(&moduleReadiness.mqtt, MODULE_READY, "MQTT");
   } else {
     Serial.print(F("✗ MQTT SSL Failed: "));
     Serial.println(mqttClient.state());
@@ -1366,6 +1707,7 @@ void connectMQTT() {
     
     mqttConnected = false;
     consecutiveMqttFailures++;
+    setModuleStatus(&moduleReadiness.mqtt, MODULE_FAILED, "MQTT");
     
     if (consecutiveMqttFailures >= MAX_MQTT_FAILURES) {
       Serial.println(F("Max MQTT failures - resetting connection"));
@@ -1482,6 +1824,13 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 // Publish Sensor Data (pH, TDS, Turbidity)
 // ───────────────────────────────────────────────────────────────────────────
 void publishSensorData() {
+  // CRITICAL GUARD: System Readiness Check
+  if (!isSystemFullyReady()) {
+    Serial.println(F("⚠️ BLOCKED: System not fully ready - cannot transmit data"));
+    printSystemReadiness();
+    return;
+  }
+  
   // Block MQTT transmission in calibration mode
   if (isCalibrationMode) {
     Serial.println(F("⚠ Calibration mode active - MQTT transmission blocked"));
@@ -1491,13 +1840,37 @@ void publishSensorData() {
   if (!mqttClient.connected()) {
     Serial.println(F("MQTT not connected"));
     mqttConnected = false;
+    setModuleStatus(&moduleReadiness.mqtt, MODULE_FAILED, "MQTT");
     return;
   }
 
+  // CRITICAL: Block transmission if time is not initialized
+  // This prevents sending data with invalid timestamps (1970 dates)
+  if (!timeInitialized) {
+    Serial.println(F("⚠ Cannot publish: Time not initialized - waiting for NTP sync"));
+    setModuleStatus(&moduleReadiness.ntp, MODULE_FAILED, "NTP");
+    return;
+  }
 
-  StaticJsonDocument<220> doc;
+  // Double-check epoch time is valid (after Jan 1, 2020)
+  unsigned long epochTime = timeClient.getEpochTime();
+  if (epochTime < 1577836800) {  // Jan 1, 2020 00:00:00 UTC
+    Serial.print(F("⚠ Cannot publish: Invalid epoch time: "));
+    Serial.println(epochTime);
+    Serial.println(F("⚠ Time appears unsynced - blocking transmission"));
+    timeInitialized = false;  // Reset flag to force re-sync
+    return;
+  }
+
+  StaticJsonDocument<256> doc;
   doc["deviceId"] = DEVICE_ID;
-  doc["timestamp"] = timeInitialized ? timeClient.getEpochTime() : (millis() / 1000);
+  doc["timestamp"] = epochTime;  // Use validated epoch time
+  
+  // Add Philippine date (YYYY-MM-DD format)
+  char phDateStr[11];
+  getPhilippineDateString(phDateStr, sizeof(phDateStr));
+  doc["phDate"] = phDateStr;
+  
   // Sensor data assignment
   doc["tds"] = round(tds * 10) / 10.0;
   doc["pH"] = round(ph * 100) / 100.0;
@@ -1507,7 +1880,7 @@ void publishSensorData() {
   doc["transmissionNumber"] = transmissionCount;
 
 
-  char payload[220];
+  char payload[256];
   size_t payloadSize = serializeJson(doc, payload, sizeof(payload));
 
 
@@ -1968,6 +2341,11 @@ void readSensors() {
 // ───────────────────────────────────────────────────────────────────────────
 void printWatchdog() {
   Serial.println(F("\n=== WATCHDOG ==="));
+  
+  // System Readiness Status (Quick Overview)
+  Serial.print(F("System Ready: "));
+  Serial.println(isSystemFullyReady() ? F("✅ YES") : F("⚠️ NO"));
+  
   Serial.print(F("Uptime: "));
   Serial.print((millis() - bootTime) / 3600000);
   Serial.println(F("h"));
@@ -2068,7 +2446,7 @@ void setup() {
 
 
   Serial.println(F("\n=== Water Quality Monitor - Arduino R4 WiFi ==="));
-  Serial.println(F("Firmware: v7.0.0 - Server Polling Mode"));
+  Serial.println(F("Firmware: v8.0.0 - System Readiness Framework"));
   Serial.print(F("Boot: "));
   Serial.println(bootTime);
   Serial.println(F("MQTT: SSL/TLS (Port 8883) - No LWT"));
@@ -2082,21 +2460,41 @@ void setup() {
   Serial.println(isCalibrationMode ? F("ENABLED (255ms, no MQTT)") : F("DISABLED (normal)"));
   
   buildTopics();
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 1: Initialize EEPROM Storage
+  // ═══════════════════════════════════════════════════════════════════════
   initEEPROM();
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 2: Initialize Sensor Hardware
+  // ═══════════════════════════════════════════════════════════════════════
+  Serial.println(F("\n=== Sensor Hardware Initialization ==="));
+  setModuleStatus(&moduleReadiness.sensors, MODULE_INITIALIZING, "Sensors");
   
   pinMode(TDS_PIN, INPUT);
   pinMode(PH_PIN, INPUT);
   pinMode(TURBIDITY_PIN, INPUT);
 
-
   memset(smaBuffer, 0, sizeof(smaBuffer));
   memset(phBuffer, 0, sizeof(phBuffer));
   memset(turbBuffer, 0, sizeof(turbBuffer));
+  
+  Serial.println(F("✓ Sensor pins configured (A0, A1, A2)"));
+  Serial.println(F("✓ Smoothing buffers initialized"));
+  setModuleStatus(&moduleReadiness.sensors, MODULE_READY, "Sensors");
 
-
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 3: Initialize Calibration Engine
+  // ═══════════════════════════════════════════════════════════════════════
+  Serial.println(F("\n=== Calibration Engine Initialization ==="));
+  setModuleStatus(&moduleReadiness.calibration, MODULE_INITIALIZING, "Calibration");
+  
   computeCalibrationParams();
   computePHCalibrationParams();
   printCalibrationInfo();
+  
+  setModuleStatus(&moduleReadiness.calibration, MODULE_READY, "Calibration");
 
 
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
@@ -2106,34 +2504,62 @@ void setup() {
   mqttClient.setBufferSize(768);
 
 
-  Serial.println(F("\n=== Connecting... ==="));
+  Serial.println(F("\n=== Network Connectivity ==="));
   
+  // ═══════════════════════════════════════════════════════════════════════
+  // STEP 4: Connect to WiFi Network
+  // ═══════════════════════════════════════════════════════════════════════
   connectWiFi();
   
   // Skip MQTT and NTP in calibration mode
   if (!isCalibrationMode && getWiFiStatus() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
     
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 5: Synchronize NTP Time
+    // ═══════════════════════════════════════════════════════════════════════
+    Serial.println(F("\n=== NTP Time Synchronization ==="));
+    setModuleStatus(&moduleReadiness.ntp, MODULE_INITIALIZING, "NTP");
+    
     timeClient.begin();
     delay(1000);
     
-    Serial.print(F("NTP sync"));
-    for (int i = 0; i < 5; i++) {
+    Serial.println(F("IMPORTANT: Device will NOT send data until time is synced"));
+    Serial.print(F("Attempting NTP sync"));
+    
+    // Try up to 15 times (15 seconds) to get valid time
+    for (int i = 0; i < 15; i++) {
       Serial.print(F("."));
       if (timeClient.update()) {
-        timeInitialized = true;
-        Serial.println(F(" OK"));
-        printCurrentTime();
-        break;
+        unsigned long epochTime = timeClient.getEpochTime();
+        // Validate timestamp (should be after year 2020)
+        if (epochTime > 1577836800) {  // Jan 1, 2020 00:00:00 UTC
+          timeInitialized = true;
+          Serial.println(F(" ✓ SUCCESS"));
+          Serial.print(F("✓ Epoch Time: "));
+          Serial.println(epochTime);
+          printCurrentTime();
+          setModuleStatus(&moduleReadiness.ntp, MODULE_READY, "NTP");
+          break;
+        } else {
+          Serial.print(F("!"));  // Invalid time received
+        }
       }
       delay(1000);
     }
     
     if (!timeInitialized) {
-      Serial.println(F(" Failed (will retry)"));
+      Serial.println(F(" ✗ FAILED"));
+      Serial.println(F("⚠ WARNING: Time not initialized!"));
+      Serial.println(F("⚠ Device will NOT send sensor data until NTP sync succeeds"));
+      Serial.println(F("⚠ Will retry automatically in loop()"));
+      setModuleStatus(&moduleReadiness.ntp, MODULE_FAILED, "NTP");
     }
     
     delay(2000);
     
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 6: Connect to MQTT Broker
+    // ═══════════════════════════════════════════════════════════════════════
     connectMQTT();
     
     if (mqttConnected) {
@@ -2150,23 +2576,36 @@ void setup() {
   } else if (isCalibrationMode) {
     Serial.println(F("\n*** CALIBRATION MODE - Skipping MQTT/NTP ***"));
     Serial.println(F("*** Sensor readings will display every 255ms ***"));
+    // Mark NTP and MQTT as bypassed in calibration mode
+    setModuleStatus(&moduleReadiness.ntp, MODULE_READY, "NTP (bypassed)");
   }
 
-
-  Serial.println(F("\n=== System Ready ==="));
+  // ═══════════════════════════════════════════════════════════════════════
+  // SYSTEM READINESS CHECK - Final Verification
+  // ═══════════════════════════════════════════════════════════════════════
+  delay(1000);
+  printSystemReadiness();
   
-  if (isCalibrationMode) {
-    Serial.println(F("Mode: CALIBRATION (255ms local readings only)"));
-  } else {
-    Serial.print(F("Mode: "));
-    Serial.println(isApproved ? F("ACTIVE MONITORING") : F("WAITING FOR APPROVAL"));
+  if (isSystemFullyReady()) {
+    Serial.println(F("✅ ALL SYSTEMS OPERATIONAL - Device ready for production use"));
     
-    if (timeInitialized) {
-      char nextTxStr[15];
-      getNextTransmissionPHTime(nextTxStr, sizeof(nextTxStr));
-      Serial.print(F("Next TX: "));
-      Serial.println(nextTxStr);
+    if (isCalibrationMode) {
+      Serial.println(F("📊 Mode: CALIBRATION (255ms local readings only)"));
+    } else {
+      Serial.print(F("📡 Mode: "));
+      Serial.println(isApproved ? F("ACTIVE MONITORING") : F("WAITING FOR APPROVAL"));
+      
+      if (timeInitialized) {
+        char nextTxStr[15];
+        getNextTransmissionPHTime(nextTxStr, sizeof(nextTxStr));
+        Serial.print(F("📅 Next TX: "));
+        Serial.println(nextTxStr);
+      }
     }
+  } else {
+    Serial.println(F("⚠️ SYSTEM NOT READY - Some modules failed initialization"));
+    Serial.println(F("⚠️ Device will continue with limited functionality"));
+    Serial.println(F("⚠️ Failed modules will retry automatically"));
   }
   
   Serial.println();
@@ -2277,10 +2716,18 @@ void loop() {
   // ─────────────────────────────────────────────────────────────────────────
   uint8_t wifiStatus = getWiFiStatus();
   if (!isCalibrationMode && wifiStatus != WL_CONNECTED) {
+    // WiFi lost - update module status
+    if (moduleReadiness.wifi == MODULE_READY) {
+      setModuleStatus(&moduleReadiness.wifi, MODULE_FAILED, "WiFi");
+    }
     handleWiFiDisconnection();
     delay(5000);
     return;
   } else {
+    // WiFi connected - ensure module status is current
+    if (wifiStatus == WL_CONNECTED && moduleReadiness.wifi != MODULE_READY) {
+      setModuleStatus(&moduleReadiness.wifi, MODULE_READY, "WiFi");
+    }
     consecutiveWifiFailures = 0;
   }
 
@@ -2294,13 +2741,34 @@ void loop() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // NTP TIME INIT: First-Time Synchronization
+  // NTP TIME INIT: First-Time Synchronization (Retry every 30 seconds)
   // ─────────────────────────────────────────────────────────────────────────
   if (!isCalibrationMode && !timeInitialized && wifiStatus == WL_CONNECTED) {
-    if (timeClient.update()) {
-      timeInitialized = true;
-      Serial.println(F("NTP time synchronized"));
-      printCurrentTime();
+    static unsigned long lastNtpRetry = 0;
+    if (currentMillis - lastNtpRetry >= 30000) {  // Retry every 30 seconds
+      lastNtpRetry = currentMillis;
+      Serial.println(F("⏳ Retrying NTP sync..."));
+      setModuleStatus(&moduleReadiness.ntp, MODULE_INITIALIZING, "NTP");
+      
+      if (timeClient.update()) {
+        unsigned long epochTime = timeClient.getEpochTime();
+        // Validate timestamp (must be after year 2020)
+        if (epochTime > 1577836800) {  // Jan 1, 2020 00:00:00 UTC
+          timeInitialized = true;
+          Serial.println(F("✓ NTP time synchronized successfully!"));
+          Serial.print(F("✓ Epoch Time: "));
+          Serial.println(epochTime);
+          printCurrentTime();
+          setModuleStatus(&moduleReadiness.ntp, MODULE_READY, "NTP");
+        } else {
+          Serial.print(F("✗ Invalid timestamp received: "));
+          Serial.println(epochTime);
+          setModuleStatus(&moduleReadiness.ntp, MODULE_FAILED, "NTP");
+        }
+      } else {
+        Serial.println(F("✗ NTP sync failed - will retry in 30 seconds"));
+        setModuleStatus(&moduleReadiness.ntp, MODULE_FAILED, "NTP");
+      }
     }
   }
 
@@ -2310,6 +2778,10 @@ void loop() {
   if (!isCalibrationMode) {
     if (!mqttClient.connected()) {
       mqttConnected = false;
+      // Update module status if it was previously ready
+      if (moduleReadiness.mqtt == MODULE_READY) {
+        setModuleStatus(&moduleReadiness.mqtt, MODULE_FAILED, "MQTT");
+      }
       
       bool needMqtt = !isApproved;
       
@@ -2325,6 +2797,10 @@ void loop() {
         connectMQTT();
       }
     } else {
+      // MQTT connected - ensure module status reflects this
+      if (moduleReadiness.mqtt != MODULE_READY) {
+        setModuleStatus(&moduleReadiness.mqtt, MODULE_READY, "MQTT");
+      }
       mqttClient.loop();
       consecutiveMqttFailures = 0;
     }
@@ -2384,6 +2860,13 @@ void loop() {
   // ACTIVE MONITORING: Clock-Synchronized Data Transmission
   // ═════════════════════════════════════════════════════════════════════════
   else if (!isCalibrationMode) {
+    // CRITICAL GUARD: Verify system readiness before transmission
+    if (!isSystemFullyReady()) {
+      // System not ready - skip transmission window silently
+      // Status is already being printed in watchdog
+      return;
+    }
+    
     // Check if it's time for scheduled transmission (:00 or :30)
     if (isTransmissionTime()) {
       Serial.println(F("\n=== SCHEDULED 30-MIN TX ==="));

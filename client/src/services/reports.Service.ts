@@ -148,6 +148,15 @@ export class ReportsService {
     request: WaterQualityReportRequest
   ): Promise<ReportResponse> {
     try {
+      // DEBUG: Log request being sent to backend
+      console.log('[ReportsService] DEBUG - Sending request to backend:', {
+        endpoint: REPORT_ENDPOINTS.WATER_QUALITY,
+        startDate: request.startDate,
+        endDate: request.endDate,
+        deviceIds: request.deviceIds,
+        deviceCount: request.deviceIds?.length || 0,
+      });
+
       const response = await apiClient.post<ReportResponse>(
         REPORT_ENDPOINTS.WATER_QUALITY,
         request,
@@ -155,6 +164,17 @@ export class ReportsService {
           timeout: 30000, // 30 seconds for report generation
         }
       );
+
+      // DEBUG: Log response from backend
+      console.log('[ReportsService] DEBUG - Response from backend:', {
+        success: response.data.success,
+        message: response.data.message,
+        hasPdfBlob: !!response.data.pdfBlob,
+        pdfBlobSize: response.data.pdfBlob?.length,
+        hasData: !!response.data.data,
+        summary: response.data.data?.summary,
+      });
+
       return response.data;
     } catch (error) {
       const message = getErrorMessage(error);

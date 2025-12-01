@@ -265,6 +265,80 @@ function generateRecommendations(reportData) {
  * @returns {Buffer} PDF buffer
  */
 function generateWaterQualityReportPDF(reportConfig, reportData) {
+  // ============================================================================
+  // VALIDATION: Check for empty or missing data
+  // ============================================================================
+  const logger = require('./logger');
+  
+  logger.info('[PDF Generator] Starting PDF generation with data validation');
+  
+  // Validate reportData exists
+  if (!reportData) {
+    const error = new Error('PDF Generation Error: reportData is null or undefined');
+    logger.error('[PDF Generator] CRITICAL ERROR - No report data:', { error: error.message });
+    throw error;
+  }
+
+  // Validate devices array exists and has data
+  if (!reportData.devices || !Array.isArray(reportData.devices) || reportData.devices.length === 0) {
+    const error = new Error('PDF Generation Error: No devices data available');
+    logger.error('[PDF Generator] CRITICAL ERROR - No devices:', {
+      error: error.message,
+      hasDevices: !!reportData.devices,
+      isArray: Array.isArray(reportData.devices),
+      deviceCount: reportData.devices?.length || 0,
+    });
+    throw error;
+  }
+
+  // Validate at least one device has sensor readings
+  const devicesWithReadings = reportData.devices.filter(d => 
+    d.metrics && 
+    d.metrics.totalReadings > 0 &&
+    (d.metrics.avgTurbidity !== undefined || d.metrics.avgTDS !== undefined || d.metrics.avgPH !== undefined)
+  );
+
+  if (devicesWithReadings.length === 0) {
+    const error = new Error('PDF Generation Error: No devices have valid sensor readings');
+    logger.error('[PDF Generator] CRITICAL ERROR - No sensor readings:', {
+      error: error.message,
+      totalDevices: reportData.devices.length,
+      devicesWithReadings: devicesWithReadings.length,
+      deviceData: reportData.devices.map(d => ({
+        deviceId: d.deviceId,
+        hasMetrics: !!d.metrics,
+        totalReadings: d.metrics?.totalReadings || 0,
+      })),
+    });
+    throw error;
+  }
+
+  // Validate summary data exists
+  if (!reportData.summary) {
+    const error = new Error('PDF Generation Error: Summary data is missing');
+    logger.error('[PDF Generator] CRITICAL ERROR - No summary:', { error: error.message });
+    throw error;
+  }
+
+  // Validate summary has required readings count
+  const totalReadings = reportData.summary.totalReadings || 0;
+  if (totalReadings === 0) {
+    const error = new Error('PDF Generation Error: Summary shows zero total readings');
+    logger.error('[PDF Generator] CRITICAL ERROR - Zero readings in summary:', {
+      error: error.message,
+      summary: reportData.summary,
+    });
+    throw error;
+  }
+
+  // Log successful validation
+  logger.info('[PDF Generator] Data validation passed:', {
+    totalDevices: reportData.devices.length,
+    devicesWithReadings: devicesWithReadings.length,
+    totalReadings: totalReadings,
+    hasValidData: true,
+  });
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -442,8 +516,12 @@ function generateWaterQualityReportPDF(reportConfig, reportData) {
     const overallStatus = getOverallStatus(summary);
     const complianceMetrics = calculateComplianceMetrics(summary);
 
-    // Check if we have actual data
-    const hasData = summary.averageTurbidity !== undefined && (summary.totalReadings || 0) > 0;
+    // Check if we have actual data - more robust check
+    const hasData = summary && 
+                    (summary.totalReadings || 0) > 0 && 
+                    (summary.averageTurbidity !== undefined || 
+                     summary.averageTDS !== undefined || 
+                     summary.averagePH !== undefined);
 
     // Status badge with rounded corners
     const badgeHeight = 45;
@@ -461,10 +539,10 @@ function generateWaterQualityReportPDF(reportConfig, reportData) {
     doc.setFontSize(9);
     
     if (hasData) {
-      // Row 1: Water Quality Parameters
-      const turbidity = (summary.averageTurbidity || 0).toFixed(2);
-      const tds = (summary.averageTDS || 0).toFixed(0);
-      const ph = (summary.averagePH || 0).toFixed(2);
+      // Row 1: Water Quality Parameters - handle undefined values
+      const turbidity = summary.averageTurbidity !== undefined ? summary.averageTurbidity.toFixed(2) : 'N/A';
+      const tds = summary.averageTDS !== undefined ? summary.averageTDS.toFixed(0) : 'N/A';
+      const ph = summary.averagePH !== undefined ? summary.averagePH.toFixed(2) : 'N/A';
       
       doc.text(
         `Water Quality: Turbidity ${turbidity} NTU  •  TDS ${tds} ppm  •  pH ${ph}`,
@@ -548,8 +626,31 @@ function generateWaterQualityReportPDF(reportConfig, reportData) {
   // ============================================================================
   addProfessionalFooter(doc, reportId);
 
+  // Generate PDF buffer
+  const pdfArrayBuffer = doc.output('arraybuffer');
+  const pdfBuffer = Buffer.from(pdfArrayBuffer);
+
+  // DEBUG: Validate PDF output before returning
+  logger.info('[PDF Generator] PDF generation completed:', {
+    reportId,
+    bufferSize: pdfBuffer.length,
+    pageCount: doc.internal.getNumberOfPages(),
+    hasContent: pdfBuffer.length > 0,
+    minSizeCheck: pdfBuffer.length > 1024, // Should be at least 1KB
+  });
+
+  // VALIDATION: Final check on PDF buffer
+  if (!pdfBuffer || pdfBuffer.length === 0) {
+    const error = new Error('PDF Generation Error: Output buffer is empty');
+    logger.error('[PDF Generator] CRITICAL ERROR - Empty output buffer:', {
+      error: error.message,
+      reportId,
+    });
+    throw error;
+  }
+
   // Return PDF as buffer
-  return Buffer.from(doc.output('arraybuffer'));
+  return pdfBuffer;
 }
 
 /**
@@ -574,12 +675,13 @@ function addMetricCards(doc, summary, yPos) {
   doc.setTextColor(COLORS.primary.r, COLORS.primary.g, COLORS.primary.b);
   doc.text('TURBIDITY', card1X + 3, yPos + 6);
   
-  const turbStatus = (summary.averageTurbidity || 0) <= 5 ? '✓ Compliant' : '✗ Non-Compliant';
-  const turbColor = (summary.averageTurbidity || 0) <= 5 ? COLORS.success : COLORS.danger;
+  const turbValue = summary.averageTurbidity !== undefined ? summary.averageTurbidity : 0;
+  const turbStatus = turbValue <= 5 ? '✓ Compliant' : '✗ Non-Compliant';
+  const turbColor = turbValue <= 5 ? COLORS.success : COLORS.danger;
   doc.setTextColor(turbColor.r, turbColor.g, turbColor.b);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
-  doc.text(`${(summary.averageTurbidity || 0).toFixed(2)}`, card1X + 3, yPos + 16);
+  doc.text(`${turbValue.toFixed(2)}`, card1X + 3, yPos + 16);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONTS.small.size);
   doc.text('NTU', card1X + 25, yPos + 16);
@@ -603,12 +705,13 @@ function addMetricCards(doc, summary, yPos) {
   doc.setTextColor(COLORS.primary.r, COLORS.primary.g, COLORS.primary.b);
   doc.text('TDS', card2X + 3, yPos + 6);
   
-  const tdsStatus = (summary.averageTDS || 0) <= 500 ? '✓ Compliant' : '✗ Non-Compliant';
-  const tdsColor = (summary.averageTDS || 0) <= 500 ? COLORS.success : COLORS.danger;
+  const tdsValue = summary.averageTDS !== undefined ? summary.averageTDS : 0;
+  const tdsStatus = tdsValue <= 500 ? '✓ Compliant' : '✗ Non-Compliant';
+  const tdsColor = tdsValue <= 500 ? COLORS.success : COLORS.danger;
   doc.setTextColor(tdsColor.r, tdsColor.g, tdsColor.b);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
-  doc.text(`${(summary.averageTDS || 0).toFixed(0)}`, card2X + 3, yPos + 16);
+  doc.text(`${tdsValue.toFixed(0)}`, card2X + 3, yPos + 16);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONTS.small.size);
   doc.text('ppm', card2X + 25, yPos + 16);
@@ -632,7 +735,7 @@ function addMetricCards(doc, summary, yPos) {
   doc.setTextColor(COLORS.primary.r, COLORS.primary.g, COLORS.primary.b);
   doc.text('pH LEVEL', card3X + 3, yPos + 6);
   
-  const phValue = summary.averagePH || 0;
+  const phValue = summary.averagePH !== undefined ? summary.averagePH : 0;
   const phStatus = (phValue >= 6.5 && phValue <= 8.5) ? '✓ Compliant' : '✗ Non-Compliant';
   const phColor = (phValue >= 6.5 && phValue <= 8.5) ? COLORS.success : COLORS.danger;
   doc.setTextColor(phColor.r, phColor.g, phColor.b);
@@ -699,8 +802,12 @@ function addDeviceAnalysis(doc, reportData, yPos) {
     
     yPos += deviceHeaderHeight + 5;
 
-    // Check if device has readings
-    if (!deviceReport.metrics || deviceReport.metrics.totalReadings === 0) {
+    // Check if device has readings - check both readingCount and metrics
+    const hasNoData = !deviceReport.metrics || 
+                      deviceReport.readingCount === 0 || 
+                      (deviceReport.metrics && deviceReport.metrics.totalReadings === 0);
+    
+    if (hasNoData) {
       doc.setFillColor(255, 250, 230);
       doc.roundedRect(SPACING.page.left, yPos, 180, 15, 2, 2, 'F');
       doc.setDrawColor(COLORS.warning.r, COLORS.warning.g, COLORS.warning.b);

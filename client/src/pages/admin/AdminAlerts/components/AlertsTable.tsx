@@ -47,6 +47,20 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
   const token = useThemeToken();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [acknowledgingAlertId, setAcknowledgingAlertId] = useState<string | null>(null);
+
+  const handleAcknowledgeClick = async (alertId: string) => {
+    setAcknowledgingAlertId(alertId);
+    try {
+      await onAcknowledge(alertId);
+      // Success message is handled in parent component
+    } catch (error) {
+      // Error is handled in parent component
+      console.error('Error acknowledging alert:', error);
+    } finally {
+      setAcknowledgingAlertId(null);
+    }
+  };
 
   const handleBatchAcknowledge = async () => {
     if (!onBatchAcknowledge || selectedRowKeys.length === 0) return;
@@ -220,7 +234,6 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
       title: 'Actions',
       key: 'actions',
       width: 200,
-      fixed: 'right',
       render: (_, record) => (
         <Space size="small" wrap>
           <Tooltip title="View Details" getPopupContainer={(trigger) => trigger.parentElement || document.body}>
@@ -239,11 +252,11 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
                 type="link"
                 size="small"
                 icon={<CheckCircleOutlined />}
-                onClick={() => onAcknowledge(record.id!)}
-                loading={isAcknowledging}
-                disabled={isAcknowledging}
+                onClick={() => handleAcknowledgeClick(record.id!)}
+                loading={acknowledgingAlertId === record.id}
+                disabled={acknowledgingAlertId === record.id}
               >
-                {isAcknowledging ? 'Acknowledging...' : 'Acknowledge'}
+                {acknowledgingAlertId === record.id ? 'Acknowledging...' : 'Acknowledge'}
               </Button>
             </Tooltip>
           )}
@@ -288,7 +301,7 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
         rowKey="id"
         loading={loading}
         rowSelection={onBatchAcknowledge ? rowSelection : undefined}
-        scroll={{ x: 1200, y: 600 }}
+        scroll={{ x: 1200 }}
         pagination={{
           pageSize: 20,
           showSizeChanger: true,
@@ -304,7 +317,6 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
             </Empty>
           ),
         }}
-        sticky
       />
     </Card>
   );

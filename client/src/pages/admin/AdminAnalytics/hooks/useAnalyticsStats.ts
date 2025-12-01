@@ -130,9 +130,13 @@ const calculateWaterQualityMetrics = (devices: DeviceWithReadings[]): WaterQuali
   const phReadings: number[] = [];
   const tdsReadings: number[] = [];
   const turbidityReadings: number[] = [];
+  let totalReadingDocuments = 0;
 
   devices.forEach(device => {
     if (device.latestReading) {
+      // Count each device with a reading as one reading document
+      totalReadingDocuments++;
+      
       if (device.latestReading.ph !== undefined && device.latestReading.ph > 0) {
         phReadings.push(device.latestReading.ph);
       }
@@ -156,7 +160,7 @@ const calculateWaterQualityMetrics = (devices: DeviceWithReadings[]): WaterQuali
     : 0;
 
   return {
-    totalReadings: phReadings.length + tdsReadings.length + turbidityReadings.length,
+    totalReadings: totalReadingDocuments, // Count of actual sensor reading documents, not individual parameters
     averagePh: parseFloat(averagePh.toFixed(2)),
     averageTds: parseFloat(averageTds.toFixed(2)),
     averageTurbidity: parseFloat(averageTurbidity.toFixed(2)),
@@ -219,7 +223,7 @@ const calculateSystemHealthSummary = (
  * Calculate WHO compliance status for water quality parameters
  */
 const calculateComplianceStatus = (metrics: WaterQualityMetrics) => {
-  const { phReadings, tdsReadings, turbidityReadings } = metrics;
+  const { phReadings, tdsReadings, turbidityReadings, minPh, maxPh, minTds, maxTds, minTurbidity, maxTurbidity, averagePh, averageTds, averageTurbidity } = metrics;
 
   const complianceStatus = [];
 
@@ -227,12 +231,24 @@ const calculateComplianceStatus = (metrics: WaterQualityMetrics) => {
   if (phReadings.length > 0) {
     const phCompliant = phReadings.filter(ph => ph >= 6.5 && ph <= 8.5).length;
     const phViolations = phReadings.length - phCompliant;
+    const belowMin = phReadings.filter(ph => ph < 6.5).length;
+    const aboveMax = phReadings.filter(ph => ph > 8.5).length;
+    
+    let violationType: 'below_min' | 'above_max' | 'both' | 'none' = 'none';
+    if (belowMin > 0 && aboveMax > 0) violationType = 'both';
+    else if (belowMin > 0) violationType = 'below_min';
+    else if (aboveMax > 0) violationType = 'above_max';
+    
     complianceStatus.push({
       parameter: 'ph' as const,
       compliant: phViolations === 0,
       compliancePercentage: (phCompliant / phReadings.length) * 100,
       violationCount: phViolations,
       threshold: { min: 6.5, max: 8.5 },
+      currentValue: averagePh,
+      minValue: minPh,
+      maxValue: maxPh,
+      violationType,
     });
   }
 
@@ -240,12 +256,18 @@ const calculateComplianceStatus = (metrics: WaterQualityMetrics) => {
   if (tdsReadings.length > 0) {
     const tdsCompliant = tdsReadings.filter(tds => tds <= 500).length;
     const tdsViolations = tdsReadings.length - tdsCompliant;
+    const aboveMax = tdsReadings.filter(tds => tds > 500).length;
+    
     complianceStatus.push({
       parameter: 'tds' as const,
       compliant: tdsViolations === 0,
       compliancePercentage: (tdsCompliant / tdsReadings.length) * 100,
       violationCount: tdsViolations,
       threshold: { max: 500 },
+      currentValue: averageTds,
+      minValue: minTds,
+      maxValue: maxTds,
+      violationType: aboveMax > 0 ? 'above_max' as const : 'none' as const,
     });
   }
 
@@ -253,12 +275,18 @@ const calculateComplianceStatus = (metrics: WaterQualityMetrics) => {
   if (turbidityReadings.length > 0) {
     const turbidityCompliant = turbidityReadings.filter(t => t <= 5).length;
     const turbidityViolations = turbidityReadings.length - turbidityCompliant;
+    const aboveMax = turbidityReadings.filter(t => t > 5).length;
+    
     complianceStatus.push({
       parameter: 'turbidity' as const,
       compliant: turbidityViolations === 0,
       compliancePercentage: (turbidityCompliant / turbidityReadings.length) * 100,
       violationCount: turbidityViolations,
       threshold: { max: 5 },
+      currentValue: averageTurbidity,
+      minValue: minTurbidity,
+      maxValue: maxTurbidity,
+      violationType: aboveMax > 0 ? 'above_max' as const : 'none' as const,
     });
   }
 

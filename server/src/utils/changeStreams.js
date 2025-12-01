@@ -27,6 +27,14 @@ let deviceChangeStream;
 let readingChangeStream;
 let userChangeStream;
 
+// Initialization guard to prevent duplicate initialization
+let changeStreamsInitialized = false;
+
+// Deduplication tracking for change events (Solution 1)
+const processedDeviceChanges = new Map();
+const processedAlertChanges = new Map();
+const DEDUPE_WINDOW_MS = 1000; // 1 second window for deduplication
+
 /**
  * Initialize all MongoDB Change Streams
  * 
@@ -37,9 +45,16 @@ let userChangeStream;
  * @returns {Promise<void>}
  */
 async function initializeChangeStreams() {
+  // Solution 2: Initialization guard to prevent duplicate initialization
+  if (changeStreamsInitialized) {
+    logger.warn('[Change Streams] Already initialized - skipping duplicate initialization');
+    return;
+  }
+
   const isProduction = process.env.NODE_ENV === 'production';
 
   try {
+    changeStreamsInitialized = true;
     // ========================================
     // ALERT CHANGE STREAM
     // ========================================
@@ -55,6 +70,33 @@ async function initializeChangeStreams() {
 
     alertChangeStream.on('change', async (change) => {
       try {
+        // Solution 1: Deduplication check for alert changes
+        const alertObjectId = change.documentKey?._id.toString();
+        const changeKey = `${alertObjectId}-${change.operationType}`;
+        const lastProcessed = processedAlertChanges.get(changeKey);
+        const now = Date.now();
+        
+        if (lastProcessed && (now - lastProcessed) < DEDUPE_WINDOW_MS) {
+          logger.debug('[Change Streams] Ignoring duplicate alert change', {
+            alertId: alertObjectId,
+            timeSinceLastProcess: `${now - lastProcessed}ms`,
+            operation: change.operationType
+          });
+          return; // Skip duplicate
+        }
+        
+        // Mark as processed
+        processedAlertChanges.set(changeKey, now);
+        
+        // Clean up old entries (keep last 100)
+        if (processedAlertChanges.size > 100) {
+          const entries = Array.from(processedAlertChanges.entries());
+          entries.sort((a, b) => a[1] - b[1]);
+          entries.slice(0, entries.length - 100).forEach(([key]) => {
+            processedAlertChanges.delete(key);
+          });
+        }
+
         const verboseMode = process.env.VERBOSE_LOGGING === 'true';
         
         if (verboseMode) {
@@ -207,10 +249,20 @@ async function initializeChangeStreams() {
     // ========================================
     // DEVICE CHANGE STREAM
     // ========================================
+    // Solution 3: Optimized change stream filtering at database level
     deviceChangeStream = Device.watch([
       {
         $match: {
-          operationType: { $in: ['insert', 'update'] }
+          operationType: { $in: ['insert', 'update'] },
+          // Only trigger for significant field changes or inserts
+          $or: [
+            { operationType: 'insert' },
+            { 'updateDescription.updatedFields.status': { $exists: true } },
+            { 'updateDescription.updatedFields.deviceName': { $exists: true } },
+            { 'updateDescription.updatedFields.location': { $exists: true } },
+            { 'updateDescription.updatedFields.isApproved': { $exists: true } },
+            { 'updateDescription.updatedFields.isRegistered': { $exists: true } },
+          ]
         }
       }
     ], {
@@ -219,6 +271,33 @@ async function initializeChangeStreams() {
 
     deviceChangeStream.on('change', async (change) => {
       try {
+        // Solution 1: Deduplication check for device changes
+        const deviceObjectId = change.documentKey?._id.toString();
+        const changeKey = `${deviceObjectId}-${change.operationType}`;
+        const lastProcessed = processedDeviceChanges.get(changeKey);
+        const now = Date.now();
+        
+        if (lastProcessed && (now - lastProcessed) < DEDUPE_WINDOW_MS) {
+          logger.debug('[Change Streams] Ignoring duplicate device change', {
+            deviceId: deviceObjectId,
+            timeSinceLastProcess: `${now - lastProcessed}ms`,
+            operation: change.operationType
+          });
+          return; // Skip duplicate
+        }
+        
+        // Mark as processed
+        processedDeviceChanges.set(changeKey, now);
+        
+        // Clean up old entries (keep last 100)
+        if (processedDeviceChanges.size > 100) {
+          const entries = Array.from(processedDeviceChanges.entries());
+          entries.sort((a, b) => a[1] - b[1]);
+          entries.slice(0, entries.length - 100).forEach(([key]) => {
+            processedDeviceChanges.delete(key);
+          });
+        }
+
         const verboseMode = process.env.VERBOSE_LOGGING === 'true';
         
         if (verboseMode) {
@@ -246,25 +325,41 @@ async function initializeChangeStreams() {
         } else if (change.operationType === 'update') {
           // Device updated (status, location, etc.)
           const updatedFields = change.updateDescription?.updatedFields || {};
+          const fieldKeys = Object.keys(updatedFields);
 
-          // Publish to devices topic
-          // mqttService.publish(MQTT_CONFIG.TOPICS.DEVICES_UPDATED, {
-          //   deviceId: device.deviceId,
-          //   updates: updatedFields,
-          //   fullDocument: device,
-          // });
+          // Filter out routine updates (lastSeen, updatedAt) to reduce noise
+          const significantFields = fieldKeys.filter(key => 
+            !['lastSeen', 'updatedAt', '__v'].includes(key)
+          );
 
-          // Publish to device-specific topic
-          // mqttService.publish(`devices/${device.deviceId}/updated`, {
-          //   updates: updatedFields,
-          //   fullDocument: device,
-          // });
+          // Only log/publish if there are significant changes
+          if (significantFields.length > 0) {
+            // Publish to devices topic (only for significant changes)
+            // mqttService.publish(MQTT_CONFIG.TOPICS.DEVICES_UPDATED, {
+            //   deviceId: device.deviceId,
+            //   updates: updatedFields,
+            //   fullDocument: device,
+            // });
 
-          if (verboseMode) {
-            logger.info('[Change Streams] Published device update:', {
-              deviceId: device.deviceId,
-              updates: Object.keys(updatedFields),
-            });
+            // Publish to device-specific topic
+            // mqttService.publish(`devices/${device.deviceId}/updated`, {
+            //   updates: updatedFields,
+            //   fullDocument: device,
+            // });
+
+            if (verboseMode) {
+              logger.info('[Change Streams] Published device update:', {
+                deviceId: device.deviceId,
+                updates: significantFields,
+              });
+            }
+          } else {
+            // Routine update (lastSeen/updatedAt only) - suppress logging unless in verbose mode
+            if (verboseMode) {
+              logger.debug('[Change Streams] Device routine update (lastSeen/updatedAt):', {
+                deviceId: device.deviceId,
+              });
+            }
           }
         }
       } catch (error) {
@@ -387,12 +482,13 @@ async function initializeChangeStreams() {
 
     const isProduction = process.env.NODE_ENV === 'production';
     if (isProduction) {
-      logger.info('[Change Streams] Real-time monitoring active ✓');
+      logger.info('[Change Streams] Real-time monitoring active ✓ (with deduplication)');
     } else {
-      logger.info('[Change Streams] All change streams initialized successfully');
+      logger.info('[Change Streams] All change streams initialized successfully (with deduplication and optimized filtering)');
     }
 
   } catch (error) {
+    changeStreamsInitialized = false; // Reset flag on failure to allow retry
     logger.error('[Change Streams] Failed to initialize change streams:', {
       error: error.message,
       stack: error.stack,
@@ -498,6 +594,11 @@ async function closeChangeStreams() {
     }
 
     await Promise.all(closePromises);
+    
+    // Reset initialization flag and clear deduplication maps
+    changeStreamsInitialized = false;
+    processedDeviceChanges.clear();
+    processedAlertChanges.clear();
     
     logger.info('[Change Streams] All change streams closed successfully');
   } catch (error) {

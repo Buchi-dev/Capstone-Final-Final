@@ -139,7 +139,8 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
       refreshInterval: realtime ? 0 : adjustedPollInterval, // Disable HTTP polling when SSE is active
       revalidateOnFocus: false, // Don't refetch on tab focus - rely on SSE
       revalidateOnReconnect: true, // Only refetch when network reconnects
-      dedupingInterval: 30000, // Prevent duplicate requests for 30 seconds
+      dedupingInterval: 60000, // Prevent duplicate requests for 60 seconds (increased from 30s)
+      keepPreviousData: true, // Keep showing old data while fetching
     }
   );
 
@@ -227,6 +228,7 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
       refreshInterval: 600000, // Poll stats every 10 minutes (less critical data)
       revalidateOnFocus: false,
       dedupingInterval: 60000, // Prevent duplicate requests for 1 minute
+      keepPreviousData: true, // Keep showing old data while fetching
     }
   );
 

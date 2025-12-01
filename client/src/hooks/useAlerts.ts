@@ -85,7 +85,8 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
     {
       revalidateOnFocus: false, // Rely on manual refresh or polling
       revalidateOnReconnect: true,
-      dedupingInterval: 10000, // Prevent duplicate requests for 10 seconds
+      dedupingInterval: 60000, // Prevent duplicate requests for 60 seconds (increased from 10s)
+      keepPreviousData: true, // Keep showing old data while fetching
     }
   );
 
@@ -102,7 +103,8 @@ export function useAlerts(options: UseAlertsOptions = {}): UseAlertsReturn {
     },
     {
       revalidateOnFocus: false, // Stats don't change frequently
-      dedupingInterval: 15000, // Increased deduping interval
+      dedupingInterval: 60000, // Prevent duplicate requests for 60 seconds (increased from 15s)
+      keepPreviousData: true, // Keep showing old data while fetching
     }
   );
 
@@ -146,26 +148,26 @@ export function useAlertMutations(): UseAlertMutationsReturn {
       const response = await alertsService.acknowledgeAlert(alertId);
       console.log('[useAlertMutations] Acknowledge response:', response);
       
-      // Optimistically update all alert caches
-      // Update all alert list caches
+      // Update all alert list caches with server response and revalidate
       await mutate(
         (key: any) => Array.isArray(key) && key[0] === 'alerts' && key[1] === 'list',
         async (currentData: WaterQualityAlert[] | undefined) => {
           console.log('[useAlertMutations] Current cache data:', currentData);
           if (!currentData) return currentData;
           
-          // Update the specific alert in the list
+          // Update the specific alert in the list with server response
           const updated = currentData.map(alert => {
             if (alert.id === alertId) {
               console.log('[useAlertMutations] Updating alert:', alert.id, 'from', alert.status, 'to Acknowledged');
-              return { ...alert, ...response.data, status: 'Acknowledged' as const };
+              // Use the full server response to ensure consistency
+              return { ...alert, ...response.data };
             }
             return alert;
           });
           console.log('[useAlertMutations] Updated cache:', updated);
           return updated;
         },
-        { revalidate: false } // Don't refetch, trust the optimistic update
+        { revalidate: true } // Revalidate to ensure UI is in sync with server
       );
 
       // Update stats cache - trigger refetch
@@ -194,26 +196,26 @@ export function useAlertMutations(): UseAlertMutationsReturn {
       const response = await alertsService.resolveAlert(alertId, notes);
       console.log('[useAlertMutations] Resolve response:', response);
       
-      // Optimistically update all alert caches
-      // Update all alert list caches
+      // Update all alert list caches with server response and revalidate
       await mutate(
         (key: any) => Array.isArray(key) && key[0] === 'alerts' && key[1] === 'list',
         async (currentData: WaterQualityAlert[] | undefined) => {
           console.log('[useAlertMutations] Current cache data:', currentData);
           if (!currentData) return currentData;
           
-          // Update the specific alert in the list
+          // Update the specific alert in the list with server response
           const updated = currentData.map(alert => {
             if (alert.id === alertId) {
               console.log('[useAlertMutations] Updating alert:', alert.id, 'from', alert.status, 'to Resolved');
-              return { ...alert, ...response.data, status: 'Resolved' as const, resolutionNotes: notes };
+              // Use the full server response to ensure consistency
+              return { ...alert, ...response.data };
             }
             return alert;
           });
           console.log('[useAlertMutations] Updated cache:', updated);
           return updated;
         },
-        { revalidate: false } // Don't refetch, trust the optimistic update
+        { revalidate: true } // Revalidate to ensure UI is in sync with server
       );
 
       // Update stats cache - trigger refetch

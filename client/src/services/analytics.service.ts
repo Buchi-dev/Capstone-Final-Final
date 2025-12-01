@@ -43,6 +43,7 @@ export interface AnalyticsSummary {
   };
   readings: {
     lastHour: number;
+    total: number;
   };
   waterQuality: {
     pH: number;

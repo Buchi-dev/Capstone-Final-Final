@@ -129,7 +129,25 @@ export const ComplianceTracker = memo<ComplianceTrackerProps>(({
                     {!status.compliant && (
                       <Alert
                         message="Action Required"
-                        description={`${status.violationCount} reading${status.violationCount > 1 ? 's' : ''} outside acceptable range.`}
+                        description={(() => {
+                          const unit = 
+                            status.parameter === 'ph' ? '' :
+                            status.parameter === 'tds' ? ' ppm' :
+                            ' NTU';
+                          
+                          let reason = '';
+                          if (status.violationType === 'below_min') {
+                            reason = `Readings below minimum threshold of ${status.threshold.min}${unit}. Current: ${status.currentValue?.toFixed(2)}${unit}`;
+                          } else if (status.violationType === 'above_max') {
+                            reason = `Readings exceed maximum threshold of ${status.threshold.max}${unit}. Current: ${status.currentValue?.toFixed(2)}${unit}`;
+                          } else if (status.violationType === 'both') {
+                            reason = `Readings detected both below ${status.threshold.min}${unit} and above ${status.threshold.max}${unit}. Range: ${status.minValue?.toFixed(2)}-${status.maxValue?.toFixed(2)}${unit}`;
+                          } else {
+                            reason = `${status.violationCount} reading${status.violationCount > 1 ? 's' : ''} outside acceptable range.`;
+                          }
+                          
+                          return reason;
+                        })()}
                         type="error"
                         showIcon
                         style={{ marginTop: 8 }}

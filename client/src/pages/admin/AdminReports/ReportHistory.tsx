@@ -185,14 +185,20 @@ const ReportHistory: React.FC = () => {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  // Table columns
+  // Table columns - Compact version with merged columns
   const columns = [
     {
       title: 'Report',
       key: 'report',
+      width: '35%',
       render: (record: ReportHistoryItem) => (
-        <Space direction="vertical" size={0}>
-          <Text strong>{record.title}</Text>
+        <Space direction="vertical" size={2}>
+          <Space size={8}>
+            <Text strong>{record.title}</Text>
+            <Tag color={record.type === 'water-quality' ? 'blue' : 'green'} style={{ margin: 0 }}>
+              {record.type.replace('-', ' ').toUpperCase()}
+            </Tag>
+          </Space>
           <Text type="secondary" style={{ fontSize: '12px' }}>
             ID: {record.reportId}
           </Text>
@@ -200,23 +206,16 @@ const ReportHistory: React.FC = () => {
       ),
     },
     {
-      title: 'Type',
-      dataIndex: 'type',
-      key: 'type',
-      render: (type: string) => (
-        <Tag color={type === 'water-quality' ? 'blue' : 'green'}>
-          {type.replace('-', ' ').toUpperCase()}
-        </Tag>
-      ),
-    },
-    {
       title: 'Date Range',
       key: 'dateRange',
+      width: '25%',
       render: (record: ReportHistoryItem) => (
-        <Space direction="vertical" size={0}>
-          <Text>{dayjs(record.startDate).format('MMM DD, YYYY')}</Text>
+        <Space direction="vertical" size={2}>
+          <Text style={{ fontSize: '13px' }}>
+            {dayjs(record.startDate).format('MMM DD, YYYY')}
+          </Text>
           <Text type="secondary" style={{ fontSize: '12px' }}>
-            to {dayjs(record.endDate).format('MMM DD, YYYY')}
+            to {dayjs(record.endDate).format('Dec 01, 2025')}
           </Text>
         </Space>
       ),
@@ -225,43 +224,61 @@ const ReportHistory: React.FC = () => {
       title: 'Devices',
       dataIndex: 'deviceCount',
       key: 'deviceCount',
-      render: (count: number) => <Statistic value={count} suffix="devices" valueStyle={{ fontSize: '14px' }} />,
+      width: '10%',
+      align: 'center' as const,
+      render: (count: number) => (
+        <Text strong style={{ fontSize: '14px' }}>
+          {count} <Text type="secondary" style={{ fontSize: '12px' }}>devices</Text>
+        </Text>
+      ),
     },
     {
       title: 'Size',
       dataIndex: 'fileSize',
       key: 'fileSize',
-      render: (size: number) => <Text>{formatFileSize(size)}</Text>,
+      width: '10%',
+      align: 'center' as const,
+      render: (size: number) => <Text style={{ fontSize: '13px' }}>{formatFileSize(size)}</Text>,
     },
     {
       title: 'Downloads',
       dataIndex: 'downloadCount',
       key: 'downloadCount',
-      render: (count: number) => <Text>{count || 0}</Text>,
+      width: '8%',
+      align: 'center' as const,
+      render: (count: number) => (
+        <Tag color={count > 0 ? 'green' : 'default'} style={{ margin: 0 }}>
+          {count || 0}
+        </Tag>
+      ),
     },
     {
       title: 'Generated',
       dataIndex: 'createdAt',
       key: 'createdAt',
+      width: '12%',
       render: (date: string) => (
         <Tooltip title={dayjs(date).format('YYYY-MM-DD HH:mm:ss')}>
-          <Text>{dayjs(date).fromNow()}</Text>
+          <Text style={{ fontSize: '13px' }}>{dayjs(date).fromNow()}</Text>
         </Tooltip>
       ),
     },
     {
       title: 'Actions',
       key: 'actions',
+      align: 'center' as const,
       render: (record: ReportHistoryItem) => (
-        <Space>
-          <Button
-            type="primary"
-            icon={<DownloadOutlined />}
-            onClick={() => handleDownload(record)}
-            size="small"
-          >
-            Download
-          </Button>
+        <Space size="small">
+          <Tooltip title="Download Report">
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              onClick={() => handleDownload(record)}
+              size="small"
+            >
+              Download
+            </Button>
+          </Tooltip>
           <Popconfirm
             title="Delete Report"
             description="Are you sure you want to delete this report? This action cannot be undone."
@@ -270,13 +287,15 @@ const ReportHistory: React.FC = () => {
             cancelText="Cancel"
             okButtonProps={{ danger: true }}
           >
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-              size="small"
-            >
-              Delete
-            </Button>
+            <Tooltip title="Delete Report">
+              <Button
+                danger
+                icon={<DeleteOutlined />}
+                size="small"
+              >
+                Delete
+              </Button>
+            </Tooltip>
           </Popconfirm>
         </Space>
       ),
@@ -408,13 +427,15 @@ const ReportHistory: React.FC = () => {
                 columns={columns}
                 dataSource={reports}
                 rowKey="id"
+                size="middle"
                 pagination={{
                   ...pagination,
                   showSizeChanger: true,
                   showQuickJumper: true,
+                  pageSizeOptions: ['10', '20', '50'],
                   showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} reports`,
                   onChange: (page, pageSize) => loadReports(page, pageSize),
-                  onShowSizeChange: (size) => loadReports(1, size),
+                  onShowSizeChange: (current, size) => loadReports(1, size),
                 }}
                 loading={loading}
               />

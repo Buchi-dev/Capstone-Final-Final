@@ -147,6 +147,9 @@ const getSummary = async (req, res) => {
       timestamp: { $gte: lastHour } 
     });
 
+    // Get total readings count (all time)
+    const totalReadings = await SensorReading.countDocuments();
+
     // Get average water quality parameters (last 24 hours)
     const avgParameters = await SensorReading.aggregate([
       { $match: { timestamp: { $gte: last24Hours } } },
@@ -184,6 +187,7 @@ const getSummary = async (req, res) => {
         },
         readings: {
           lastHour: recentReadings,
+          total: totalReadings,
         },
         waterQuality: parameters,
         timestamp: new Date(),

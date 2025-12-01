@@ -16,7 +16,7 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: MONGO_POOL.SERVER_SELECTION_TIMEOUT,
       socketTimeoutMS: MONGO_POOL.SOCKET_TIMEOUT,
       
-      // Recommended options
+      // Recommended options for MongoDB Atlas
       retryWrites: true,
       retryReads: true,
       w: 'majority',
@@ -24,6 +24,11 @@ const connectDB = async () => {
       // Auto-reconnection (important for production stability)
       autoIndex: false, // Don't build indexes in production
       maxIdleTimeMS: 300000, // Close idle connections after 5 minutes
+      
+      // Additional stability options for cloud MongoDB
+      connectTimeoutMS: 30000, // 30 seconds to establish initial connection
+      heartbeatFrequencyMS: 10000, // Check connection health every 10 seconds
+      maxConnecting: 2, // Limit concurrent connection attempts
     };
 
     const conn = await mongoose.connect(process.env.MONGO_URI, options);

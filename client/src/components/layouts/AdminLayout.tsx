@@ -240,10 +240,12 @@ export const AdminLayout = ({ children }: AdminLayoutProps) => {
             minHeight: 'calc(100vh - 140px)',
             background: colorBgContainer,
             borderRadius: borderRadiusLG,
-            overflow: 'auto',
+            overflow: 'hidden',
           }}
         >
-          {children}
+          <div style={{ height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
+            {children}
+          </div>
         </Content>
 
         {/* Footer */}

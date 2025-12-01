@@ -53,7 +53,7 @@ export const StatsCard = ({
       <Statistic
         title={title}
         value={value}
-        prefix={prefix}
+        prefix={icon || prefix}
         suffix={suffix}
         loading={loading}
         valueStyle={{
@@ -62,11 +62,6 @@ export const StatsCard = ({
           fontWeight: 600,
         }}
       />
-      {icon && (
-        <div style={{ marginBottom: '8px', fontSize: '18px', color: color || token.colorInfo }}>
-          {icon}
-        </div>
-      )}
       {progress !== undefined && (
         <Progress percent={progress} size="small" strokeColor={color || token.colorInfo} />
       )}
