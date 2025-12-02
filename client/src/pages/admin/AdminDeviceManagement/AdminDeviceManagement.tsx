@@ -69,12 +69,40 @@ export const AdminDeviceManagement = () => {
   const handleDelete = (device: Device) => {
     Modal.confirm({
       title: 'Delete Device',
-      content: `Are you sure you want to delete "${device.name}"? This action cannot be undone.`,
-      okText: 'Delete',
+      content: (
+        <>
+          <p>Are you sure you want to delete <strong>"{device.name}"</strong>?</p>
+          <p>This will:</p>
+          <ul style={{ paddingLeft: '20px', marginTop: '8px' }}>
+            <li>Send <strong>deregister</strong> command via MQTT from client to reset the device</li>
+            <li>Delete device from database</li>
+            <li>Remove all sensor readings and alerts</li>
+            <li><strong style={{ color: '#ff4d4f' }}>This action cannot be undone</strong></li>
+          </ul>
+          <p style={{ marginTop: '12px', color: '#8c8c8c', fontSize: '13px' }}>
+            📡 The device will receive the deregister command and return to registration mode.
+          </p>
+        </>
+      ),
+      okText: 'Delete Device',
       okType: 'danger',
       cancelText: 'Cancel',
       onOk: async () => {
         try {
+          // Step 1: Send deregister command via MQTT (client-side)
+          if (device.status === 'online') {
+            console.log(`[Admin] Sending deregister command to ${device.deviceId}`);
+            sendDeregisterCommand(device.deviceId, 'admin_deletion');
+            
+            // Give device a moment to receive the command
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            message.info('Deregister command sent to device via MQTT');
+          } else {
+            console.warn(`[Admin] Device ${device.deviceId} is offline, skipping MQTT deregister command`);
+            message.warning('Device is offline - deregister command not sent');
+          }
+
+          // Step 2: Delete from server database
           await deleteDevice(device.deviceId);
           message.success('Device deleted successfully');
           refetch();

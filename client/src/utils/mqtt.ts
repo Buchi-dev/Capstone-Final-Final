@@ -253,3 +253,16 @@ export function sendDeviceCommand(deviceId: string, command: string, data: any =
 
   publishToTopic(topic, message, { qos: 1 });
 }
+
+/**
+ * Send deregister command to device
+ * This resets the device to unregistered state
+ */
+export function sendDeregisterCommand(deviceId: string, reason: string = 'admin_action'): void {
+  console.log(`[MQTT] Sending deregister command to ${deviceId} (reason: ${reason})`);
+  sendDeviceCommand(deviceId, 'deregister', {
+    message: 'Device registration revoked by admin',
+    reason,
+    timestamp: new Date().toISOString(),
+  });
+}

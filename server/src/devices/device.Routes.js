@@ -60,8 +60,9 @@ router.patch('/:deviceId', ensureAdmin, validateDeviceUpdate, updateDevice);
 
 /**
  * @route   DELETE /api/v1/devices/:deviceId
- * @desc    Delete device
+ * @desc    Delete device (client sends deregister MQTT command before calling this)
  * @access  Admin only
+ * @note    Client is responsible for sending deregister command via MQTT
  */
 router.delete('/:deviceId', ensureAdmin, deleteDevice);
 

@@ -219,7 +219,7 @@ export const useDeviceColumns = ({
                     size="small"
                   />
                 </Tooltip>
-                <Tooltip title="Delete Device">
+                <Tooltip title="Delete Device (sends deregister command)">
                   <Button
                     type="default"
                     danger

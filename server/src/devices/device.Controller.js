@@ -289,26 +289,12 @@ const deleteDevice = asyncHandler(async (req, res) => {
       });
     }
 
-    // Send deregister command to device if connected via MQTT
-    if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(device.deviceId)) {
-      logger.info('[Device Controller] Sending deregister command to device', {
-        deviceId: device.deviceId,
-      });
-      
-      mqttService.sendCommandToDevice(device.deviceId, 'deregister', {
-        message: 'Device has been removed from the system',
-        reason: 'admin_deletion',
-      });
-      
-      // Give device a moment to receive the command
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    } else {
-      logger.warn('[Device Controller] MQTT service not available or device not connected, cannot send deregister command', {
-        deviceId: device.deviceId,
-        mqttServiceAvailable: !!mqttService,
-        isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
-      });
-    }
+    // NOTE: Deregister command is now sent by the client via MQTT
+    // This allows the client to have direct control over device commands
+    logger.info('[Device Controller] Deleting device', {
+      deviceId: device.deviceId,
+      note: 'Deregister command should be sent by client before calling this endpoint',
+    });
 
     // Delete device and all associated data
     await Promise.all([

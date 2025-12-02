@@ -158,7 +158,7 @@ export class DevicesService {
 
   /**
    * Delete a device (admin only)
-   * Removes device and all associated sensor readings
+   * Sends deregister MQTT command to device, then removes device and all associated data
    * 
    * @param deviceId - Device ID to delete
    * @throws {Error} If deletion fails
