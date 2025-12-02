@@ -259,24 +259,29 @@ const deleteDevice = asyncHandler(async (req, res) => {
       });
     }
 
-    // Send deregister command to device if connected via MQTT
-    if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(device.deviceId)) {
-      logger.info('[Device Controller] Sending deregister command to device', {
+    // Send deregister command to device via MQTT
+    // Commands use retain=true, so device receives them when it connects/reconnects
+    if (mqttService && mqttService.sendCommandToDevice) {
+      logger.info('[Device Controller] Publishing deregister command', {
         deviceId: device.deviceId,
       });
       
-      mqttService.sendCommandToDevice(device.deviceId, 'deregister', {
-        message: 'Device has been removed from the system',
-        reason: 'admin_deletion',
-      });
+      const commandSent = mqttService.sendCommandToDevice(device.deviceId, 'deregister');
       
-      // Give device a moment to receive the command
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (commandSent) {
+        logger.info('[Device Controller] "deregister" command published (retained)', {
+          deviceId: device.deviceId,
+        });
+        // Give device a moment to receive the command if online
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        logger.warn('[Device Controller] Failed to publish "deregister" command', {
+          deviceId: device.deviceId,
+        });
+      }
     } else {
-      logger.warn('[Device Controller] MQTT service not available or device not connected, cannot send deregister command', {
+      logger.error('[Device Controller] MQTT service not available', {
         deviceId: device.deviceId,
-        mqttServiceAvailable: !!mqttService,
-        isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
       });
     }
 
@@ -608,21 +613,23 @@ const deviceRegister = asyncHandler(async (req, res) => {
       id: device._id 
     });
 
-    // Send "wait" command to device via MQTT if connected
-    // Optimized: Only send command - Arduino only reads doc["command"]
-    if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(trimmedDeviceId)) {
+    // Send "wait" command to device via MQTT
+    // Commands use retain=true, so device receives them when it connects/reconnects
+    if (mqttService && mqttService.sendCommandToDevice) {
       const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'wait');
       
       if (commandSent) {
-        logger.info('[Device Controller] "wait" command sent to device', {
+        logger.info('[Device Controller] "wait" command published (retained)', {
+          deviceId: trimmedDeviceId,
+        });
+      } else {
+        logger.warn('[Device Controller] Failed to publish "wait" command', {
           deviceId: trimmedDeviceId,
         });
       }
     } else {
-      logger.warn('[Device Controller] MQTT service not available or device not connected, "wait" command not sent', {
+      logger.error('[Device Controller] MQTT service not available', {
         deviceId: trimmedDeviceId,
-        mqttServiceAvailable: !!mqttService,
-        isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
       });
     }
 
@@ -664,21 +671,23 @@ const deviceRegister = asyncHandler(async (req, res) => {
         command: 'go', // Tell device it can start sending sensor data
       }, 'Device registration approved');
     } else {
-      // Send "wait" command to device via MQTT if connected
-      // Optimized: Only send command - Arduino only reads doc["command"]
-      if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(trimmedDeviceId)) {
+      // Send "wait" command to device via MQTT
+      // Commands use retain=true, so device receives them when it connects/reconnects
+      if (mqttService && mqttService.sendCommandToDevice) {
         const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'wait');
         
         if (commandSent) {
-          logger.info('[Device Controller] "wait" command sent to device', {
+          logger.info('[Device Controller] "wait" command published (retained)', {
+            deviceId: trimmedDeviceId,
+          });
+        } else {
+          logger.warn('[Device Controller] Failed to publish "wait" command', {
             deviceId: trimmedDeviceId,
           });
         }
       } else {
-        logger.warn('[Device Controller] MQTT service not available or device not connected, "wait" command not sent', {
+        logger.error('[Device Controller] MQTT service not available', {
           deviceId: trimmedDeviceId,
-          mqttServiceAvailable: !!mqttService,
-          isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
         });
       }
 
@@ -735,21 +744,23 @@ const approveDeviceRegistration = asyncHandler(async (req, res) => {
     id: device._id,
   });
 
-  // Send "go" command to device via MQTT if connected
-  // Optimized: Only send command - Arduino only reads doc["command"]
-  if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(device.deviceId)) {
+  // Send "go" command to device via MQTT
+  // Commands use retain=true, so device receives them when it connects/reconnects
+  if (mqttService && mqttService.sendCommandToDevice) {
     const commandSent = mqttService.sendCommandToDevice(device.deviceId, 'go');
     
     if (commandSent) {
-      logger.info('[Device Controller] "go" command sent to device', {
+      logger.info('[Device Controller] "go" command published (retained)', {
+        deviceId: device.deviceId,
+      });
+    } else {
+      logger.warn('[Device Controller] Failed to publish "go" command', {
         deviceId: device.deviceId,
       });
     }
   } else {
-    logger.warn('[Device Controller] MQTT service not available or device not connected, "go" command not sent', {
+    logger.error('[Device Controller] MQTT service not available', {
       deviceId: device.deviceId,
-      mqttServiceAvailable: !!mqttService,
-      isDeviceConnectedAvailable: !!(mqttService && mqttService.isDeviceConnected),
     });
   }
 

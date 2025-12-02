@@ -67,7 +67,6 @@ const MQTT_CONFIG = {
     GO: 'go',
     WAIT: 'wait',
     DEREGISTER: 'deregister',
-    UPDATE_CONFIG: 'update_config',
     RESTART: 'restart',
   },
 };

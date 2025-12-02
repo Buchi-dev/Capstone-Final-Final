@@ -1914,25 +1914,17 @@ void publishSensorData() {
     return;
   }
 
-  StaticJsonDocument<256> doc;
+  // Optimized: Only send data that backend actually uses
+  // Reduced from 256 bytes to ~128 bytes
+  StaticJsonDocument<128> doc;
   doc["deviceId"] = DEVICE_ID;
   doc["timestamp"] = epochTime;  // Use validated epoch time
-  
-  // Add Philippine date (YYYY-MM-DD format)
-  char phDateStr[11];
-  getPhilippineDateString(phDateStr, sizeof(phDateStr));
-  doc["phDate"] = phDateStr;
-  
-  // Sensor data assignment
-  doc["tds"] = round(tds * 10) / 10.0;
   doc["pH"] = round(ph * 100) / 100.0;
+  doc["tds"] = round(tds * 10) / 10.0;
   doc["turbidity"] = round(turbidity * 10) / 10.0;
-  doc["messageType"] = "sensor_data";
-  doc["interval"] = "30min_clock_sync";
-  doc["transmissionNumber"] = transmissionCount;
 
 
-  char payload[256];
+  char payload[128];
   size_t payloadSize = serializeJson(doc, payload, sizeof(payload));
 
 
@@ -2084,25 +2076,15 @@ void handlePresenceQuery(const char* message) {
     Serial.println(F("Preparing response..."));
 
 
-    StaticJsonDocument<300> responseDoc;
+    // Optimized: Only send data that backend actually uses
+    // Reduced from 300 bytes to ~100 bytes
+    StaticJsonDocument<128> responseDoc;
     responseDoc["response"] = "i_am_online";
     responseDoc["deviceId"] = DEVICE_ID;
-    responseDoc["deviceName"] = DEVICE_NAME;
     responseDoc["timestamp"] = timeInitialized ? timeClient.getEpochTime() : (millis() / 1000);
-    responseDoc["firmwareVersion"] = FIRMWARE_VERSION;
-    responseDoc["uptime"] = (millis() - bootTime) / 1000;
-    responseDoc["isApproved"] = isApproved;
-    responseDoc["wifiRSSI"] = WiFi.RSSI();
-    responseDoc["calibrationMode"] = isCalibrationMode;
-    
-    if (timeInitialized) {
-      char phTimeStr[9];
-      getPhilippineTimeString(phTimeStr, sizeof(phTimeStr));
-      responseDoc["phTime"] = phTimeStr;
-    }
 
 
-    char responsePayload[300];
+    char responsePayload[128];
     size_t payloadSize = serializeJson(responseDoc, responsePayload, sizeof(responsePayload));
 
 
