@@ -315,7 +315,6 @@ void printSystemReadiness() {
   Serial.println(F("║          SYSTEM READINESS STATUS REPORT                ║"));
   Serial.println(F("╠════════════════════════════════════════════════════════╣"));
   
-  // Module statuses
   Serial.print(F("║  EEPROM Storage:     "));
   Serial.print(getModuleStatusString(moduleReadiness.eeprom));
   for (int i = strlen(getModuleStatusString(moduleReadiness.eeprom)); i < 26; i++) Serial.print(F(" "));
@@ -352,7 +351,6 @@ void printSystemReadiness() {
   
   Serial.println(F("╠════════════════════════════════════════════════════════╣"));
   
-  // Overall status
   Serial.print(F("║  SYSTEM STATUS:      "));
   if (moduleReadiness.systemReady) {
     Serial.print(F("✅ READY"));
@@ -408,7 +406,6 @@ void initEEPROM() {
     Serial.print(F("Boot count: "));
     Serial.println(bootCount);
     
-    // Load WiFi credentials
     if (loadWiFiCredentials(savedSSID, savedPassword)) {
       wifiCredentialsSaved = true;
     }
@@ -622,7 +619,6 @@ void checkMidnightRestart() {
       Serial.println(F("Registration status will be preserved"));
       Serial.println(F("=========================================\n"));
       
-      // No shutdown status needed - server will detect offline via polling
       mqttClient.disconnect();
       
       delay(5000);
@@ -681,14 +677,11 @@ void getPhilippineDateString(char* buffer, size_t bufSize) {
   unsigned long epochTime = timeClient.getEpochTime();
   unsigned long phTime = epochTime + TIMEZONE_OFFSET_SECONDS;
   
-  // Calculate days since Unix epoch (Jan 1, 1970)
   unsigned long days = phTime / 86400L;
   
-  // Calculate year
   int year = 1970;
   unsigned long daysInYear;
   while (true) {
-    // Check if leap year
     bool isLeap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
     daysInYear = isLeap ? 366 : 365;
     
@@ -700,16 +693,13 @@ void getPhilippineDateString(char* buffer, size_t bufSize) {
     }
   }
   
-  // Days in each month
   int daysInMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
   
-  // Adjust February for leap year
   bool isLeap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
   if (isLeap) {
     daysInMonth[1] = 29;
   }
   
-  // Calculate month and day
   int month = 1;
   for (int i = 0; i < 12; i++) {
     if (days >= daysInMonth[i]) {
@@ -722,7 +712,6 @@ void getPhilippineDateString(char* buffer, size_t bufSize) {
   
   int day = days + 1;
   
-  // Format as YYYY-MM-DD
   snprintf(buffer, bufSize, "%04d-%02d-%02d", year, month, day);
 }
 
@@ -743,7 +732,6 @@ String scanWiFiNetworks() {
       String ssid = WiFi.SSID(i);
       int rssi = WiFi.RSSI(i);
       
-      // Simple text list - no styling
       networkList += "- " + ssid + " (" + String(rssi) + "dBm)<br>";
       
       Serial.print(i + 1);
@@ -836,9 +824,7 @@ void handleWebPortal() {
   Serial.println(F("Request received:"));
   Serial.println(request.substring(0, 100));
   
-  // Parse request
   if (request.startsWith("GET / ") || request.startsWith("GET /index")) {
-    // Main page - show WiFi networks
     Serial.println(F("Serving main page..."));
     
     String networkList = scanWiFiNetworks();
@@ -851,17 +837,14 @@ void handleWebPortal() {
     client.println(html);
     
   } else if (request.startsWith("POST /connect")) {
-    // Handle WiFi connection request
     Serial.println(F("Processing connection request..."));
     
-    // Extract form data
     int bodyStart = request.indexOf("\r\n\r\n") + 4;
     String body = request.substring(bodyStart);
     
     Serial.print(F("Body: "));
     Serial.println(body);
     
-    // Parse SSID
     int ssidStart = body.indexOf("ssid=");
     if (ssidStart == -1) {
       Serial.println(F("✗ Error: 'ssid=' not found in request"));
@@ -871,7 +854,7 @@ void handleWebPortal() {
       client.stop();
       return;
     }
-    ssidStart += 5;  // Skip "ssid="
+    ssidStart += 5;
     
     int ssidEnd = body.indexOf("&", ssidStart);
     if (ssidEnd == -1) ssidEnd = body.length();
@@ -1046,7 +1029,7 @@ void connectWiFi() {
   Serial.println(WiFi.RSSI());
   
   consecutiveWifiFailures = 0;
-  wifiConnectionAttempts = 0;  // Reset counter on success
+  wifiConnectionAttempts = 0;
   setModuleStatus(&moduleReadiness.wifi, MODULE_READY, "WiFi");
 }
 
@@ -1068,15 +1051,7 @@ void handleWiFiDisconnection() {
 }
 
 
-// ═══════════════════════════════════════════════════════════════════════════
-//                    MQTT CONNECTION & MESSAGE HANDLING
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ───────────────────────────────────────────────────────────────────────────
-// Connect to MQTT Broker (SSL/TLS with no LWT)
-// ───────────────────────────────────────────────────────────────────────────
 void connectMQTT() {
-  // Skip MQTT in calibration mode (unless you want remote control)
   if (isCalibrationMode) {
     Serial.println(F("Calibration mode - skipping MQTT"));
     setModuleStatus(&moduleReadiness.mqtt, MODULE_READY, "MQTT (bypassed)");
@@ -1242,7 +1217,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (mqttConnected && isApproved && !isCalibrationMode) {
       Serial.println(F("\n=== MANUAL TX (send_now) ==="));
       publishSensorData();
-      publishPresenceOnline(); // Announce presence instead of status
+      publishPresenceOnline();
       transmissionCount++;
       Serial.println(F("=== TX COMPLETE ===\n"));
     } else if (isCalibrationMode) {
@@ -1545,9 +1520,6 @@ void publishPresenceOnline() {
   char presencePayload[240];
   serializeJson(presenceDoc, presencePayload, sizeof(presencePayload));
 
-
-  // Publish WITHOUT retained flag - server will poll to verify
-  // Server will automatically send any pending commands (deregister, restart, etc.)
   if (mqttClient.publish(topicPresence, presencePayload, false)) {
     Serial.println(F("✓ Presence status: online (NOT retained)"));
     Serial.println(F("  Server will send any pending commands via MQTT..."));
@@ -1558,14 +1530,6 @@ void publishPresenceOnline() {
   }
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════
-//                    SENSOR CALIBRATION CALCULATIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ───────────────────────────────────────────────────────────────────────────
-// Compute TDS Calibration Parameters (Linear Regression)
-// ───────────────────────────────────────────────────────────────────────────
 void computeCalibrationParams() {
   float meanX = 0.0, meanY = 0.0;
   for (int i = 0; i < CALIB_COUNT; i++) {
@@ -1656,11 +1620,8 @@ float adcToPH(int adc) {
 }
 
 float calculateTurbidityNTU(int adcValue) {
-  // Calibrated for:
-  // Clear water: ADC ~360, NTU = 0
-  // Cloudy water: ADC ~100, NTU = 20
-  float slope = 20.0 / (100.0 - 360.0);  // -0.0769230769
-  float intercept = -slope * 360.0;       // 27.69230769
+  float slope = 20.0 / (100.0 - 360.0);
+  float intercept = -slope * 360.0;
   float ntu = slope * adcValue + intercept;
   return (ntu < 0) ? 0 : ntu;
 }
@@ -1672,14 +1633,6 @@ String getTurbidityStatus(float ntu) {
   return "NORMAL";
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════
-//                    SENSOR READING & PROCESSING
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ───────────────────────────────────────────────────────────────────────────
-// Read All Sensors (pH, TDS, Turbidity) with SMA Smoothing
-// ───────────────────────────────────────────────────────────────────────────
 void readSensors() {
   int rawTDS = analogRead(TDS_PIN);
   int rawPH = analogRead(PH_PIN);
@@ -1717,7 +1670,6 @@ void readSensors() {
   int turb10bit = avgTurb / 16;
   turbidity = calculateTurbidityNTU(avgTurb);
 
-  // Simple output for calibration
   Serial.print(F("Raw TDS:"));
   Serial.print(rawTDS);
   Serial.print(F(" Raw pH:"));
@@ -1858,17 +1810,10 @@ void setup() {
 
   Serial.println(F("\n=== Network Connectivity ==="));
   
-  // ═══════════════════════════════════════════════════════════════════════
-  // STEP 4: Connect to WiFi Network
-  // ═══════════════════════════════════════════════════════════════════════
   connectWiFi();
   
-  // Skip MQTT and NTP in calibration mode
   if (!isCalibrationMode && getWiFiStatus() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
     
-    // ═══════════════════════════════════════════════════════════════════════
-    // STEP 5: Synchronize NTP Time
-    // ═══════════════════════════════════════════════════════════════════════
     Serial.println(F("\n=== NTP Time Synchronization ==="));
     setModuleStatus(&moduleReadiness.ntp, MODULE_INITIALIZING, "NTP");
     
@@ -1878,22 +1823,18 @@ void setup() {
     Serial.println(F("IMPORTANT: Device will NOT send data until time is synced"));
     Serial.print(F("Attempting NTP sync"));
     
-    // Try up to 15 times (15 seconds) to get valid time
     for (int i = 0; i < 15; i++) {
       Serial.print(F("."));
       if (timeClient.update()) {
         unsigned long epochTime = timeClient.getEpochTime();
-        // Validate timestamp (should be after year 2020)
-        if (epochTime > 1577836800) {  // Jan 1, 2020 00:00:00 UTC
+        if (epochTime > 1577836800) {
           timeInitialized = true;
           Serial.println(F(" ✓ SUCCESS"));
           Serial.print(F("✓ Epoch Time: "));
           Serial.println(epochTime);
           printCurrentTime();
           
-          // Initialize transmission jitter to prevent thundering herd
           if (ENABLE_TRANSMISSION_JITTER) {
-            // Use epoch time as seed for randomness
             randomSeed(epochTime + bootCount);
             transmissionJitterOffset = random(0, TRANSMISSION_JITTER_WINDOW);
             Serial.print(F("✓ Transmission jitter: "));
@@ -1909,7 +1850,7 @@ void setup() {
           setModuleStatus(&moduleReadiness.ntp, MODULE_READY, "NTP");
           break;
         } else {
-          Serial.print(F("!"));  // Invalid time received
+          Serial.print(F("!"));
         }
       }
       delay(1000);
@@ -1978,16 +1919,15 @@ void loop() {
   if (wifiManagerActive) {
     handleWebPortal();
     
-    // Check for timeout
     if (currentMillis - wifiManagerStartTime > WIFI_MANAGER_TIMEOUT) {
       Serial.println(F("\n⚠ WiFi Manager timeout"));
       
       if (!wifiCredentialsSaved || savedSSID.length() == 0) {
         Serial.println(F("✗ No credentials configured - restarting portal..."));
-        wifiManagerStartTime = currentMillis;  // Reset timeout
+        wifiManagerStartTime = currentMillis;
       } else {
         Serial.println(F("Using previously saved credentials"));
-        WiFi.end();  // This also closes the web server
+        WiFi.end();
         wifiManagerActive = false;
         delay(1000);
         connectWiFi();
@@ -2027,20 +1967,16 @@ void loop() {
     timeClient.update();
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // NTP TIME INIT: First-Time Synchronization (Retry every 30 seconds)
-  // ─────────────────────────────────────────────────────────────────────────
   if (!isCalibrationMode && !timeInitialized && wifiStatus == WL_CONNECTED) {
     static unsigned long lastNtpRetry = 0;
-    if (currentMillis - lastNtpRetry >= 30000) {  // Retry every 30 seconds
+    if (currentMillis - lastNtpRetry >= 30000) {
       lastNtpRetry = currentMillis;
       Serial.println(F("⏳ Retrying NTP sync..."));
       setModuleStatus(&moduleReadiness.ntp, MODULE_INITIALIZING, "NTP");
       
       if (timeClient.update()) {
         unsigned long epochTime = timeClient.getEpochTime();
-        // Validate timestamp (must be after year 2020)
-        if (epochTime > 1577836800) {  // Jan 1, 2020 00:00:00 UTC
+        if (epochTime > 1577836800) {
           timeInitialized = true;
           Serial.println(F("✓ NTP time synchronized successfully!"));
           Serial.print(F("✓ Epoch Time: "));
@@ -2059,13 +1995,9 @@ void loop() {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // MQTT CONNECTION: Manage Broker Connection & Message Loop
-  // ─────────────────────────────────────────────────────────────────────────
   if (!isCalibrationMode) {
     if (!mqttClient.connected()) {
       mqttConnected = false;
-      // Update module status if it was previously ready
       if (moduleReadiness.mqtt == MODULE_READY) {
         setModuleStatus(&moduleReadiness.mqtt, MODULE_FAILED, "MQTT");
       }
@@ -2084,7 +2016,6 @@ void loop() {
         connectMQTT();
       }
     } else {
-      // MQTT connected - ensure module status reflects this
       if (moduleReadiness.mqtt != MODULE_READY) {
         setModuleStatus(&moduleReadiness.mqtt, MODULE_READY, "MQTT");
       }
@@ -2092,38 +2023,27 @@ void loop() {
       consecutiveMqttFailures = 0;
     }
 
-
-    // Check for presence query timeout
     if (presenceQueryActive && (currentMillis - lastPresenceQuery) > PRESENCE_TIMEOUT) {
       presenceQueryActive = false;
       Serial.println(F("Presence query timeout"));
     }
   }
 
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // WATCHDOG: System Heartbeat & Status Logging
-  // ─────────────────────────────────────────────────────────────────────────
   unsigned long watchdogInterval = isCalibrationMode ? 60000 : WATCHDOG_INTERVAL;
   if (currentMillis - lastWatchdog >= watchdogInterval) {
     lastWatchdog = currentMillis;
     printWatchdog();
   }
 
-  // ═════════════════════════════════════════════════════════════════════════
-  // SENSOR READINGS: Always Active (Works in ALL Modes)
-  // ═════════════════════════════════════════════════════════════════════════
   if (currentMillis - lastSensorRead >= sensorReadInterval) {
     lastSensorRead = currentMillis;
     readSensors();
     
     if (isCalibrationMode) {
-      // In calibration mode, show fast readings
       Serial.print(F("[CALIB] Interval: "));
       Serial.print(sensorReadInterval);
       Serial.println(F("ms - Local display only"));
     } else if (isApproved && timeInitialized) {
-      // In normal mode, show next transmission time
       char nextTxStr[15];
       getNextTransmissionPHTime(nextTxStr, sizeof(nextTxStr));
       Serial.print(F("Next TX: "));
@@ -2131,10 +2051,6 @@ void loop() {
     }
   }
 
-
-  // ═════════════════════════════════════════════════════════════════════════
-  // REGISTRATION MODE: Device Awaiting Approval
-  // ═════════════════════════════════════════════════════════════════════════
   if (!isCalibrationMode && !isApproved) {
     if (currentMillis - lastRegistrationAttempt >= REGISTRATION_INTERVAL) {
       lastRegistrationAttempt = currentMillis;
@@ -2143,18 +2059,11 @@ void loop() {
       }
     }
   } 
-  // ═════════════════════════════════════════════════════════════════════════
-  // ACTIVE MONITORING: Clock-Synchronized Data Transmission
-  // ═════════════════════════════════════════════════════════════════════════
   else if (!isCalibrationMode) {
-    // CRITICAL GUARD: Verify system readiness before transmission
     if (!isSystemFullyReady()) {
-      // System not ready - skip transmission window silently
-      // Status is already being printed in watchdog
       return;
     }
     
-    // Check if it's time for scheduled transmission (:00 or :30)
     if (isTransmissionTime()) {
       Serial.println(F("\n=== SCHEDULED 30-MIN TX ==="));
       Serial.print(F("Current time: "));
@@ -2167,7 +2076,7 @@ void loop() {
       
       if (mqttConnected) {
         publishSensorData();
-        publishPresenceOnline(); // Update presence instead of status
+        publishPresenceOnline();
         transmissionCount++;
         
         lastTransmissionMinute = timeClient.getMinutes();
@@ -2187,14 +2096,10 @@ void loop() {
     }
   }
 
-
-  // ═════════════════════════════════════════════════════════════════════════
-  // LOOP DELAY: Timing Control (Mode-Dependent)
-  // ═════════════════════════════════════════════════════════════════════════
   if (!isCalibrationMode) {
-    delay(100);  // Normal mode: 100ms delay for stable operation
+    delay(100);
   } else {
-    delay(10);   // Calibration mode: 10ms for tight 255ms sensor timing
+    delay(10);
   }
 }
 
