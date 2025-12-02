@@ -8,8 +8,8 @@ const mqtt = require('mqtt');
 // MQTT Broker Configuration
 const MQTT_CONFIG = {
   // HiveMQ Cloud Cluster Configuration
-  BROKER_URL: process.env.MQTT_BROKER_URL || 'mqtts://0331c5286d084675b9198021329c7573.s1.eu.hivemq.cloud:8883',
-  CLIENT_ID: process.env.MQTT_CLIENT_ID || `water-quality-server-${Date.now()}`,
+  BROKER_URL: process.env.MQTT_BROKER_URL,
+  CLIENT_ID: process.env.MQTT_CLIENT_ID,
 
   // Connection Options
   OPTIONS: {

@@ -24,9 +24,6 @@ const optionalEnvVars = [
   'SMTP_FROM_NAME',
   'SMTP_SECURE',
   'REDIS_URL',
-  'SESSION_SECRET', // Optional - only if using sessions for other features
-  'FIREBASE_SERVICE_ACCOUNT_PATH', // Optional if using FIREBASE_SERVICE_ACCOUNT env var
-  'FIREBASE_SERVICE_ACCOUNT', // Optional if using file path
 ];
 
 /**
