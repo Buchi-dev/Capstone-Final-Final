@@ -609,11 +609,9 @@ const deviceRegister = asyncHandler(async (req, res) => {
     });
 
     // Send "wait" command to device via MQTT if connected
+    // Optimized: Only send command - Arduino only reads doc["command"]
     if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(trimmedDeviceId)) {
-      const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'wait', {
-        message: 'Device registration received. Waiting for admin approval.',
-        device: device.toPublicProfile(),
-      });
+      const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'wait');
       
       if (commandSent) {
         logger.info('[Device Controller] "wait" command sent to device', {
@@ -667,11 +665,9 @@ const deviceRegister = asyncHandler(async (req, res) => {
       }, 'Device registration approved');
     } else {
       // Send "wait" command to device via MQTT if connected
+      // Optimized: Only send command - Arduino only reads doc["command"]
       if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(trimmedDeviceId)) {
-        const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'wait', {
-          message: 'Device registration pending admin approval.',
-          device: device.toPublicProfile(),
-        });
+        const commandSent = mqttService.sendCommandToDevice(trimmedDeviceId, 'wait');
         
         if (commandSent) {
           logger.info('[Device Controller] "wait" command sent to device', {
@@ -740,11 +736,9 @@ const approveDeviceRegistration = asyncHandler(async (req, res) => {
   });
 
   // Send "go" command to device via MQTT if connected
+  // Optimized: Only send command - Arduino only reads doc["command"]
   if (mqttService && mqttService.isDeviceConnected && mqttService.isDeviceConnected(device.deviceId)) {
-    const commandSent = mqttService.sendCommandToDevice(device.deviceId, 'go', {
-      message: 'Device registration approved. You can now start sending sensor data.',
-      device: device.toPublicProfile(),
-    });
+    const commandSent = mqttService.sendCommandToDevice(device.deviceId, 'go');
     
     if (commandSent) {
       logger.info('[Device Controller] "go" command sent to device', {
@@ -837,7 +831,7 @@ const sendDeviceCommand = asyncHandler(async (req, res) => {
   const { command, data = {} } = req.body;
 
   // Validate command
-  const validCommands = ['send_now', 'restart', 'go', 'deregister'];
+  const validCommands = ['send_now', 'restart', 'go', 'wait', 'deregister'];
   if (!command || !validCommands.includes(command)) {
     throw new ValidationError(`Invalid command. Must be one of: ${validCommands.join(', ')}`);
   }

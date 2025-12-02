@@ -363,7 +363,7 @@ export class DevicesService {
    * Backend handles MQTT publishing to device
    * 
    * @param deviceId - Device ID to send command to
-   * @param command - Command type (send_now, restart, go, deregister)
+   * @param command - Command type (send_now, restart, go, wait, deregister)
    * @param data - Optional command data
    * @returns Promise with command status
    * @example
@@ -372,7 +372,7 @@ export class DevicesService {
    */
   async sendDeviceCommand(
     deviceId: string,
-    command: 'send_now' | 'restart' | 'go' | 'deregister',
+    command: 'send_now' | 'restart' | 'go' | 'wait' | 'deregister',
     data: Record<string, any> = {}
   ): Promise<{
     success: boolean;

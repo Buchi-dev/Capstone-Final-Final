@@ -76,6 +76,7 @@
  * COMMAND        DESCRIPTION
  * ─────────────────────────────────────────────────────────────────────────
  * go             Approve device for data transmission
+ * wait           Device registration pending (no action required)
  * deregister     Revoke device approval
  * restart        Restart the device immediately
  * send_now       Force immediate data transmission
@@ -178,11 +179,11 @@
 // ───────────────────────────────────────────────────────────────────────────
 // MQTT Broker Configuration (HiveMQ Cloud - SSL/TLS Port 8883)
 // ───────────────────────────────────────────────────────────────────────────
-#define MQTT_BROKER "0331c5286d084675b9198021329c7573.s1.eu.hivemq.cloud"
+#define MQTT_BROKER "f4f8d29564364fbdbe9b052230c33d40.s1.eu.hivemq.cloud"
 #define MQTT_PORT 8883
 #define MQTT_CLIENT_ID "arduino_uno_r4_002"
-#define MQTT_USERNAME "Admin"
-#define MQTT_PASSWORD "Admin123"
+#define MQTT_USERNAME "Device_Production"
+#define MQTT_PASSWORD "Device123"
 
 // ───────────────────────────────────────────────────────────────────────────
 // Device Identity
@@ -1824,6 +1825,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     saveApprovedStatus(true);
     lastTransmissionMinute = -1;
     
+  } else if (strcmp(command, "wait") == 0) {
+    Serial.println(F("CMD: WAIT - Registration pending approval"));
+    // Device is in pending state - keep checking for "go" command
+    // No action needed, just acknowledge the command
+    saveApprovedStatus(false); // Ensure device knows it's not approved yet
+    
   } else if (strcmp(command, "deregister") == 0) {
     Serial.println(F("CMD: DEREGISTER - Approval revoked"));
     saveApprovedStatus(false);
@@ -1971,19 +1978,13 @@ void sendRegistration() {
   Serial.println(F("\n--- Device Registration ---"));
 
 
-  StaticJsonDocument<480> doc;
+  // Optimized: Only send data that backend actually uses
+  // Reduced from 480 bytes to ~250 bytes
+  StaticJsonDocument<256> doc;
   doc["deviceId"] = DEVICE_ID;
   doc["name"] = DEVICE_NAME;
   doc["type"] = DEVICE_TYPE;
   doc["firmwareVersion"] = FIRMWARE_VERSION;
-  doc["timestamp"] = timeInitialized ? timeClient.getEpochTime() : (millis() / 1000);
-  doc["messageType"] = "registration";
-  doc["uptime"] = (millis() - bootTime) / 1000;
-  doc["dataInterval"] = "30min_clock_sync";
-  doc["restartSchedule"] = "daily_midnight_ph";
-  doc["timezone"] = "Asia/Manila";
-  doc["connectionType"] = "SSL/TLS";
-  doc["bootCount"] = bootCount;
 
 
   uint8_t macRaw[6];
@@ -1993,15 +1994,6 @@ void sendRegistration() {
            macRaw[0], macRaw[1], macRaw[2], macRaw[3], macRaw[4], macRaw[5]);
   doc["macAddress"] = mac;
   doc["ipAddress"] = WiFi.localIP().toString();
-  doc["rssi"] = WiFi.RSSI();
-  
-  if (timeInitialized) {
-    doc["utcTime"] = timeClient.getFormattedTime();
-    
-    char phTimeStr[9];
-    getPhilippineTimeString(phTimeStr, sizeof(phTimeStr));
-    doc["phTime"] = phTimeStr;
-  }
 
 
   JsonArray sensors = doc.createNestedArray("sensors");
@@ -2010,7 +2002,7 @@ void sendRegistration() {
   sensors.add("tds");
 
 
-  char payload[480];
+  char payload[256];
   size_t payloadSize = serializeJson(doc, payload, sizeof(payload));
 
 

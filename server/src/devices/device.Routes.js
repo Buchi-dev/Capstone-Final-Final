@@ -105,8 +105,8 @@ router.post('/:deviceId/approve', ensureAdmin, approveDeviceRegistration);
  * @route   POST /api/v1/devices/:deviceId/commands
  * @desc    Send command to device via MQTT
  * @access  Admin only
- * @body    { command: 'send_now' | 'restart' | 'go' | 'deregister', data?: {} }
- * @note    Sends MQTT command to device. Valid commands: send_now, restart, go, deregister
+ * @body    { command: 'send_now' | 'restart' | 'go' | 'wait' | 'deregister', data?: {} }
+ * @note    Sends MQTT command to device. Valid commands: send_now, restart, go, wait, deregister
  */
 router.post('/:deviceId/commands', ensureAdmin, sendDeviceCommand);
 
