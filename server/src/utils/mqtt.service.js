@@ -270,21 +270,58 @@ class MQTTService {
 
   /**
    * Handle device presence messages (online/offline status)
-   * NOTE: Presence messages are NOT trusted automatically.
-   * Only responses to presence queries actually update device status.
-   * This handler just logs the announcement for debugging.
+   * Updates device status in database when device announces it's online
    */
   async handleDevicePresence(deviceId, data) {
     try {
       const { status, timestamp } = data;
       
-      // Log the announcement but don't update database
-      // Database updates are handled by handlePresenceResponse() to avoid duplicates
-      logger.debug(`[MQTT Presence] Device ${deviceId} announced: ${status} (announcement only - no DB update)`, { timestamp });
+      logger.debug(`[MQTT Presence] Device ${deviceId} announced: ${status}`, { timestamp });
 
-      // ⚠️ DO NOT UPDATE DATABASE HERE
-      // This would create duplicate updates since handlePresenceResponse() already handles it
-      // Presence announcements are just for logging/debugging
+      // Update device status in database
+      const { Device } = require('../devices/device.Model');
+      const device = await Device.findOne({ deviceId: deviceId.trim() });
+      
+      if (device) {
+        const oldStatus = device.status;
+        const now = new Date();
+        
+        // Validate and parse timestamp
+        let lastSeenDate = now;
+        if (timestamp) {
+          // Handle Unix timestamp (number) or ISO string
+          const parsedDate = typeof timestamp === 'number' 
+            ? new Date(timestamp * 1000) // Unix timestamp in seconds
+            : new Date(timestamp);
+          
+          // Only use parsed date if it's valid and reasonable
+          if (!isNaN(parsedDate.getTime()) && parsedDate.getTime() > 0) {
+            lastSeenDate = parsedDate;
+          } else {
+            logger.warn(`[MQTT Presence] Invalid timestamp from ${deviceId}, using current time`, { timestamp });
+          }
+        }
+
+        // Update status if device announces online
+        if (status && status.toLowerCase() === 'online') {
+          device.status = 'online';
+          device.lastSeen = lastSeenDate;
+          await device.save();
+
+          if (oldStatus !== 'online') {
+            logger.info(`[MQTT Presence] ✅ Device ${deviceId} status changed: ${oldStatus} → online`);
+          }
+
+          // Invalidate cache
+          const CacheService = require('./cache.service');
+          await Promise.all([
+            CacheService.del(`device:${deviceId}`),
+            CacheService.delPattern('devices:all:*')
+          ]);
+        }
+      } else {
+        logger.warn(`[MQTT Presence] Device ${deviceId} announced presence but not found in database`);
+      }
 
     } catch (error) {
       logger.error(`[MQTT Presence] Error processing device ${deviceId} presence announcement:`, error);
