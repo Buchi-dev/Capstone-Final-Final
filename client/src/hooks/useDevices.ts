@@ -18,7 +18,7 @@
  */
 
 import useSWR from 'swr';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import {
   devicesService,
   type DeviceFilters,
@@ -28,7 +28,6 @@ import {
 } from '../services/devices.Service';
 import type { DeviceWithReadings, SensorReading } from '../schemas';
 import { useVisibilityPolling } from './useVisibilityPolling';
-import { subscribeToTopic, unsubscribeFromTopic, MQTT_TOPICS } from '../utils/mqtt';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -143,75 +142,6 @@ export function useDevices(options: UseDevicesOptions = {}): UseDevicesReturn {
       keepPreviousData: true, // Keep showing old data while fetching
     }
   );
-
-  // MQTT subscription for real-time updates
-  // Uses ref to prevent multiple subscriptions from the same component
-  useEffect(() => {
-    if (!enabled || !realtime) return;
-
-    // Handle device data messages (real-time sensor readings)
-    const handleDeviceData = (_topic: string, data: any) => {
-      if (import.meta.env.DEV) {
-        console.log('[useDevices] Device data via MQTT:', data);
-      }
-      // Update local state with new reading
-      mutate((currentDevices) => {
-        if (!currentDevices) return currentDevices;
-        
-        // Update the device with latest reading
-        return currentDevices.map((device: any) => {
-          if (device.deviceId === data.deviceId) {
-            return {
-              ...device,
-              latestReading: data,
-              lastSeen: new Date().toISOString(),
-            };
-          }
-          return device;
-        });
-      });
-    };
-
-    // Handle device status messages
-    const handleDeviceStatus = (_topic: string, data: any) => {
-      if (import.meta.env.DEV) {
-        console.log('[useDevices] Device status via MQTT:', data);
-      }
-      // Update device status
-      mutate((currentDevices) => {
-        if (!currentDevices) return currentDevices;
-        
-        return currentDevices.map((device: any) => {
-          if (device.deviceId === data.deviceId) {
-            return {
-              ...device,
-              status: data.status,
-              lastSeen: new Date().toISOString(),
-            };
-          }
-          return device;
-        });
-      });
-    };
-
-    // Subscribe to device topics for real-time data
-    subscribeToTopic(MQTT_TOPICS.DEVICE_DATA, handleDeviceData);
-    subscribeToTopic(MQTT_TOPICS.DEVICE_STATUS, handleDeviceStatus);
-
-    if (import.meta.env.DEV) {
-      console.log('[useDevices] Subscribed to real-time devices via MQTT');
-    }
-
-    return () => {
-      // Remove topic listeners on cleanup
-      unsubscribeFromTopic(MQTT_TOPICS.DEVICE_DATA, handleDeviceData);
-      unsubscribeFromTopic(MQTT_TOPICS.DEVICE_STATUS, handleDeviceStatus);
-
-      if (import.meta.env.DEV) {
-        console.log('[useDevices] Cleaned up MQTT topic listeners');
-      }
-    };
-  }, [enabled, realtime, mutate]);
 
   // Fetch device stats
   const {
