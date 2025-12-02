@@ -10,7 +10,6 @@ const requiredEnvVars = [
   'MONGO_URI',
   'FIREBASE_PROJECT_ID',
   'CLIENT_URL',
-  'DEVICE_API_KEY', // Required for securing sensor data endpoints
 ];
 
 const optionalEnvVars = [
@@ -148,9 +147,7 @@ const getEnvironmentSummary = () => {
     mongoConfigured: !!process.env.MONGO_URI,
     redisConfigured: !!process.env.REDIS_URL,
     smtpConfigured: !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
-    firebaseConfigured: !!(process.env.FIREBASE_PROJECT_ID && (process.env.FIREBASE_SERVICE_ACCOUNT_PATH || process.env.FIREBASE_SERVICE_ACCOUNT)),
-    apiKeyConfigured: !!process.env.DEVICE_API_KEY,
-  };
+    firebaseConfigured: !!(process.env.FIREBASE_PROJECT_ID && (process.env.FIREBASE_SERVICE_ACCOUNT_PATH || process.env.FIREBASE_SERVICE_ACCOUNT)),  };
 };
 
 module.exports = {
