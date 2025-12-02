@@ -373,6 +373,13 @@ export function useDeviceMutations(): UseDeviceMutationsReturn {
           location,
           metadata,
         });
+        
+        // Invalidate all device-related caches to force refetch
+        await mutate(
+          (key) => typeof key === 'string' && key.startsWith(ENDPOINTS.DEVICES.BASE),
+          undefined,
+          { revalidate: true }
+        );
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Failed to register device');
         setError(error);

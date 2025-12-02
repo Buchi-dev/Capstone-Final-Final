@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Layout, Modal, message, Space, Input } from 'antd';
 import { ApiOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { AdminLayout } from '../../../components/layouts';
@@ -10,7 +10,7 @@ import {
   RegisterDeviceModal,
 } from './components';
 import { useDeviceFilter } from './hooks';
-import { useDevices, useDeviceMutations } from '../../../hooks';
+import { useDevices, useDeviceMutations, useDeviceRegistrations, type DeviceRegistrationData } from '../../../hooks';
 import type { Device } from '../../../schemas';
 import { sendDeregisterCommand } from '../../../utils/mqtt';
 import './DeviceManagement.css';
@@ -35,6 +35,35 @@ export const AdminDeviceManagement = () => {
   const [isViewModalVisible, setIsViewModalVisible] = useState(false);
   const [isRegisterModalVisible, setIsRegisterModalVisible] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Track unregistered devices detected via MQTT
+  const [unregisteredDevices, setUnregisteredDevices] = useState<DeviceRegistrationData[]>([]);
+
+  // Handle new device registrations from MQTT
+  const handleDeviceDetected = useCallback((deviceData: DeviceRegistrationData) => {
+    console.log('[AdminDeviceManagement] New device detected:', deviceData);
+    
+    // Check if device already in unregistered list
+    setUnregisteredDevices((prev) => {
+      const exists = prev.some((d) => d.deviceId === deviceData.deviceId);
+      if (exists) {
+        console.log('[AdminDeviceManagement] Device already in list, updating...');
+        // Update existing entry
+        return prev.map((d) =>
+          d.deviceId === deviceData.deviceId ? deviceData : d
+        );
+      }
+      // Add new device
+      console.log('[AdminDeviceManagement] Adding new device to list');
+      return [...prev, deviceData];
+    });
+  }, []);
+
+  // ✅ MQTT HOOK - Listen for device registrations
+  useDeviceRegistrations({
+    enabled: true,
+    onDeviceDetected: handleDeviceDetected,
+  });
 
   // ✅ GLOBAL HOOK - Real-time device data
   const {
@@ -54,9 +83,10 @@ export const AdminDeviceManagement = () => {
     return devicesWithSensorData as Device[];
   }, [devicesWithSensorData]);
 
-  // ✅ LOCAL HOOK - UI-specific filtering logic
+  // ✅ LOCAL HOOK - UI-specific filtering logic (merges DB + MQTT devices)
   const { filteredDevices, stats } = useDeviceFilter({
     devices,
+    mqttUnregisteredDevices: unregisteredDevices,
     activeTab,
     searchText,
   });
@@ -137,11 +167,22 @@ export const AdminDeviceManagement = () => {
         locationData.floor,
         locationData.notes
       );
+      
       message.success('Device registered successfully!');
+      
+      // Remove from MQTT unregistered list if it was MQTT-detected
+      setUnregisteredDevices((prev) =>
+        prev.filter((d) => d.deviceId !== deviceId)
+      );
+      
       setIsRegisterModalVisible(false);
       setSelectedDevice(null);
+      
+      // Force immediate refetch to get the newly registered device
+      await refetch();
+      
+      // Switch to registered tab after data is refreshed
       setActiveTab('registered');
-      refetch();
     } catch (error) {
       message.error('Failed to register device');
       console.error('Error registering device:', error);

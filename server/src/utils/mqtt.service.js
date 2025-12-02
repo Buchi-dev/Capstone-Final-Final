@@ -156,7 +156,11 @@ class MQTTService {
       if (topic.includes('/data')) {
         this.handleSensorData(deviceId, data);
       } else if (topic.includes('/register')) {
-        this.handleDeviceRegistration(deviceId, data);
+        // NOTE: Client-side now handles device registration via MQTT listener
+        // Server no longer auto-creates devices in database when registration message received
+        // Admin must manually register device from the frontend UI
+        logger.info(`[MQTT Service] Device registration message received from ${deviceId} - handled by client`, data);
+        // this.handleDeviceRegistration(deviceId, data); // DISABLED - client-driven flow
       } else if (topic.includes('/presence')) {
         this.handleDevicePresence(deviceId, data);
       } else if (topic === MQTT_CONFIG.TOPICS.PRESENCE_RESPONSE) {

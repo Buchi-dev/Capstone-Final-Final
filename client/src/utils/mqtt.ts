@@ -31,6 +31,7 @@ export const MQTT_TOPICS = {
   // Device-published topics that frontend subscribes to
   DEVICE_DATA: 'devices/+/data',
   DEVICE_STATUS: 'devices/+/status',
+  DEVICE_REGISTER: 'devices/+/register', // Listen for device registration
 
   // Command topic for publishing
   DEVICE_COMMANDS: 'devices/+/commands',

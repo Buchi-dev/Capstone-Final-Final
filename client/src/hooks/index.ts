@@ -126,3 +126,13 @@ export {
   type UseReadinessOptions,
   type UseReadinessReturn,
 } from './useHealth';
+
+// ============================================================================
+// MQTT HOOKS
+// ============================================================================
+
+export {
+  useDeviceRegistrations,
+  type DeviceRegistrationData,
+  type UseDeviceRegistrationsOptions,
+} from './useDeviceRegistrations';
