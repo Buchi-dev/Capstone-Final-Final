@@ -143,10 +143,19 @@ class MQTTService {
       const messageStr = message.toString();
       const data = JSON.parse(messageStr);
 
-      logger.debug('[MQTT Service] Received message:', {
-        topic,
-        data: messageStr.substring(0, 200) + (messageStr.length > 200 ? '...' : ''),
-      });
+      // Always log registration messages (not just in debug mode)
+      if (topic.includes('/register')) {
+        logger.info('[MQTT Service] ⚡ REGISTRATION MESSAGE RECEIVED:', {
+          topic,
+          deviceId: data.deviceId || 'unknown',
+          data: messageStr.substring(0, 300),
+        });
+      } else {
+        logger.debug('[MQTT Service] Received message:', {
+          topic,
+          data: messageStr.substring(0, 200) + (messageStr.length > 200 ? '...' : ''),
+        });
+      }
 
       // Extract device ID from topic
       const topicParts = topic.split('/');
@@ -167,6 +176,7 @@ class MQTTService {
       logger.error('[MQTT Service] Error processing message:', {
         topic,
         error: error.message,
+        stack: error.stack,
         message: message.toString(),
       });
     }
@@ -192,7 +202,7 @@ class MQTTService {
           ...data,
         },
         headers: {
-          'x-api-key': process.env.API_KEY, // Use environment API key
+          'x-api-key': process.env.DEVICE_API_KEY || process.env.API_KEY, // Use environment API key
         },
       };
 
@@ -207,7 +217,10 @@ class MQTTService {
       await processSensorData(mockReq, mockRes);
 
     } catch (error) {
-      logger.error(`[MQTT Service] Error processing sensor data from ${deviceId}:`, error);
+      logger.error(`[MQTT Service] Error processing sensor data from ${deviceId}:`, {
+        error: error.message,
+        stack: error.stack,
+      });
     }
   }
 
@@ -250,21 +263,56 @@ class MQTTService {
           ...data,
         },
         headers: {
-          'x-api-key': process.env.API_KEY,
+          'x-api-key': process.env.DEVICE_API_KEY || process.env.API_KEY,
         },
       };
 
+      let responseStatus = null;
+      let responseData = null;
+
       const mockRes = {
-        status: (code) => ({
-          json: (data) => data,
-        }),
-        json: (data) => data,
+        status: (code) => {
+          responseStatus = code;
+          return {
+            json: (data) => {
+              responseData = data;
+              logger.info(`[MQTT Service] Device registration response [${code}]:`, {
+                deviceId,
+                success: data.success,
+                message: data.message,
+                status: data.data?.status,
+                isRegistered: data.data?.isRegistered,
+              });
+              return data;
+            },
+          };
+        },
+        json: (data) => {
+          responseData = data;
+          logger.info(`[MQTT Service] Device registration response [200]:`, {
+            deviceId,
+            success: data.success,
+            message: data.message,
+            status: data.data?.status,
+            isRegistered: data.data?.isRegistered,
+          });
+          return data;
+        },
       };
 
       await deviceRegister(mockReq, mockRes);
 
+      // Log the final result
+      if (responseStatus && responseStatus !== 200 && responseStatus !== 201) {
+        logger.warn(`[MQTT Service] Registration returned non-success status ${responseStatus} for ${deviceId}`);
+      }
+
     } catch (error) {
-      logger.error(`[MQTT Service] Error processing registration from ${deviceId}:`, error);
+      logger.error(`[MQTT Service] Error processing registration from ${deviceId}:`, {
+        error: error.message,
+        stack: error.stack,
+        deviceData: data,
+      });
     }
   }
 

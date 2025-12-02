@@ -630,7 +630,7 @@ const deviceRegister = asyncHandler(async (req, res) => {
       macAddress: macAddress || '',
       ipAddress: ipAddress || '',
       sensors: sensors || ['pH', 'turbidity', 'tds'],
-      status: 'offline', // Start as offline - will be marked online when first sensor data arrives
+      status: 'online', // Device is online (it just registered via MQTT)
       registrationStatus: 'pending',
       isRegistered: false,
       lastSeen: new Date(),
@@ -670,8 +670,8 @@ const deviceRegister = asyncHandler(async (req, res) => {
       isRegistered: false,
     }, 'Device registration request received');
   } else {
-    // Device exists - update last seen and metadata
-    // DO NOT set status to online here - only sensor data or presence responses should do that
+    // Device exists - update last seen, status, and metadata
+    device.status = 'online'; // Device is online (it just re-registered via MQTT)
     device.lastSeen = new Date();
     
     // Update metadata if provided
