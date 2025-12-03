@@ -173,6 +173,15 @@ const updateUserProfile = asyncHandler(async (req, res) => {
 const completeUserProfile = asyncHandler(async (req, res) => {
   const { firstName, lastName, middleName, department, phoneNumber } = req.body;
   
+  // Check if user is authenticated
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required',
+      errorCode: 'AUTH_NO_USER'
+    });
+  }
+  
   // Get the logged-in user's ID
   const loggedInUserId = (req.user._id || req.user.id).toString();
   const targetUserId = req.params.id;
@@ -182,6 +191,7 @@ const completeUserProfile = asyncHandler(async (req, res) => {
     return res.status(403).json({
       success: false,
       message: 'Forbidden: You can only complete your own profile',
+      errorCode: 'AUTH_FORBIDDEN'
     });
   }
 
@@ -189,16 +199,40 @@ const completeUserProfile = asyncHandler(async (req, res) => {
   if (!department || !phoneNumber) {
     throw new ValidationError('Both department and phone number are required to complete your profile');
   }
+  
+  // Validate department (trim and check length)
+  const trimmedDept = department.trim();
+  if (trimmedDept.length < 2) {
+    throw new ValidationError('Department must be at least 2 characters');
+  }
+  if (trimmedDept.length > 100) {
+    throw new ValidationError('Department must not exceed 100 characters');
+  }
+
+  // Validate phone number format
+  const trimmedPhone = phoneNumber.trim();
+  const phoneRegex = /^\+?\d{10,15}$/;
+  if (!phoneRegex.test(trimmedPhone)) {
+    throw new ValidationError('Phone number must be 10-15 digits, optionally starting with +');
+  }
+  
+  // Validate names if provided
+  if (firstName && firstName.trim().length < 1) {
+    throw new ValidationError('First name cannot be empty');
+  }
+  if (lastName && lastName.trim().length < 1) {
+    throw new ValidationError('Last name cannot be empty');
+  }
 
   const updates = {
-    department,
-    phoneNumber,
+    department: trimmedDept,
+    phoneNumber: trimmedPhone,
   };
 
   // Also update name fields if provided
-  if (firstName) updates.firstName = firstName;
-  if (lastName) updates.lastName = lastName;
-  if (middleName !== undefined) updates.middleName = middleName;
+  if (firstName) updates.firstName = firstName.trim();
+  if (lastName) updates.lastName = lastName.trim();
+  if (middleName !== undefined) updates.middleName = middleName.trim();
 
   // Update displayName if names changed
   if (firstName || lastName || middleName !== undefined) {

@@ -71,6 +71,10 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    profileComplete: {
+      type: Boolean,
+      default: false,
+    },
     notificationPreferences: {
       emailNotifications: {
         type: Boolean,
@@ -124,6 +128,18 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ role: 1, status: 1 });
 
 /**
+ * Pre-save hook to auto-update profileComplete field
+ */
+userSchema.pre('save', function(next) {
+  if (this.department && this.phoneNumber) {
+    this.profileComplete = true;
+  } else {
+    this.profileComplete = false;
+  }
+  next();
+});
+
+/**
  * Instance method to get public profile
  */
 userSchema.methods.toPublicProfile = function () {
@@ -141,6 +157,7 @@ userSchema.methods.toPublicProfile = function () {
     role: this.role,
     status: this.status,
     provider: this.provider,
+    profileComplete: this.profileComplete,
     lastLogin: this.lastLogin,
     notificationPreferences: this.notificationPreferences,
     createdAt: this.createdAt,

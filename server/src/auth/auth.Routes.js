@@ -20,6 +20,7 @@ router.post('/verify-token', async (req, res) => {
       return res.status(400).json({
         success: false,
         message: 'ID token is required',
+        errorCode: 'AUTH_NO_TOKEN'
       });
     }
 
@@ -70,7 +71,19 @@ router.post('/verify-token', async (req, res) => {
     }
 
     // Check if user exists in database
-    let user = await User.findOne({ firebaseUid: decodedToken.uid });
+    let user;
+    try {
+      user = await User.findOne({ firebaseUid: decodedToken.uid });
+    } catch (dbError) {
+      logger.error('[Auth] Database query failed', {
+        error: dbError.message,
+      });
+      return res.status(503).json({
+        success: false,
+        message: 'Database temporarily unavailable. Please try again.',
+        errorCode: 'DB_ERROR',
+      });
+    }
 
     if (!user) {
       // Parse name components from token
@@ -99,35 +112,64 @@ router.post('/verify-token', async (req, res) => {
       }
       
       // Create new user (all data from decoded token, NO Firebase Admin calls)
-      user = new User({
-        firebaseUid: decodedToken.uid,
-        email: decodedToken.email || userEmail,
-        displayName: fullName,
-        firstName,
-        middleName,
-        lastName,
-        profilePicture: decodedToken.picture || '',
-        provider: 'firebase',
-        role: 'staff', // Default role
-        status: 'pending',
-        lastLogin: new Date(),
-      });
+      try {
+        user = new User({
+          firebaseUid: decodedToken.uid,
+          email: decodedToken.email || userEmail,
+          displayName: fullName,
+          firstName,
+          middleName,
+          lastName,
+          profilePicture: decodedToken.picture || '',
+          provider: 'firebase',
+          role: 'staff', // Default role
+          status: 'pending',
+          lastLogin: new Date(),
+        });
 
-      await user.save();
+        await user.save();
 
-      logger.info('[Auth] New user created', {
-        userId: user._id,
-        email: user.email,
-      });
+        logger.info('[Auth] New user created', {
+          userId: user._id,
+          email: user.email,
+        });
+      } catch (saveError) {
+        logger.error('[Auth] Failed to save new user', {
+          error: saveError.message,
+          code: saveError.code,
+        });
+        
+        // Check for duplicate key error
+        if (saveError.code === 11000) {
+          return res.status(409).json({
+            success: false,
+            message: 'User with this email already exists.',
+            errorCode: 'USER_ALREADY_EXISTS',
+          });
+        }
+        
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to create user account. Please try again.',
+          errorCode: 'USER_CREATION_FAILED',
+        });
+      }
     } else {
-      // Update last login
-      user.lastLogin = new Date();
-      await user.save();
+      // Update existing user
+      try {
+        user.lastLogin = new Date();
+        await user.save();
 
-      logger.info('[Auth] User logged in', {
-        userId: user._id,
-        email: user.email,
-      });
+        logger.info('[Auth] User logged in', {
+          userId: user._id,
+          email: user.email,
+        });
+      } catch (updateError) {
+        // Log but don't fail - user can still proceed
+        logger.warn('[Auth] Failed to update lastLogin', {
+          error: updateError.message,
+        });
+      }
     }
 
     res.json({
@@ -136,13 +178,16 @@ router.post('/verify-token', async (req, res) => {
       message: 'Token verified successfully',
     });
   } catch (error) {
-    logger.error('[Auth] Token verification failed', {
+    // Catch-all for unexpected errors
+    logger.error('[Auth] Unexpected error in verify-token', {
       error: error.message,
+      stack: error.stack,
     });
 
-    res.status(401).json({
+    res.status(500).json({
       success: false,
-      message: 'Invalid or expired token',
+      message: 'An unexpected error occurred. Please try again.',
+      errorCode: 'INTERNAL_ERROR',
     });
   }
 });

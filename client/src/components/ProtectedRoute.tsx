@@ -8,6 +8,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import { Spin, Result, Button } from "antd";
 import { LoadingOutlined, LockOutlined } from "@ant-design/icons";
 import { useAuth } from "../contexts";
+import { needsProfileCompletion } from "../utils/navigationHelpers";
 
 /**
  * Loading Spinner Component
@@ -90,13 +91,13 @@ export function ApprovedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/auth/login" replace />;
   }
 
-  // Check status - pending means awaiting admin approval
+  // Check if user needs to complete profile or has other status issues
+  // Use centralized navigation helper
+  if (needsProfileCompletion(user)) {
+    return <Navigate to="/auth/account-completion" replace />;
+  }
+
   if (isPending) {
-    // Check if profile is complete (has department and phone)
-    if (!user.department || !user.phoneNumber) {
-      // New user without complete profile - go to account completion
-      return <Navigate to="/auth/account-completion" replace />;
-    }
     return <Navigate to="/auth/pending-approval" replace />;
   }
 
@@ -134,13 +135,12 @@ export function AdminRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/auth/login" replace />;
   }
 
-  // Check status
+  // Check status - use centralized navigation helper
+  if (needsProfileCompletion(user)) {
+    return <Navigate to="/auth/account-completion" replace />;
+  }
+
   if (isPending) {
-    // Check if profile is complete (has department and phone)
-    if (!user.department || !user.phoneNumber) {
-      // New user without complete profile - go to account completion
-      return <Navigate to="/auth/account-completion" replace />;
-    }
     return <Navigate to="/auth/pending-approval" replace />;
   }
 

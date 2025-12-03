@@ -10,8 +10,7 @@ import { Button, Card, Alert, Typography, Space, theme } from "antd";
 import { GoogleOutlined } from "@ant-design/icons";
 import { useAuth } from "../../../contexts";
 import { authService } from "../../../services/auth.Service";
-import { auth } from "../../../config/firebase.config";
-import { onAuthStateChanged } from "firebase/auth";
+import { getUserDestination } from "../../../utils/navigationHelpers";
 
 const { Title, Text } = Typography;
 
@@ -34,32 +33,13 @@ export default function AuthLogin() {
       setError('Authentication failed. Please try again.');
     }
 
-    // Redirect if already authenticated
+    // Redirect if already authenticated - use centralized navigation logic
     if (!loading && isAuthenticated && user) {
-      console.log('[AuthLogin] User authenticated, redirecting...', user);
+      console.log('[AuthLogin] User authenticated, redirecting...', user.email);
       
-      // Route based on user role and status
-      if (user.status === 'suspended') {
-        navigate('/auth/account-suspended');
-      } else if (user.status === 'pending') {
-        // Check if profile is complete (has department and phone)
-        if (!user.department || !user.phoneNumber) {
-          // New user without complete profile - go to account completion
-          navigate('/auth/account-completion');
-        } else {
-          // Profile complete - go to pending approval
-          navigate('/auth/pending-approval');
-        }
-      } else if (user.status === 'active') {
-        // Active user - redirect to appropriate dashboard
-        if (user.role === 'admin') {
-          navigate('/admin/dashboard');
-        } else if (user.role === 'staff') {
-          navigate('/staff/dashboard');
-        } else {
-          navigate('/dashboard');
-        }
-      }
+      // Use centralized navigation helper - single source of truth!
+      const destination = getUserDestination(user);
+      navigate(destination);
       
       // Stop loading state after navigation
       setIsLoggingIn(false);
@@ -68,6 +48,7 @@ export default function AuthLogin() {
 
   /**
    * Handle Google OAuth login
+   * Simplified to avoid race conditions - let useEffect handle navigation
    */
   const handleGoogleLogin = async () => {
     setError(null);
@@ -77,65 +58,16 @@ export default function AuthLogin() {
       // Login with Google and verify token with backend
       const response = await authService.loginWithGoogle();
       
-      // Domain check is now done in authService.loginWithGoogle()
-      // If we reach here, the user has a valid SMU email
+      console.log('[AuthLogin] Login successful:', response.user.email);
       
-      console.log('[AuthLogin] Login successful, user:', response.user);
-      
-      // Wait for Firebase auth state to be fully established
-      // This ensures subsequent API calls will have auth.currentUser available
-      await new Promise<void>((resolve) => {
-        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-          if (firebaseUser) {
-            console.log('[AuthLogin] Firebase auth state confirmed for:', firebaseUser.email);
-            unsubscribe();
-            resolve();
-          }
-        });
-        
-        // Timeout after 5 seconds
-        setTimeout(() => {
-          unsubscribe();
-          resolve();
-        }, 5000);
-      });
-      
-      // Add a small delay to ensure Firebase is fully ready
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Now refetch the user through AuthContext
-      // At this point, auth.currentUser is ready, so the API interceptor will work
-      console.log('[AuthLogin] Refetching user through AuthContext...');
+      // Simply refetch user and let useEffect handle navigation
+      // This eliminates race conditions and duplicate navigation logic
       await refetchUser();
       
       console.log('[AuthLogin] User refetched successfully');
       
-      // If we reach here and still not authenticated, something is wrong
-      // Navigate manually based on the login response
-      if (!isAuthenticated) {
-        console.warn('[AuthLogin] AuthContext not updated, navigating manually');
-        const loggedInUser = response.user;
-        
-        if (loggedInUser.status === 'suspended') {
-          navigate('/auth/account-suspended');
-        } else if (loggedInUser.status === 'pending') {
-          if (!loggedInUser.department || !loggedInUser.phoneNumber) {
-            navigate('/auth/account-completion');
-          } else {
-            navigate('/auth/pending-approval');
-          }
-        } else if (loggedInUser.status === 'active') {
-          if (loggedInUser.role === 'admin') {
-            navigate('/admin/dashboard');
-          } else if (loggedInUser.role === 'staff') {
-            navigate('/staff/dashboard');
-          } else {
-            navigate('/dashboard');
-          }
-        }
-        setIsLoggingIn(false);
-      }
-      // Otherwise, useEffect will handle navigation and stop loading
+      // useEffect will automatically navigate based on user status
+      // No manual navigation needed - single source of truth!
       
     } catch (err) {
       console.error('[AuthLogin] Login failed:', err);

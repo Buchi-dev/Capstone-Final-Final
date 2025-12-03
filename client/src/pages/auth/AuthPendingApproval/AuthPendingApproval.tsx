@@ -5,7 +5,7 @@
  * Handles "pending" status for new user registrations
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, Typography, Space, Button, Tag, theme } from "antd";
 import { 
@@ -24,6 +24,8 @@ export const AuthPendingApproval = () => {
   const { user, loading: authLoading, isAuthenticated, refetchUser } = useAuth();
   const navigate = useNavigate();
   const { token } = theme.useToken();
+  const [pollCount, setPollCount] = useState(0);
+  const [isChecking, setIsChecking] = useState(false);
 
   useEffect(() => {
     // Redirect if not authenticated
@@ -66,17 +68,45 @@ export const AuthPendingApproval = () => {
     }
   }, [authLoading, isAuthenticated, user, navigate]);
 
-  // Periodic status check every 30 seconds
+  // Periodic status check with exponential backoff
+  // Intervals: 30s, 1m, 2m, 5m, then stop
   useEffect(() => {
     if (!isAuthenticated || !user) return;
-
+    
+    // Define intervals with exponential backoff
+    const intervals = [30000, 60000, 120000, 300000]; // 30s, 1m, 2m, 5m
+    const maxPolls = intervals.length;
+    
+    // Stop polling if max attempts reached
+    if (pollCount >= maxPolls) {
+      console.log('[PendingApproval] Max poll attempts reached. Manual refresh only.');
+      return;
+    }
+    
+    const currentInterval = intervals[pollCount] || intervals[intervals.length - 1];
+    
     const interval = setInterval(async () => {
-      console.log("Checking for status updates...");
-      await refetchUser();
-    }, 30000); // 30 seconds
+      if (isChecking) return; // Prevent concurrent checks
+      
+      setIsChecking(true);
+      console.log(`[PendingApproval] Auto-checking status (attempt ${pollCount + 1}/${maxPolls})...`);
+      
+      try {
+        await refetchUser();
+        setPollCount(prev => prev + 1);
+      } catch (error) {
+        console.error('[PendingApproval] Failed to check status:', error);
+        // Stop polling on error
+        setPollCount(maxPolls);
+      } finally {
+        setIsChecking(false);
+      }
+    }, currentInterval);
+
+    console.log(`[PendingApproval] Next auto-check in ${currentInterval / 1000} seconds`);
 
     return () => clearInterval(interval);
-  }, [isAuthenticated, user, refetchUser]);
+  }, [isAuthenticated, user, refetchUser, pollCount, isChecking]);
 
   const handleSignOut = async () => {
     try {
@@ -87,8 +117,22 @@ export const AuthPendingApproval = () => {
   };
 
   const handleCheckAgain = async () => {
-    await refetchUser();
+    if (isChecking) return;
+    
+    setIsChecking(true);
+    setPollCount(0); // Reset poll count to restart auto-checks
+    
+    try {
+      await refetchUser();
+    } catch (error) {
+      console.error('[PendingApproval] Manual check failed:', error);
+    } finally {
+      setIsChecking(false);
+    }
   };
+  
+  // Check if polling is still active
+  const pollingActive = pollCount < 4;
 
   return (
     <div
@@ -221,7 +265,11 @@ export const AuthPendingApproval = () => {
               </Space>
               <Space align="start" size="small">
                 <CheckCircleOutlined style={{ color: token.colorPrimary, marginTop: 4, fontSize: 18 }} />
-                <Text style={{ fontSize: 14, lineHeight: 1.6 }}>This page auto-updates when status changes</Text>
+                <Text style={{ fontSize: 14, lineHeight: 1.6 }}>
+                  {pollingActive 
+                    ? 'This page auto-updates when status changes'
+                    : 'Click "Check Status" below to refresh'}
+                </Text>
               </Space>
             </div>
           </div>
@@ -234,8 +282,10 @@ export const AuthPendingApproval = () => {
             flexWrap: "wrap",
           }}>
             <Button
-              icon={<ReloadOutlined />}
+              icon={<ReloadOutlined spin={isChecking} />}
               onClick={handleCheckAgain}
+              loading={isChecking}
+              disabled={isChecking}
               size="large"
               style={{
                 borderRadius: 8,
@@ -243,7 +293,7 @@ export const AuthPendingApproval = () => {
                 height: 48,
               }}
             >
-              Refresh Status
+              {isChecking ? 'Checking...' : 'Check Status'}
             </Button>
             <Button
               icon={<LogoutOutlined />}

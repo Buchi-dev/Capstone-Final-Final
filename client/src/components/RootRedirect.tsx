@@ -1,13 +1,14 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts';
 import { Spin } from 'antd';
+import { getUserDestination } from '../utils/navigationHelpers';
 
 /**
  * Smart Root Redirect
- * Redirects users to appropriate dashboard based on their role and status
+ * Redirects users to appropriate destination using centralized navigation logic
  */
 export const RootRedirect = () => {
-  const { isAuthenticated, isAdmin, isActive, isPending, isSuspended, user, loading } = useAuth();
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -22,28 +23,7 @@ export const RootRedirect = () => {
     );
   }
 
-  // Not authenticated -> Login
-  if (!isAuthenticated || !user) {
-    return <Navigate to="/auth/login" replace />;
-  }
-
-  // Check user status
-  if (isSuspended) {
-    return <Navigate to="/auth/account-suspended" replace />;
-  }
-
-  if (isPending) {
-    return <Navigate to="/auth/pending-approval" replace />;
-  }
-
-  // Active users - redirect to appropriate dashboard
-  if (isActive) {
-    if (isAdmin) {
-      return <Navigate to="/admin/dashboard" replace />;
-    }
-    return <Navigate to="/staff/dashboard" replace />;
-  }
-
-  // Default fallback - pending approval
-  return <Navigate to="/auth/pending-approval" replace />;
+  // Use centralized navigation helper - single source of truth!
+  const destination = getUserDestination(user);
+  return <Navigate to={destination} replace />;
 };
