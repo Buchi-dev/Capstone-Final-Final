@@ -11,7 +11,7 @@
  */
 
 import nodemailer, { Transporter } from 'nodemailer';
-import { userService } from '@feature/users';
+import userService from '@feature/users/user.service';
 import { IAlertDocument } from '@feature/alerts/alert.types';
 import logger from '@utils/logger.util';
 

@@ -11,7 +11,7 @@ import admin from 'firebase-admin';
 import { UnauthorizedError, ForbiddenError } from '@utils/errors.util';
 import { ERROR_MESSAGES } from '@core/configs/messages.config';
 import { UserRole } from '@feature/users/user.types';
-import { userService } from '@feature/users';
+import userService from '@feature/users/user.service';
 
 /**
  * Extended Request interface with user
