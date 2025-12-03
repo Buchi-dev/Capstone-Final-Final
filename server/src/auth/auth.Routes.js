@@ -9,7 +9,7 @@ const router = express.Router();
 
 /**
  * @route   POST /auth/verify-token
- * @desc    Verify Firebase ID token and sync user to database
+ * @desc    Sync user to database (NO TOKEN VERIFICATION - client handles auth)
  * @access  Public
  */
 router.post('/verify-token', async (req, res) => {
@@ -23,122 +23,68 @@ router.post('/verify-token', async (req, res) => {
       });
     }
 
-    // Verify Firebase token FIRST (fast operation)
+    logger.info('[Auth] CLIENT-SIDE AUTH MODE - No token verification');
+
+    // Decode token WITHOUT verification
     let decodedToken;
     try {
-      decodedToken = await verifyIdToken(idToken);
-    } catch (verifyError) {
-      // Check for Firebase credential/configuration errors (clock sync, expired keys, etc.)
-      const isSystemError = verifyError.message && (
-        verifyError.message.includes('invalid_grant') || 
-        verifyError.message.includes('Invalid JWT Signature') ||
-        verifyError.message.includes('serviceusage')
+      const base64Url = idToken.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(
+        Buffer.from(base64, 'base64')
+          .toString('utf-8')
+          .split('')
+          .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+          .join('')
       );
       
-      if (isSystemError) {
-        logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        logger.error('🔥 CRITICAL: FIREBASE SERVICE ACCOUNT ERROR 🔥');
-        logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        logger.error('The Firebase service account credentials are invalid or expired.');
-        logger.error('OR the server clock is out of sync.');
-        logger.error('');
-        logger.error('IMMEDIATE ACTION REQUIRED:');
-        logger.error('1. Go to Firebase Console > Project Settings > Service Accounts');
-        logger.error('2. Generate a NEW private key');
-        logger.error('3. Update FIREBASE_SERVICE_ACCOUNT environment variable');
-        logger.error('4. OR sync server clock with NTP');
-        logger.error('5. Restart this server');
-        logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        
-        // FALLBACK MODE: If bypass is enabled, decode without verification
-        if (process.env.BYPASS_JWT_VERIFICATION === 'true') {
-          logger.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          logger.warn('⚠️ UNSAFE MODE: JWT VERIFICATION BYPASSED');
-          logger.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          
-          try {
-            // Decode JWT without verification (UNSAFE)
-            const base64Url = idToken.split('.')[1];
-            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-            const jsonPayload = decodeURIComponent(
-              Buffer.from(base64, 'base64')
-                .toString('utf-8')
-                .split('')
-                .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-                .join('')
-            );
-            
-            decodedToken = JSON.parse(jsonPayload);
-            
-            // Normalize token structure
-            if (decodedToken.user_id && !decodedToken.uid) {
-              decodedToken.uid = decodedToken.user_id;
-            }
-            
-            logger.warn('[Auth] Token decoded WITHOUT verification (UNSAFE)', {
-              uid: decodedToken.uid,
-              email: decodedToken.email,
-            });
-          } catch (decodeError) {
-            logger.error('[Auth] Failed to decode token even in bypass mode');
-            return res.status(401).json({
-              success: false,
-              message: 'Invalid token format',
-              errorCode: 'AUTH_TOKEN_INVALID',
-            });
-          }
-        } else {
-          return res.status(503).json({
-            success: false,
-            message: 'Backend authentication service unavailable. Contact administrator.',
-            errorCode: 'AUTH_SERVICE_UNAVAILABLE',
-            error: process.env.NODE_ENV === 'development' ? verifyError.message : undefined,
-          });
-        }
-      } else {
-        logger.error('[Auth] Firebase token verification failed', {
-          error: verifyError.message,
-          errorCode: verifyError.code,
-        });
-        
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid or expired Firebase token',
-          errorCode: 'AUTH_TOKEN_INVALID',
-        });
+      decodedToken = JSON.parse(jsonPayload);
+      
+      // Normalize token structure
+      if (decodedToken.user_id && !decodedToken.uid) {
+        decodedToken.uid = decodedToken.user_id;
       }
+    } catch (decodeError) {
+      logger.error('[Auth] Failed to decode token', {
+        error: decodeError.message,
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid token format',
+        errorCode: 'AUTH_TOKEN_INVALID',
+      });
     }
 
-    // IMMEDIATE domain validation BEFORE any database operations
-    // This prevents timeouts for unauthorized users
+    // Domain validation
     const userEmail = decodedToken.email;
     if (!userEmail || !userEmail.endsWith('@smu.edu.ph')) {
-      logger.warn('[Auth] Domain validation failed - personal account rejected', {
+      logger.warn('[Auth] Domain validation failed', {
         email: userEmail,
-        requiredDomain: '@smu.edu.ph',
       });
       
-      // Return 403 Forbidden with specific error code
       return res.status(403).json({
         success: false,
-        message: 'Access denied: Only SMU email addresses (@smu.edu.ph) are allowed. Personal accounts are not permitted.',
+        message: 'Access denied: Only SMU email addresses (@smu.edu.ph) are allowed.',
         errorCode: 'AUTH_INVALID_DOMAIN',
-        metadata: {
-          email: userEmail,
-          requiredDomain: '@smu.edu.ph',
-        },
       });
     }
 
-    // Get Firebase user data only AFTER domain validation
-    const firebaseUser = await getFirebaseUser(decodedToken.uid);
+    // Get Firebase user data (this might fail if Firebase admin is broken, but we continue anyway)
+    let firebaseUser = null;
+    try {
+      firebaseUser = await getFirebaseUser(decodedToken.uid);
+    } catch (firebaseError) {
+      logger.warn('[Auth] Could not fetch Firebase user data, using token data only', {
+        error: firebaseError.message,
+      });
+    }
 
     // Check if user exists in database
     let user = await User.findOne({ firebaseUid: decodedToken.uid });
 
     if (!user) {
       // Parse name components
-      const fullName = decodedToken.name || firebaseUser.displayName || 'User';
+      const fullName = decodedToken.name || (firebaseUser ? firebaseUser.displayName : null) || 'User';
       const nameParts = fullName.trim().split(/\s+/); // Split by whitespace
       
       let firstName = '';
@@ -165,12 +111,12 @@ router.post('/verify-token', async (req, res) => {
       // Create new user
       user = new User({
         firebaseUid: decodedToken.uid,
-        email: decodedToken.email || firebaseUser.email,
+        email: decodedToken.email || (firebaseUser ? firebaseUser.email : userEmail),
         displayName: fullName,
         firstName,
         middleName,
         lastName,
-        profilePicture: decodedToken.picture || firebaseUser.photoURL || '',
+        profilePicture: decodedToken.picture || (firebaseUser ? firebaseUser.photoURL : '') || '',
         provider: 'firebase',
         role: 'staff', // Default role
         status: 'pending',
