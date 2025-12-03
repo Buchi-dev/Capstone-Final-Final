@@ -3,8 +3,8 @@ const path = require('path');
 const logger = require('../utils/logger');
 
 /**
- * Configure Firebase Admin SDK
- * Used for verifying Firebase Auth tokens on the backend
+ * Configure Firebase Admin SDK (OPTIONAL - not required for client-side auth)
+ * Only needed if you want to fetch user data from Firebase
  */
 const configureFirebase = () => {
   try {
@@ -12,15 +12,29 @@ const configureFirebase = () => {
 
     // Check if service account is provided as environment variable (for production)
     if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      try {
+        serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      } catch (parseError) {
+        logger.warn('[Firebase] Failed to parse service account JSON - Firebase Admin disabled');
+        logger.warn('[Firebase] CLIENT-SIDE AUTH MODE - Backend will decode tokens without verification');
+        return;
+      }
     } 
     // Otherwise load from file path
     else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
       const accountPath = path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
-      serviceAccount = require(accountPath);
+      try {
+        serviceAccount = require(accountPath);
+      } catch (fileError) {
+        logger.warn('[Firebase] Service account file not found - Firebase Admin disabled');
+        logger.warn('[Firebase] CLIENT-SIDE AUTH MODE - Backend will decode tokens without verification');
+        return;
+      }
     } 
     else {
-      throw new Error('Neither FIREBASE_SERVICE_ACCOUNT nor FIREBASE_SERVICE_ACCOUNT_PATH is set');
+      logger.warn('[Firebase] No service account configured - Firebase Admin disabled');
+      logger.warn('[Firebase] CLIENT-SIDE AUTH MODE - Backend will decode tokens without verification');
+      return;
     }
 
     admin.initializeApp({
@@ -35,10 +49,11 @@ const configureFirebase = () => {
       logger.info('[Firebase] Admin SDK initialized successfully');
     }
   } catch (error) {
-    logger.error('[Firebase] Failed to initialize Admin SDK', {
+    logger.warn('[Firebase] Failed to initialize Admin SDK - continuing without it', {
       error: error.message,
     });
-    throw error;
+    logger.warn('[Firebase] CLIENT-SIDE AUTH MODE - Backend will decode tokens without verification');
+    // DON'T throw error - allow server to start without Firebase
   }
 };
 
