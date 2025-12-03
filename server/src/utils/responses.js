@@ -185,6 +185,102 @@ class ResponseHelper {
       errors: formattedErrors,
     });
   }
+
+  /**
+   * Transform MongoDB document to client format
+   * Adds 'id' field and handles timestamps
+   * @param {Object} doc - Mongoose document
+   * @param {boolean} lean - Whether document is lean
+   * @returns {Object} Transformed document
+   */
+  static transformDocument(doc, lean = false) {
+    if (!doc) return null;
+
+    const obj = lean ? doc : doc.toObject?.() || doc;
+    
+    return {
+      ...obj,
+      id: obj._id?.toString() || obj.id,
+    };
+  }
+
+  /**
+   * Transform array of documents
+   * @param {Array} docs - Array of documents
+   * @param {boolean} lean - Whether documents are lean
+   * @returns {Array} Transformed documents
+   */
+  static transformDocuments(docs, lean = false) {
+    if (!Array.isArray(docs)) return [];
+    return docs.map(doc => ResponseHelper.transformDocument(doc, lean));
+  }
+
+  /**
+   * Convert MongoDB timestamps to Firebase format
+   * @param {Date} date - Date object
+   * @returns {Object} Firebase timestamp format
+   */
+  static toFirebaseTimestamp(date) {
+    if (!date) return null;
+    
+    const timestamp = new Date(date).getTime();
+    return {
+      seconds: Math.floor(timestamp / 1000),
+      nanoseconds: (timestamp % 1000) * 1000000,
+    };
+  }
+
+  /**
+   * Success response with transformed documents
+   * @param {Object} res - Express response object
+   * @param {Object|Array} data - Document or array of documents
+   * @param {string} message - Optional message
+   * @param {Object} options - Transformation options
+   */
+  static successWithTransform(res, data, message = null, options = {}) {
+    const { lean = true, timestamps = false } = options;
+
+    let transformed;
+    if (Array.isArray(data)) {
+      transformed = ResponseHelper.transformDocuments(data, lean);
+    } else {
+      transformed = ResponseHelper.transformDocument(data, lean);
+    }
+
+    // Apply timestamp transformation if needed
+    if (timestamps && transformed) {
+      const applyTimestamps = (obj) => {
+        if (obj.createdAt) {
+          obj.createdAt = ResponseHelper.toFirebaseTimestamp(obj.createdAt);
+        }
+        if (obj.updatedAt) {
+          obj.updatedAt = ResponseHelper.toFirebaseTimestamp(obj.updatedAt);
+        }
+        return obj;
+      };
+
+      if (Array.isArray(transformed)) {
+        transformed = transformed.map(applyTimestamps);
+      } else {
+        transformed = applyTimestamps(transformed);
+      }
+    }
+
+    return ResponseHelper.success(res, transformed, message);
+  }
+
+  /**
+   * Send paginated response with transformed documents
+   * @param {Object} res - Express response object
+   * @param {Array} data - Array of documents
+   * @param {Object} pagination - Pagination metadata
+   * @param {Object} options - Transformation options
+   */
+  static paginatedWithTransform(res, data, pagination, options = {}) {
+    const { lean = true } = options;
+    const transformed = ResponseHelper.transformDocuments(data, lean);
+    return ResponseHelper.paginated(res, transformed, pagination);
+  }
 }
 
 module.exports = ResponseHelper;

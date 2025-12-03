@@ -3,7 +3,6 @@ const mongoose = require('mongoose');
 const { getQueueStats } = require('../utils/email.queue');
 const logger = require('../utils/logger');
 const { HTTP_STATUS } = require('../utils/constants');
-const { diagnoseAuth } = require('../utils/diagnostics');
 const { ensureAuthenticated, ensureAdmin } = require('../auth/auth.Middleware');
 
 const router = express.Router();
@@ -178,12 +177,7 @@ router.get('/readiness', async (req, res) => {
   }
 });
 
-/**
- * @route   POST /health/diagnose-auth
- * @desc    Diagnose authentication issues (requires token)
- * @access  Public (but requires token in header to diagnose)
- */
-router.post('/diagnose-auth', diagnoseAuth);
+// Diagnostics endpoint removed - debug-only code not needed in production
 
 /**
  * @route   GET /health/queue/failed

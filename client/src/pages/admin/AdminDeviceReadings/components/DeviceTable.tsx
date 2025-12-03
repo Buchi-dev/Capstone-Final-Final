@@ -2,6 +2,12 @@ import { Table, Tag, Badge, Tooltip, Space, Typography } from 'antd';
 import {
   EnvironmentOutlined,
   ClockCircleOutlined,
+  ExperimentOutlined,
+  DashboardOutlined,
+  EyeOutlined,
+  CheckCircleOutlined,
+  WarningOutlined,
+  CloseCircleOutlined,
 } from '@ant-design/icons';
 import { memo } from 'react';
 import type { DeviceWithReadings } from '../../../../schemas';
@@ -12,27 +18,71 @@ interface DeviceTableProps {
   devices: DeviceWithReadings[];
 }
 
-// Helper to get quality status for a parameter
+// Helper to get quality status for a parameter with icon
 const getQualityStatus = (
   param: 'ph' | 'tds' | 'turbidity',
   value: number
-): { status: 'success' | 'warning' | 'error'; text: string } => {
+): { status: 'success' | 'warning' | 'error'; text: string; icon: React.ReactNode } => {
   switch (param) {
     case 'ph':
-      if (value >= 6.5 && value <= 8.5) return { status: 'success', text: 'Optimal' };
-      if (value >= 6.0 && value <= 9.0) return { status: 'warning', text: 'Acceptable' };
-      return { status: 'error', text: 'Critical' };
+      if (value >= 6.5 && value <= 8.5) return { 
+        status: 'success', 
+        text: 'Optimal',
+        icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />
+      };
+      if (value >= 6.0 && value <= 9.0) return { 
+        status: 'warning', 
+        text: 'Acceptable',
+        icon: <WarningOutlined style={{ color: '#faad14' }} />
+      };
+      return { 
+        status: 'error', 
+        text: 'Critical',
+        icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+      };
     case 'tds':
-      if (value <= 300) return { status: 'success', text: 'Excellent' };
-      if (value <= 500) return { status: 'warning', text: 'Good' };
-      if (value <= 1000) return { status: 'warning', text: 'Fair' };
-      return { status: 'error', text: 'Poor' };
+      if (value <= 300) return { 
+        status: 'success', 
+        text: 'Excellent',
+        icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />
+      };
+      if (value <= 500) return { 
+        status: 'warning', 
+        text: 'Good',
+        icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />
+      };
+      if (value <= 1000) return { 
+        status: 'warning', 
+        text: 'Fair',
+        icon: <WarningOutlined style={{ color: '#faad14' }} />
+      };
+      return { 
+        status: 'error', 
+        text: 'Poor',
+        icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+      };
     case 'turbidity':
-      if (value <= 1) return { status: 'success', text: 'Excellent' };
-      if (value <= 5) return { status: 'warning', text: 'Good' };
-      return { status: 'error', text: 'Poor' };
+      if (value <= 1) return { 
+        status: 'success', 
+        text: 'Excellent',
+        icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />
+      };
+      if (value <= 5) return { 
+        status: 'warning', 
+        text: 'Good',
+        icon: <WarningOutlined style={{ color: '#faad14' }} />
+      };
+      return { 
+        status: 'error', 
+        text: 'Poor',
+        icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />
+      };
     default:
-      return { status: 'success', text: 'Normal' };
+      return { 
+        status: 'success', 
+        text: 'Normal',
+        icon: <CheckCircleOutlined style={{ color: '#52c41a' }} />
+      };
   }
 };
 
@@ -89,7 +139,7 @@ export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
     {
       title: 'pH Level',
       key: 'ph',
-      width: 120,
+      width: 150,
       render: (device: DeviceWithReadings) => {
         if (!device.latestReading || typeof device.latestReading.ph !== 'number') {
           return <Text type="secondary">-</Text>;
@@ -97,21 +147,25 @@ export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
 
         const quality = getQualityStatus('ph', device.latestReading.ph);
         return (
-          <div>
-            <div>
-              <Text strong>{device.latestReading.ph.toFixed(2)}</Text>
-            </div>
-            <Tag color={quality.status}>
-              {quality.text}
-            </Tag>
-          </div>
+          <Space direction="vertical" size={2}>
+            <Space align="center" size={8}>
+              <ExperimentOutlined style={{ fontSize: '16px', color: '#1890ff' }} />
+              <Text strong style={{ fontSize: '16px' }}>{device.latestReading.ph.toFixed(2)}</Text>
+            </Space>
+            <Space align="center" size={4}>
+              {quality.icon}
+              <Tag color={quality.status} style={{ margin: 0 }}>
+                {quality.text}
+              </Tag>
+            </Space>
+          </Space>
         );
       },
     },
     {
       title: 'TDS (ppm)',
       key: 'tds',
-      width: 120,
+      width: 150,
       render: (device: DeviceWithReadings) => {
         if (!device.latestReading || typeof device.latestReading.tds !== 'number') {
           return <Text type="secondary">-</Text>;
@@ -119,21 +173,25 @@ export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
 
         const quality = getQualityStatus('tds', device.latestReading.tds);
         return (
-          <div>
-            <div>
-              <Text strong>{device.latestReading.tds.toFixed(0)}</Text>
-            </div>
-            <Tag color={quality.status}>
-              {quality.text}
-            </Tag>
-          </div>
+          <Space direction="vertical" size={2}>
+            <Space align="center" size={8}>
+              <DashboardOutlined style={{ fontSize: '16px', color: '#1890ff' }} />
+              <Text strong style={{ fontSize: '16px' }}>{device.latestReading.tds.toFixed(0)}</Text>
+            </Space>
+            <Space align="center" size={4}>
+              {quality.icon}
+              <Tag color={quality.status} style={{ margin: 0 }}>
+                {quality.text}
+              </Tag>
+            </Space>
+          </Space>
         );
       },
     },
     {
       title: 'Turbidity (NTU)',
       key: 'turbidity',
-      width: 140,
+      width: 170,
       render: (device: DeviceWithReadings) => {
         if (!device.latestReading || typeof device.latestReading.turbidity !== 'number') {
           return <Text type="secondary">-</Text>;
@@ -141,14 +199,18 @@ export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
 
         const quality = getQualityStatus('turbidity', device.latestReading.turbidity);
         return (
-          <div>
-            <div>
-              <Text strong>{device.latestReading.turbidity.toFixed(2)}</Text>
-            </div>
-            <Tag color={quality.status}>
-              {quality.text}
-            </Tag>
-          </div>
+          <Space direction="vertical" size={2}>
+            <Space align="center" size={8}>
+              <EyeOutlined style={{ fontSize: '16px', color: '#1890ff' }} />
+              <Text strong style={{ fontSize: '16px' }}>{device.latestReading.turbidity.toFixed(2)}</Text>
+            </Space>
+            <Space align="center" size={4}>
+              {quality.icon}
+              <Tag color={quality.status} style={{ margin: 0 }}>
+                {quality.text}
+              </Tag>
+            </Space>
+          </Space>
         );
       },
     },

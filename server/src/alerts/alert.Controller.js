@@ -3,6 +3,9 @@ const logger = require('../utils/logger');
 const { NotFoundError, ConflictError, ValidationError } = require('../errors');
 const ResponseHelper = require('../utils/responses');
 const asyncHandler = require('../middleware/asyncHandler');
+const { findByIdOrFail, updateByIdOrFail } = require('../utils/dbOperations');
+const { buildAndExecuteQuery } = require('../utils/queryBuilder');
+const { validateObjectId, validateAlertStatus } = require('../utils/validationService');
 
 /**
  * Get all alerts with filters
@@ -10,50 +13,20 @@ const asyncHandler = require('../middleware/asyncHandler');
  * @param {Object} res - Express response object
  */
 const getAllAlerts = asyncHandler(async (req, res) => {
-  const { 
-    deviceId, 
-    severity, 
-    status, 
-    startDate, 
-    endDate, 
-    page = 1, 
-    limit = 50 
-  } = req.query;
+  const result = await buildAndExecuteQuery(Alert, req.query, {
+    allowedFilters: ['deviceId', 'severity', 'status'],
+    defaultSort: '-timestamp',
+    defaultLimit: 50,
+    dateField: 'timestamp',
+    populate: [
+      { path: 'acknowledgedBy', select: 'displayName email' },
+      { path: 'resolvedBy', select: 'displayName email' },
+    ],
+    lean: false, // Need methods for toPublicProfile()
+  });
 
-  // Build filter object
-  const filter = {};
-  if (deviceId) filter.deviceId = deviceId;
-  if (severity) filter.severity = severity;
-  if (status) filter.status = status;
-
-  // Date range filter
-  if (startDate || endDate) {
-    filter.timestamp = {};
-    if (startDate) filter.timestamp.$gte = new Date(startDate);
-    if (endDate) filter.timestamp.$lte = new Date(endDate);
-  }
-
-  const alerts = await Alert.find(filter)
-    .populate('acknowledgedBy', 'displayName email')
-    .populate('resolvedBy', 'displayName email')
-    .limit(limit * 1)
-    .skip((page - 1) * limit)
-    .sort({ timestamp: -1 });
-
-  const count = await Alert.countDocuments(filter);
-
-  const alertsData = alerts.map(alert => alert.toPublicProfile());
-  const responseData = {
-    data: alertsData,
-    pagination: {
-      total: count,
-      page: parseInt(page),
-      pages: Math.ceil(count / limit),
-      limit: parseInt(limit),
-    },
-  };
-
-  ResponseHelper.paginated(res, alertsData, responseData.pagination);
+  const alertsData = result.data.map(alert => alert.toPublicProfile());
+  ResponseHelper.paginated(res, alertsData, result.pagination);
 });
 
 /**
@@ -62,18 +35,16 @@ const getAllAlerts = asyncHandler(async (req, res) => {
  * @param {Object} res - Express response object
  */
 const getAlertById = asyncHandler(async (req, res) => {
+  validateObjectId(req.params.id, 'Alert ID');
 
-  const alert = await Alert.findById(req.params.id)
-    .populate('acknowledgedBy', 'displayName email')
-    .populate('resolvedBy', 'displayName email');
+  const alert = await findByIdOrFail(Alert, req.params.id, {
+    populate: [
+      { path: 'acknowledgedBy', select: 'displayName email' },
+      { path: 'resolvedBy', select: 'displayName email' },
+    ],
+  });
 
-  if (!alert) {
-    throw new NotFoundError('Alert', req.params.id);
-  }
-
-  const alertData = alert.toPublicProfile();
-
-  ResponseHelper.success(res, alertData);
+  ResponseHelper.success(res, alert.toPublicProfile());
 });
 
 /**

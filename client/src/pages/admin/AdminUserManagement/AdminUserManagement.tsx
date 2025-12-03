@@ -29,7 +29,6 @@ import {
   UserOutlined,
   ReloadOutlined,
   PlusOutlined,
-  BugOutlined,
 } from "@ant-design/icons";
 import { useUsers, useUserMutations } from "../../../hooks";
 import { UsersTable } from "./components/UsersTable";
@@ -40,7 +39,6 @@ import type { UserListData, UserRole, UserStatus } from "../../../schemas";
 import { AdminLayout } from "../../../components/layouts/AdminLayout";
 import { PageHeader } from "../../../components/PageHeader";
 import { useAuth } from "../../../contexts";
-import { diagnoseAndPrint } from "../../../utils/authDiagnostics";
 import { getErrorMessage } from "../../../utils/errorHelpers";
 
 const { Content } = Layout;
@@ -183,17 +181,7 @@ export const AdminUserManagement: React.FC = () => {
     }
   };
 
-  // Handle diagnostic check
-  const handleRunDiagnostics = async () => {
-    message.info('Running authentication diagnostics... Check browser console for results.');
-    const result = await diagnoseAndPrint();
-    
-    if (result.success) {
-      message.success('Authentication is working correctly!');
-    } else {
-      message.error(`Authentication issues found: ${result.diagnostics.summary.issues} issue(s)`);
-    }
-  };
+  // Diagnostics removed - debug-only code
 
   // Handle refresh with loading state
   const handleRefresh = async () => {
@@ -238,12 +226,6 @@ export const AdminUserManagement: React.FC = () => {
             { title: 'User Management', icon: <UserOutlined /> }
           ]}
           actions={[
-            ...(import.meta.env.DEV ? [{
-              key: 'debug',
-              label: 'Debug Auth',
-              icon: <BugOutlined />,
-              onClick: () => void handleRunDiagnostics(),
-            }] : []),
             {
               key: 'refresh',
               label: 'Refresh',
@@ -305,15 +287,6 @@ export const AdminUserManagement: React.FC = () => {
                         >
                           Reload Page
                         </Button>
-                        {import.meta.env.DEV && (
-                          <Button 
-                            size="small"
-                            icon={<BugOutlined />}
-                            onClick={handleRunDiagnostics}
-                          >
-                            Debug
-                          </Button>
-                        )}
                       </Space>
                     </>
                   )}

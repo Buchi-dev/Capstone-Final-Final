@@ -3,6 +3,14 @@ const logger = require('../utils/logger');
 const { NotFoundError, ValidationError } = require('../errors');
 const ResponseHelper = require('../utils/responses');
 const asyncHandler = require('../middleware/asyncHandler');
+const { findByIdOrFail, updateByIdOrFail } = require('../utils/dbOperations');
+const { buildAndExecuteQuery } = require('../utils/queryBuilder');
+const { 
+  validateObjectId, 
+  validateUserRole, 
+  validateUserStatus,
+  sanitizeUpdateFields 
+} = require('../utils/validationService');
 
 /**
  * Get user by ID
@@ -10,20 +18,14 @@ const asyncHandler = require('../middleware/asyncHandler');
  * @param {Object} res - Express response object
  */
 const getUserById = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id)
-    .select('-googleId')
-    .lean();
+  validateObjectId(req.params.id, 'User ID');
   
-  if (!user) {
-    throw new NotFoundError('User', req.params.id);
-  }
+  const user = await findByIdOrFail(User, req.params.id, {
+    select: '-googleId',
+    lean: true,
+  });
 
-  const userData = {
-    ...user,
-    id: user._id,
-  };
-
-  ResponseHelper.success(res, userData);
+  ResponseHelper.successWithTransform(res, user);
 });
 
 /**
@@ -32,36 +34,15 @@ const getUserById = asyncHandler(async (req, res) => {
  * @param {Object} res - Express response object
  */
 const getAllUsers = asyncHandler(async (req, res) => {
-  const { role, status, page = 1, limit = 10 } = req.query;
-  
-  const filter = {};
-  if (role) filter.role = role;
-  if (status) filter.status = status;
+  const result = await buildAndExecuteQuery(User, req.query, {
+    allowedFilters: ['role', 'status'],
+    defaultSort: '-createdAt',
+    defaultLimit: 10,
+    select: '-googleId -firebaseUid',
+    searchFields: ['displayName', 'email', 'department'],
+  });
 
-  // Use lean() and select to optimize query
-  const users = await User.find(filter)
-    .select('-googleId -firebaseUid')
-    .limit(limit * 1)
-    .skip((page - 1) * limit)
-    .sort({ createdAt: -1 })
-    .lean();
-
-  const count = await User.countDocuments(filter);
-
-  // Add id field mapping
-  const usersWithId = users.map(user => ({
-    ...user,
-    id: user._id,
-  }));
-
-  const pagination = {
-    total: count,
-    page: parseInt(page),
-    pages: Math.ceil(count / limit),
-    limit: parseInt(limit),
-  };
-
-  ResponseHelper.paginated(res, usersWithId, pagination);
+  ResponseHelper.paginatedWithTransform(res, result.data, result.pagination);
 });
 
 /**
@@ -70,21 +51,13 @@ const getAllUsers = asyncHandler(async (req, res) => {
  * @param {Object} res - Express response object
  */
 const updateUserRole = asyncHandler(async (req, res) => {
-  const { role } = req.body;
-  
-  if (!['admin', 'staff'].includes(role)) {
-    throw new ValidationError('Invalid role. Must be admin or staff');
-  }
+  validateObjectId(req.params.id, 'User ID');
+  validateUserRole(req.body.role);
 
-  const user = await User.findByIdAndUpdate(
-    req.params.id,
-    { role },
-    { new: true }
-  ).select('-googleId');
-
-  if (!user) {
-    throw new NotFoundError('User', req.params.id);
-  }
+  const user = await updateByIdOrFail(User, req.params.id, 
+    { role: req.body.role },
+    { select: '-googleId' }
+  );
 
   // Check if admin is modifying their own role (requires logout)
   const requiresLogout = req.user._id.toString() === req.params.id;
@@ -102,21 +75,13 @@ const updateUserRole = asyncHandler(async (req, res) => {
  * @param {Object} res - Express response object
  */
 const updateUserStatus = asyncHandler(async (req, res) => {
-  const { status } = req.body;
-  
-  if (!['active', 'pending', 'suspended'].includes(status)) {
-    throw new ValidationError('Invalid status. Must be active, pending, or suspended');
-  }
+  validateObjectId(req.params.id, 'User ID');
+  validateUserStatus(req.body.status);
 
-  const user = await User.findByIdAndUpdate(
-    req.params.id,
-    { status },
-    { new: true }
-  ).select('-googleId');
-
-  if (!user) {
-    throw new NotFoundError('User', req.params.id);
-  }
+  const user = await updateByIdOrFail(User, req.params.id,
+    { status: req.body.status },
+    { select: '-googleId' }
+  );
 
   // Check if admin is modifying their own status (requires logout)
   const requiresLogout = req.user._id.toString() === req.params.id;
@@ -134,29 +99,14 @@ const updateUserStatus = asyncHandler(async (req, res) => {
  * @param {Object} res - Express response object
  */
 const updateUserProfile = asyncHandler(async (req, res) => {
-  const { displayName, firstName, lastName, middleName, department, phoneNumber } = req.body;
+  validateObjectId(req.params.id, 'User ID');
   
-  const updates = {};
-  if (displayName !== undefined) updates.displayName = displayName;
-  if (firstName !== undefined) updates.firstName = firstName;
-  if (lastName !== undefined) updates.lastName = lastName;
-  if (middleName !== undefined) updates.middleName = middleName;
-  if (department !== undefined) updates.department = department;
-  if (phoneNumber !== undefined) updates.phoneNumber = phoneNumber;
+  const allowedFields = ['displayName', 'firstName', 'lastName', 'middleName', 'department', 'phoneNumber'];
+  const updates = sanitizeUpdateFields(req.body, allowedFields);
 
-  if (Object.keys(updates).length === 0) {
-    throw new ValidationError('No valid fields to update');
-  }
-
-  const user = await User.findByIdAndUpdate(
-    req.params.id,
-    updates,
-    { new: true, runValidators: true }
-  ).select('-googleId');
-
-  if (!user) {
-    throw new NotFoundError('User', req.params.id);
-  }
+  const user = await updateByIdOrFail(User, req.params.id, updates, {
+    select: '-googleId',
+  });
 
   ResponseHelper.success(
     res,
@@ -239,11 +189,11 @@ const completeUserProfile = asyncHandler(async (req, res) => {
  * @param {Object} res - Express response object
  */
 const deleteUser = asyncHandler(async (req, res) => {
-  const user = await User.findByIdAndDelete(req.params.id);
-
-  if (!user) {
-    throw new NotFoundError('User', req.params.id);
-  }
+  const { deleteByIdOrFail } = require('../utils/dbOperations');
+  
+  validateObjectId(req.params.id, 'User ID');
+  
+  await deleteByIdOrFail(User, req.params.id);
 
   ResponseHelper.success(res, { userId: req.params.id }, 'User deleted successfully');
 });

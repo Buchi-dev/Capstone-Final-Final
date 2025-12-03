@@ -36,7 +36,6 @@ import {
   KeyMetrics,
   WaterQualityStandards,
   ActiveAlerts,
-  DeviceStatusOverview,
   WaterQualityMetrics,
   TimeSeriesCharts,
   WaterQualityAssessment,
@@ -184,11 +183,6 @@ export const AdminAnalytics = memo(() => {
           <WaterQualityStandards />
 
           <ActiveAlerts alerts={alerts} />
-
-          <DeviceStatusOverview 
-            devices={devices}
-            deviceStats={deviceStats}
-          />
 
           <WaterQualityMetrics 
             metrics={waterQualityMetricsWithTotal}

@@ -83,7 +83,7 @@ const HTTP_STATUS = {
 
 // Email configuration
 const EMAIL = {
-  FROM_NAME: process.env.SMTP_FROM_NAME || 'Water Quality Monitor',
+  FROM_NAME: process.env.SMTP_FROM_NAME,
   BATCH_SIZE: 10, // Send emails in batches
   RETRY_ATTEMPTS: 3,
   RETRY_DELAY: TIME.FIVE_MINUTES,
