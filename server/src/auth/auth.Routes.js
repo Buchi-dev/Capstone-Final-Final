@@ -28,15 +28,85 @@ router.post('/verify-token', async (req, res) => {
     try {
       decodedToken = await verifyIdToken(idToken);
     } catch (verifyError) {
-      logger.error('[Auth] Firebase token verification failed', {
-        error: verifyError.message,
-        errorCode: verifyError.code,
-      });
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid or expired Firebase token',
-        errorCode: 'AUTH_TOKEN_INVALID',
-      });
+      // Check for Firebase credential/configuration errors (clock sync, expired keys, etc.)
+      const isSystemError = verifyError.message && (
+        verifyError.message.includes('invalid_grant') || 
+        verifyError.message.includes('Invalid JWT Signature') ||
+        verifyError.message.includes('serviceusage')
+      );
+      
+      if (isSystemError) {
+        logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        logger.error('🔥 CRITICAL: FIREBASE SERVICE ACCOUNT ERROR 🔥');
+        logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        logger.error('The Firebase service account credentials are invalid or expired.');
+        logger.error('OR the server clock is out of sync.');
+        logger.error('');
+        logger.error('IMMEDIATE ACTION REQUIRED:');
+        logger.error('1. Go to Firebase Console > Project Settings > Service Accounts');
+        logger.error('2. Generate a NEW private key');
+        logger.error('3. Update FIREBASE_SERVICE_ACCOUNT environment variable');
+        logger.error('4. OR sync server clock with NTP');
+        logger.error('5. Restart this server');
+        logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
+        // FALLBACK MODE: If bypass is enabled, decode without verification
+        if (process.env.BYPASS_JWT_VERIFICATION === 'true') {
+          logger.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          logger.warn('⚠️ UNSAFE MODE: JWT VERIFICATION BYPASSED');
+          logger.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          
+          try {
+            // Decode JWT without verification (UNSAFE)
+            const base64Url = idToken.split('.')[1];
+            const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+            const jsonPayload = decodeURIComponent(
+              Buffer.from(base64, 'base64')
+                .toString('utf-8')
+                .split('')
+                .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+                .join('')
+            );
+            
+            decodedToken = JSON.parse(jsonPayload);
+            
+            // Normalize token structure
+            if (decodedToken.user_id && !decodedToken.uid) {
+              decodedToken.uid = decodedToken.user_id;
+            }
+            
+            logger.warn('[Auth] Token decoded WITHOUT verification (UNSAFE)', {
+              uid: decodedToken.uid,
+              email: decodedToken.email,
+            });
+          } catch (decodeError) {
+            logger.error('[Auth] Failed to decode token even in bypass mode');
+            return res.status(401).json({
+              success: false,
+              message: 'Invalid token format',
+              errorCode: 'AUTH_TOKEN_INVALID',
+            });
+          }
+        } else {
+          return res.status(503).json({
+            success: false,
+            message: 'Backend authentication service unavailable. Contact administrator.',
+            errorCode: 'AUTH_SERVICE_UNAVAILABLE',
+            error: process.env.NODE_ENV === 'development' ? verifyError.message : undefined,
+          });
+        }
+      } else {
+        logger.error('[Auth] Firebase token verification failed', {
+          error: verifyError.message,
+          errorCode: verifyError.code,
+        });
+        
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid or expired Firebase token',
+          errorCode: 'AUTH_TOKEN_INVALID',
+        });
+      }
     }
 
     // IMMEDIATE domain validation BEFORE any database operations

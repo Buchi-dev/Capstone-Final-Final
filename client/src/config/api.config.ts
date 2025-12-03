@@ -138,6 +138,34 @@ apiClient.interceptors.response.use(
         return Promise.reject(error);
       }
       
+      // Handle backend service unavailable (503) - Firebase credentials issue
+      if (status === 503 && data.errorCode === 'AUTH_SERVICE_UNAVAILABLE') {
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.error('🔥 BACKEND SERVICE UNAVAILABLE 🔥');
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.error('The backend authentication service is unavailable.');
+        console.error('This is typically caused by expired Firebase service account credentials.');
+        console.error('');
+        console.error('Contact your system administrator to:');
+        console.error('1. Generate a new Firebase service account key');
+        console.error('2. Update the backend configuration');
+        console.error('3. Restart the backend server');
+        console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        
+        alert('⚠️ Service Unavailable\n\nThe authentication service is currently unavailable.\nThis is a backend configuration issue.\n\nPlease contact your system administrator.');
+        
+        // Sign out user to clear the stuck state
+        if (auth.currentUser) {
+          try {
+            await auth.signOut();
+          } catch (e) {
+            console.error('[API] Failed to sign out:', e);
+          }
+        }
+        
+        return Promise.reject(error);
+      }
+      
       // Handle authentication errors
       if (status === 401) {
         console.warn('[API] Unauthorized - Session expired or not logged in', data);

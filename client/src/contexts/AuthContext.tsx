@@ -30,18 +30,76 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /**
    * Fetch current user from backend
+   * FALLBACK MODE: If backend fails, use Firebase user data directly
    */
   const fetchUser = useCallback(async () => {
     try {
-      const { authenticated, user: userData } = await authService.checkAuthStatus();
-      
-      if (authenticated && userData) {
-        setUser(userData);
-      } else {
+      // Double-check Firebase user exists before calling backend
+      if (!auth.currentUser) {
+        console.log('[AuthContext] No Firebase user - skipping backend fetch');
         setUser(null);
+        setLoading(false);
+        return;
       }
-    } catch (error) {
-      console.error("[AuthContext] Error fetching user:", error);
+
+      // Validate domain before making backend call
+      const email = auth.currentUser.email;
+      if (!email || !email.endsWith('@smu.edu.ph')) {
+        console.error('[AuthContext] Domain validation failed in fetchUser:', email);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
+      // Try to get user from backend (with timeout)
+      try {
+        const { user: userData } = await authService.getCurrentUser();
+        
+        if (userData) {
+          setUser(userData);
+          console.log('[AuthContext] ✅ User data from backend:', userData.email);
+        } else {
+          setUser(null);
+        }
+      } catch (backendError: any) {
+        console.warn('[AuthContext] ⚠️ Backend failed, using Firebase fallback mode');
+        
+        // FALLBACK: Create user object from Firebase data
+        const firebaseUser = auth.currentUser;
+        const tokenResult = await firebaseUser.getIdTokenResult();
+        
+        // Parse name
+        const fullName = firebaseUser.displayName || 'User';
+        const nameParts = fullName.trim().split(/\s+/);
+        let firstName = nameParts[0] || '';
+        let lastName = nameParts[nameParts.length - 1] || '';
+        
+        // Create a client-side user object based on Firebase data
+        const fallbackUser: AuthUser = {
+          _id: firebaseUser.uid,
+          id: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          displayName: fullName,
+          firstName,
+          lastName,
+          profilePicture: firebaseUser.photoURL || '',
+          role: (tokenResult.claims.role as 'admin' | 'staff') || 'staff',
+          status: 'active', // Assume active since they're authenticated
+          profileComplete: true,
+        };
+        
+        setUser(fallbackUser);
+        
+        console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.warn('⚠️ RUNNING IN FALLBACK MODE');
+        console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        console.warn('Backend authentication is unavailable.');
+        console.warn('Using Firebase client-side authentication only.');
+        console.warn('Some features may be limited until backend is fixed.');
+        console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      }
+    } catch (error: any) {
+      console.error("[AuthContext] Critical error in fetchUser:", error);
       setUser(null);
     } finally {
       setLoading(false);
@@ -123,19 +181,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchUser]); // fetchUser is stable due to useCallback
 
   // Set up periodic auth check (every 5 minutes)
+  // ONLY if user is authenticated and Firebase is ready
   useEffect(() => {
-    if (!firebaseReady) return;
+    if (!firebaseReady || !auth.currentUser) return;
 
     if (import.meta.env.DEV) {
       console.log('[AuthContext] Setting up periodic auth check (5 min interval)');
     }
 
     const interval = setInterval(() => {
-      if (auth.currentUser) {
+      // Double-check user still exists before fetching
+      if (auth.currentUser && auth.currentUser.email?.endsWith('@smu.edu.ph')) {
         if (import.meta.env.DEV) {
           console.log('[AuthContext] Periodic auth check...');
         }
         fetchUser();
+      } else {
+        if (import.meta.env.DEV) {
+          console.log('[AuthContext] Skipping periodic check - no valid user');
+        }
       }
     }, 5 * 60 * 1000); // 5 minutes
 

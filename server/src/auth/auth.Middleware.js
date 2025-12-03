@@ -61,25 +61,73 @@ const authenticateFirebase = asyncHandler(async (req, res, next) => {
       });
     }
   } catch (tokenError) {
-    logger.error('[Auth Middleware] Firebase token verification failed', {
-      error: tokenError.message,
-      errorCode: tokenError.code,
-      tokenPrefix: idToken.substring(0, 20) + '...',
-      path: req.path,
-    });
-    
-    // Provide more specific error messages
-    if (tokenError.code === 'auth/id-token-expired') {
-      throw AuthenticationError.expiredToken();
-    }
-    
-    if (tokenError.code === 'auth/argument-error') {
-      throw AuthenticationError.invalidToken('Invalid token format');
-    }
-    
-    throw AuthenticationError.invalidToken(
-      process.env.NODE_ENV === 'development' ? tokenError.message : undefined
+    // FALLBACK MODE: If JWT verification fails due to clock sync or credential issues,
+    // try to decode the token without verification as a temporary workaround
+    const isClockSyncError = tokenError.message && (
+      tokenError.message.includes('invalid_grant') || 
+      tokenError.message.includes('Invalid JWT Signature') ||
+      tokenError.message.includes('Token expired')
     );
+    
+    if (isClockSyncError && process.env.BYPASS_JWT_VERIFICATION === 'true') {
+      logger.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logger.warn('⚠️ RUNNING IN UNSAFE MODE - JWT VERIFICATION BYPASSED');
+      logger.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logger.warn('Clock sync or credential issue detected. Using unsafe token decode.');
+      logger.warn('FIX IMMEDIATELY: Sync server clock or update Firebase credentials!');
+      logger.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      try {
+        // Decode JWT without verification (UNSAFE but allows system to work)
+        const base64Url = idToken.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(
+          Buffer.from(base64, 'base64')
+            .toString('utf-8')
+            .split('')
+            .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+            .join('')
+        );
+        
+        decodedToken = JSON.parse(jsonPayload);
+        
+        logger.warn('[Auth Middleware] Token decoded without verification', {
+          uid: decodedToken.uid || decodedToken.user_id,
+          email: decodedToken.email,
+          path: req.path,
+        });
+        
+        // Normalize token structure
+        if (decodedToken.user_id && !decodedToken.uid) {
+          decodedToken.uid = decodedToken.user_id;
+        }
+      } catch (decodeError) {
+        logger.error('[Auth Middleware] Failed to decode token even in bypass mode', {
+          error: decodeError.message,
+        });
+        throw AuthenticationError.invalidToken('Token decode failed');
+      }
+    } else {
+      logger.error('[Auth Middleware] Firebase token verification failed', {
+        error: tokenError.message,
+        errorCode: tokenError.code,
+        tokenPrefix: idToken.substring(0, 20) + '...',
+        path: req.path,
+      });
+      
+      // Provide more specific error messages
+      if (tokenError.code === 'auth/id-token-expired') {
+        throw AuthenticationError.expiredToken();
+      }
+      
+      if (tokenError.code === 'auth/argument-error') {
+        throw AuthenticationError.invalidToken('Invalid token format');
+      }
+      
+      throw AuthenticationError.invalidToken(
+        process.env.NODE_ENV === 'development' ? tokenError.message : undefined
+      );
+    }
   }
   
   // Get user from database using Firebase UID

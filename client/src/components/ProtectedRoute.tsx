@@ -45,6 +45,12 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!isAuthenticated) {
+    // Prevent redirect loop - check if we're already on login page
+    if (location.pathname === '/auth/login') {
+      console.error('[ProtectedRoute] Redirect loop detected - already on login page');
+      return <LoadingScreen />;
+    }
+    
     // Redirect to login, save the attempted location
     return <Navigate to="/auth/login" state={{ from: location }} replace />;
   }
