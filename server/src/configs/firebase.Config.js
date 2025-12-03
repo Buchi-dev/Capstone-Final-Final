@@ -1,157 +1,53 @@
 const admin = require('firebase-admin');
-const path = require('path');
 const logger = require('../utils/logger');
 
 /**
- * Configure Firebase Admin SDK (OPTIONAL - not required for client-side auth)
- * Only needed if you want to fetch user data from Firebase
+ * Configure Firebase Admin SDK (DISABLED - not needed for client-side auth)
+ * Client handles ALL authentication via Firebase
+ * Backend just decodes tokens without verification
  */
 const configureFirebase = () => {
-  try {
-    let serviceAccount;
-
-    // Check if service account is provided as environment variable (for production)
-    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-      try {
-        serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      } catch (parseError) {
-        logger.warn('[Firebase] Failed to parse service account JSON - Firebase Admin disabled');
-        logger.warn('[Firebase] CLIENT-SIDE AUTH MODE - Backend will decode tokens without verification');
-        return;
-      }
-    } 
-    // Otherwise load from file path
-    else if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-      const accountPath = path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
-      try {
-        serviceAccount = require(accountPath);
-      } catch (fileError) {
-        logger.warn('[Firebase] Service account file not found - Firebase Admin disabled');
-        logger.warn('[Firebase] CLIENT-SIDE AUTH MODE - Backend will decode tokens without verification');
-        return;
-      }
-    } 
-    else {
-      logger.warn('[Firebase] No service account configured - Firebase Admin disabled');
-      logger.warn('[Firebase] CLIENT-SIDE AUTH MODE - Backend will decode tokens without verification');
-      return;
-    }
-
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      projectId: process.env.FIREBASE_PROJECT_ID,
-    });
-
-    const isProduction = process.env.NODE_ENV === 'production';
-    if (isProduction) {
-      logger.info('[Firebase] Initialized ✓');
-    } else {
-      logger.info('[Firebase] Admin SDK initialized successfully');
-    }
-  } catch (error) {
-    logger.warn('[Firebase] Failed to initialize Admin SDK - continuing without it', {
-      error: error.message,
-    });
-    logger.warn('[Firebase] CLIENT-SIDE AUTH MODE - Backend will decode tokens without verification');
-    // DON'T throw error - allow server to start without Firebase
-  }
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.info('🔓 FIREBASE ADMIN DISABLED');
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  logger.info('Client-side authentication only');
+  logger.info('Backend does NOT verify JWT tokens');
+  logger.info('All authentication handled by Firebase client SDK');
+  logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  
+  // DO NOT initialize Firebase Admin SDK
+  // This prevents all the "Invalid JWT Signature" errors
+  return;
 };
 
 /**
- * Verify Firebase ID token
- * @param {string} idToken - Firebase ID token from client
- * @returns {Promise<Object>} - Decoded token with user info
+ * DISABLED: Verify ID token
+ * Not used in client-side auth mode - throws error if called
  */
 const verifyIdToken = async (idToken) => {
-  try {
-    // Validate token is not empty
-    if (!idToken || typeof idToken !== 'string') {
-      throw new Error('Invalid token: Token must be a non-empty string');
-    }
-    
-    // Only log verification attempts in verbose mode
-    if (process.env.VERBOSE_LOGGING === 'true') {
-      logger.info('[Firebase] Verifying ID token', {
-        tokenLength: idToken.length,
-        tokenPrefix: idToken.substring(0, 20) + '...',
-      });
-    }
-    
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    
-    // Only log successful verification in verbose mode
-    if (process.env.VERBOSE_LOGGING === 'true') {
-      logger.info('[Firebase] Token verified', {
-        uid: decodedToken.uid,
-        email: decodedToken.email,
-      });
-    }
-    
-    return decodedToken;
-  } catch (error) {
-    // Always log errors
-    logger.error('[Firebase] Token verification failed', {
-      error: error.message,
-      errorCode: error.code,
-    });
-    
-    // Check for specific permission errors
-    if (error.message && error.message.includes('serviceusage.services.use')) {
-      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      logger.error('🔥 FIREBASE SERVICE ACCOUNT PERMISSION ERROR 🔥');
-      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      logger.error('The service account needs additional permissions.');
-      logger.error('Required IAM Roles:');
-      logger.error('1. Service Account Token Creator');
-      logger.error('2. Firebase Admin SDK Administrator Service Agent');
-      logger.error('3. Service Usage Consumer');
-      logger.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    }
-    
-    throw error;
-  }
+  throw new Error('Firebase Admin is disabled - client handles all authentication');
 };
 
 /**
- * Get user by UID from Firebase
- * @param {string} uid - Firebase user UID
- * @returns {Promise<Object>} - Firebase user record
+ * DISABLED: Get user by UID from Firebase
+ * Not used in client-side auth mode - throws error if called
  */
 const getFirebaseUser = async (uid) => {
-  try {
-    const userRecord = await admin.auth().getUser(uid);
-    return userRecord;
-  } catch (error) {
-    logger.error('[Firebase] Failed to get user', {
-      uid,
-      error: error.message,
-    });
-    throw error;
-  }
+  throw new Error('Firebase Admin is disabled - client handles all authentication');
 };
 
 /**
- * Create custom token for user
- * @param {string} uid - Firebase user UID
- * @param {Object} claims - Additional custom claims
- * @returns {Promise<string>} - Custom token
+ * DISABLED: Create custom token
+ * Not used in client-side auth mode - throws error if called
  */
 const createCustomToken = async (uid, claims = {}) => {
-  try {
-    const customToken = await admin.auth().createCustomToken(uid, claims);
-    return customToken;
-  } catch (error) {
-    logger.error('[Firebase] Failed to create custom token', {
-      uid,
-      error: error.message,
-    });
-    throw error;
-  }
+  throw new Error('Firebase Admin is disabled - client handles all authentication');
 };
 
 module.exports = {
   configureFirebase,
   verifyIdToken,
   getFirebaseUser,
+  createCustomToken,
   admin,
 };

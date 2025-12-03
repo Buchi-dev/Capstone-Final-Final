@@ -1,4 +1,4 @@
-const { verifyIdToken } = require('../configs/firebase.Config');
+// No Firebase Admin imports needed - client handles all auth
 const User = require('../users/user.Model');
 const logger = require('../utils/logger');
 const { AuthenticationError, NotFoundError } = require('../errors');

@@ -1,5 +1,5 @@
 const express = require('express');
-const { verifyIdToken, getFirebaseUser } = require('../configs/firebase.Config');
+// No Firebase Admin imports needed - client handles all auth
 const { authenticateFirebase, optionalAuth } = require('./auth.Middleware');
 const User = require('../users/user.Model');
 const logger = require('../utils/logger');
@@ -69,22 +69,12 @@ router.post('/verify-token', async (req, res) => {
       });
     }
 
-    // Get Firebase user data (this might fail if Firebase admin is broken, but we continue anyway)
-    let firebaseUser = null;
-    try {
-      firebaseUser = await getFirebaseUser(decodedToken.uid);
-    } catch (firebaseError) {
-      logger.warn('[Auth] Could not fetch Firebase user data, using token data only', {
-        error: firebaseError.message,
-      });
-    }
-
     // Check if user exists in database
     let user = await User.findOne({ firebaseUid: decodedToken.uid });
 
     if (!user) {
-      // Parse name components
-      const fullName = decodedToken.name || (firebaseUser ? firebaseUser.displayName : null) || 'User';
+      // Parse name components from token
+      const fullName = decodedToken.name || 'User';
       const nameParts = fullName.trim().split(/\s+/); // Split by whitespace
       
       let firstName = '';
@@ -108,15 +98,15 @@ router.post('/verify-token', async (req, res) => {
         }
       }
       
-      // Create new user
+      // Create new user (all data from decoded token, NO Firebase Admin calls)
       user = new User({
         firebaseUid: decodedToken.uid,
-        email: decodedToken.email || (firebaseUser ? firebaseUser.email : userEmail),
+        email: decodedToken.email || userEmail,
         displayName: fullName,
         firstName,
         middleName,
         lastName,
-        profilePicture: decodedToken.picture || (firebaseUser ? firebaseUser.photoURL : '') || '',
+        profilePicture: decodedToken.picture || '',
         provider: 'firebase',
         role: 'staff', // Default role
         status: 'pending',
