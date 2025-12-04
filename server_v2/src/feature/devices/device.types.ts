@@ -53,6 +53,11 @@ export interface IDevice {
   isRegistered: boolean;
   lastSeen: Date;
   metadata: IDeviceMetadata;
+  // Soft delete fields
+  isDeleted: boolean;
+  deletedAt?: Date;
+  deletedBy?: Types.ObjectId;
+  scheduledPermanentDeletionAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -89,6 +94,17 @@ export interface IDevicePublic {
     nanoseconds: number;
   } | null;
   metadata: IDeviceMetadata;
+  // Soft delete fields
+  isDeleted: boolean;
+  deletedAt?: {
+    seconds: number;
+    nanoseconds: number;
+  } | null;
+  deletedBy?: Types.ObjectId;
+  scheduledPermanentDeletionAt?: {
+    seconds: number;
+    nanoseconds: number;
+  } | null;
   createdAt: Date;
   updatedAt: Date;
 }

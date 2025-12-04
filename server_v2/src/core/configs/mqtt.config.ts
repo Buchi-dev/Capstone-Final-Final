@@ -44,6 +44,7 @@ export const MQTT_TOPICS = {
   DEVICE_DATA: 'devices/+/data', // devices/{deviceId}/data
   DEVICE_REGISTER: 'devices/+/register', // devices/{deviceId}/register
   DEVICE_PRESENCE: 'devices/+/presence', // devices/{deviceId}/presence
+  DEVICE_STATUS: 'devices/+/status', // devices/{deviceId}/status (LWT - Last Will Testament)
 
   // Server publishes commands to these topics
   DEVICE_COMMANDS: 'devices/+/commands', // devices/{deviceId}/commands
@@ -56,6 +57,7 @@ export const MQTT_TOPICS = {
   ALL_DEVICE_DATA: 'devices/+/data',
   ALL_DEVICE_REGISTER: 'devices/+/register',
   ALL_DEVICE_PRESENCE: 'devices/+/presence',
+  ALL_DEVICE_STATUS: 'devices/+/status',
   ALL_PRESENCE_RESPONSES: 'presence/response',
 } as const;
 
@@ -66,6 +68,7 @@ export const generateTopic = {
   deviceData: (deviceId: string): string => `devices/${deviceId}/data`,
   deviceRegister: (deviceId: string): string => `devices/${deviceId}/register`,
   devicePresence: (deviceId: string): string => `devices/${deviceId}/presence`,
+  deviceStatus: (deviceId: string): string => `devices/${deviceId}/status`,
   deviceCommands: (deviceId: string): string => `devices/${deviceId}/commands`,
 };
 

@@ -6,7 +6,7 @@ import { appConfig, dbConnection, initializeFirebase } from '@core/configs';
 import { errorHandler, requestLogger } from '@core/middlewares';
 import { NotFoundError } from '@utils/errors.util';
 import { mqttService, emailService, gridfsService, initializeLogger, logInfo, logError } from '@utils';
-import { startDeviceOfflineChecker, stopDeviceOfflineChecker, startReportCleanupJob, stopReportCleanupJob } from '@feature/jobs';
+import { startDeviceOfflineChecker, stopDeviceOfflineChecker, startReportCleanupJob, stopReportCleanupJob, startPermanentDeletionJob, stopPermanentDeletionJob, startBackupJobs, stopBackupJobs } from '@feature/jobs';
 
 // Import entity routes
 import { authRoutes } from '@feature/auth';
@@ -17,6 +17,7 @@ import { sensorReadingRoutes } from '@feature/sensorReadings';
 import { reportRoutes } from '@feature/reports';
 import { analyticsRoutes } from '@feature/analytics';
 import { healthRoutes } from '@feature/health';
+import { backupRoutes } from '@feature/backups';
 
 // Initialize Express app
 const app: Application = express();
@@ -63,6 +64,7 @@ app.use(`${API_V1}/sensor-readings`, sensorReadingRoutes);
 app.use(`${API_V1}/reports`, reportRoutes);
 app.use(`${API_V1}/analytics`, analyticsRoutes);
 app.use(`${API_V1}/health`, healthRoutes);
+app.use(`${API_V1}/backups`, backupRoutes);
 
 // 404 handler - Must be after all routes
 app.use((_req: Request, _res: Response, next: NextFunction) => {
@@ -96,6 +98,8 @@ const startServer = async (): Promise<void> => {
     // Start background jobs
     startDeviceOfflineChecker();
     startReportCleanupJob();
+    startPermanentDeletionJob();
+    startBackupJobs(); // Start all backup jobs (daily, weekly, monthly)
 
     // Start listening
     app.listen(appConfig.server.port, () => {
@@ -119,6 +123,8 @@ process.on('SIGTERM', async () => {
   // Stop background jobs
   stopDeviceOfflineChecker();
   stopReportCleanupJob();
+  stopPermanentDeletionJob();
+  stopBackupJobs();
   
   // Disconnect services
   await mqttService.disconnect();
@@ -135,6 +141,8 @@ process.on('SIGINT', async () => {
   // Stop background jobs
   stopDeviceOfflineChecker();
   stopReportCleanupJob();
+  stopPermanentDeletionJob();
+  stopBackupJobs();
   
   // Disconnect services
   await mqttService.disconnect();

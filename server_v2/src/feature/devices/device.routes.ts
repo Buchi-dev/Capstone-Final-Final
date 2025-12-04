@@ -12,10 +12,13 @@ import {
   updateDevice,
   updateDeviceStatus,
   deleteDevice,
+  recoverDevice,
+  getDeletedDevices,
   getDeviceStatistics,
   getPendingRegistrations,
   getOnlineDevices,
   sendCommand,
+  requestImmediateData,
   checkOfflineDevices,
 } from './device.controller';
 import { requireStaff, requireAdmin } from '@core/middlewares';
@@ -31,6 +34,13 @@ import {
 } from './device.schema';
 
 const router = Router();
+
+/**
+ * @route   GET /api/v1/devices/deleted
+ * @desc    Get soft-deleted devices (Admin only)
+ * @access  Protected (Admin only)
+ */
+router.get('/deleted', requireAdmin, getDeletedDevices);
 
 /**
  * @route   GET /api/v1/devices/statistics
@@ -117,8 +127,23 @@ router.patch('/:deviceId/status', requireAdmin, validateRequest(updateDeviceStat
 router.post('/:deviceId/command', requireAdmin, validateRequest(sendCommandSchema), sendCommand);
 
 /**
+ * @route   POST /api/v1/devices/:deviceId/send-now
+ * @desc    Request immediate data transmission from device
+ * @access  Protected (Staff/Admin)
+ * FIXED: Added endpoint for send_now command that device already supports
+ */
+router.post('/:deviceId/send-now', requireStaff, requestImmediateData);
+
+/**
+ * @route   POST /api/v1/devices/:id/recover
+ * @desc    Recover soft-deleted device
+ * @access  Protected (Admin only)
+ */
+router.post('/:id/recover', requireAdmin, recoverDevice);
+
+/**
  * @route   DELETE /api/v1/devices/:id
- * @desc    Delete device
+ * @desc    Soft delete device
  * @access  Protected (Admin only)
  */
 router.delete('/:id', requireAdmin, validateRequest(deleteDeviceSchema), deleteDevice);

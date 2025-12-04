@@ -58,9 +58,13 @@ export class SensorReadingService {
 
   /**
    * Get readings with filters and pagination
+   * Excludes soft-deleted readings by default
    */
   async getReadings(filters: ISensorReadingFilters, page = 1, limit = 100) {
     const query = this.crud.query();
+
+    // Exclude soft-deleted readings
+    query.filter({ isDeleted: { $ne: true } });
 
     // Apply filters
     if (filters.deviceId) query.filter({ deviceId: filters.deviceId });
@@ -91,21 +95,23 @@ export class SensorReadingService {
 
   /**
    * Get latest reading for device
+   * Excludes soft-deleted readings
    */
   async getLatestReading(deviceId: string): Promise<ISensorReadingDocument | null> {
-    return SensorReading.findOne({ deviceId }).sort({ timestamp: -1 }).lean() as any;
+    return SensorReading.findOne({ deviceId, isDeleted: { $ne: true } }).sort({ timestamp: -1 }).lean() as any;
   }
 
   /**
    * Get reading statistics for device
    * Uses aggregation pipeline for efficient calculation
+   * Excludes soft-deleted readings
    */
   async getStatistics(
     deviceId?: string,
     startDate?: Date,
     endDate?: Date
   ): Promise<ISensorReadingStats | null> {
-    const matchStage: any = {};
+    const matchStage: any = { isDeleted: { $ne: true } };
     if (deviceId) matchStage.deviceId = deviceId;
     if (startDate || endDate) {
       matchStage.timestamp = {};
@@ -279,11 +285,15 @@ export class SensorReadingService {
   /**
    * Process MQTT sensor data
    * Main entry point for incoming sensor readings via MQTT
+   * BUG FIX #2: Support validity flags for graceful sensor degradation
    */
   async processSensorData(deviceId: string, sensorData: {
-    pH: number;
-    turbidity: number;
-    tds: number;
+    pH: number | null;
+    turbidity: number | null;
+    tds: number | null;
+    pH_valid?: boolean;
+    tds_valid?: boolean;
+    turbidity_valid?: boolean;
     timestamp?: Date;
   }): Promise<ISensorReadingDocument> {
     const reading = await this.createReading({
@@ -291,6 +301,9 @@ export class SensorReadingService {
       pH: sensorData.pH,
       turbidity: sensorData.turbidity,
       tds: sensorData.tds,
+      pH_valid: sensorData.pH_valid !== false,
+      tds_valid: sensorData.tds_valid !== false,
+      turbidity_valid: sensorData.turbidity_valid !== false,
       timestamp: sensorData.timestamp || new Date(),
     });
 

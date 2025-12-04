@@ -126,19 +126,52 @@ export const updateDeviceStatus = asyncHandler(async (req: Request, res: Respons
 });
 
 /**
- * Delete device
+ * Soft delete device
  * @route DELETE /api/v1/devices/:id
  */
 export const deleteDevice = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const userId = (req as any).user?.uid; // Get from auth middleware
+
+  if (!id) {
+    throw new Error('Device ID is required');
+  }
+
+  const result = await deviceService.deleteDevice(id, userId);
+
+  ResponseHandler.success(res, null, result.message);
+});
+
+/**
+ * Recover soft-deleted device
+ * @route POST /api/v1/devices/:id/recover
+ */
+export const recoverDevice = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
 
   if (!id) {
     throw new Error('Device ID is required');
   }
 
-  await deviceService.deleteDevice(id);
+  const result = await deviceService.recoverDevice(id);
 
-  ResponseHandler.success(res, null, SUCCESS_MESSAGES.DEVICE.DELETED);
+  ResponseHandler.success(res, null, result.message);
+});
+
+/**
+ * Get soft-deleted devices (Admin only)
+ * @route GET /api/v1/devices/deleted
+ */
+export const getDeletedDevices = asyncHandler(async (req: Request, res: Response) => {
+  const { page = 1, limit = 50 } = req.query;
+
+  const result = await deviceService.getDeletedDevices(Number(page), Number(limit));
+
+  ResponseHandler.paginated(res, result.data, {
+    ...result.pagination,
+    hasNext: result.pagination.page < result.pagination.totalPages,
+    hasPrev: result.pagination.page > 1,
+  });
 });
 
 /**
@@ -193,6 +226,23 @@ export const sendCommand = asyncHandler(async (req: Request, res: Response) => {
   await deviceService.sendCommand(deviceId, command, payload);
 
   ResponseHandler.success(res, null, SUCCESS_MESSAGES.DEVICE.COMMAND_SENT);
+});
+
+/**
+ * Request immediate data transmission from device
+ * @route POST /api/v1/devices/:deviceId/send-now
+ * FIXED: Added support for send_now command that device already implements
+ */
+export const requestImmediateData = asyncHandler(async (req: Request, res: Response) => {
+  const { deviceId } = req.params;
+
+  if (!deviceId) {
+    throw new Error('Device ID is required');
+  }
+
+  await deviceService.sendCommand(deviceId, 'send_now', {});
+
+  ResponseHandler.success(res, null, 'Immediate data transmission requested');
 });
 
 /**

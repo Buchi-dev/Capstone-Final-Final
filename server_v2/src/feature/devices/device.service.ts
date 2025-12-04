@@ -12,6 +12,8 @@
  */
 
 import Device from './device.model';
+import Alert from '../alerts/alert.model';
+import SensorReading from '../sensorReadings/sensorReading.model';
 import {
   IDeviceDocument,
   ICreateDeviceData,
@@ -99,13 +101,14 @@ export class DeviceService {
 
   /**
    * Get device by ID
+   * Excludes soft-deleted devices
    */
   async getDeviceById(id: string): Promise<IDeviceDocument> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestError(ERROR_MESSAGES.VALIDATION.INVALID_OBJECT_ID('Device ID'));
     }
 
-    const device = await this.crud.findById(id);
+    const device = await Device.findOne({ _id: id, isDeleted: { $ne: true } });
     if (!device) {
       throw new NotFoundError(ERROR_MESSAGES.DEVICE.NOT_FOUND);
     }
@@ -115,16 +118,21 @@ export class DeviceService {
 
   /**
    * Get device by deviceId
+   * Excludes soft-deleted devices
    */
   async getDeviceByDeviceId(deviceId: string): Promise<IDeviceDocument | null> {
-    return Device.findOne({ deviceId });
+    return Device.findOne({ deviceId, isDeleted: { $ne: true } });
   }
 
   /**
    * Get all devices with filters and pagination
+   * Excludes soft-deleted devices by default
    */
   async getAllDevices(filters: IDeviceFilters, page = 1, limit = 50) {
     const query = this.crud.query();
+
+    // Exclude soft-deleted devices by default
+    query.filter({ isDeleted: { $ne: true } });
 
     // Apply filters
     if (filters.status) query.filter({ status: filters.status });
@@ -235,17 +243,178 @@ export class DeviceService {
   }
 
   /**
-   * Delete device
+   * Soft delete device with cascade
+   * Marks device and all related data as deleted, recoverable for 30 days
    */
-  async deleteDevice(id: string): Promise<void> {
+  async deleteDevice(id: string, deletedBy?: Types.ObjectId): Promise<{ message: string }> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestError(ERROR_MESSAGES.VALIDATION.INVALID_OBJECT_ID('Device ID'));
     }
 
-    const deleted = await this.crud.deleteById(id);
-    if (!deleted) {
+    const device = await Device.findById(id);
+    if (!device) {
       throw new NotFoundError(ERROR_MESSAGES.DEVICE.NOT_FOUND);
     }
+
+    if (device.isDeleted) {
+      throw new BadRequestError('Device is already deleted');
+    }
+
+    const now = new Date();
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    // Soft delete device
+    device.isDeleted = true;
+    device.deletedAt = now;
+    device.deletedBy = deletedBy;
+    device.scheduledPermanentDeletionAt = thirtyDaysFromNow;
+    await device.save();
+
+    // Cascade soft delete to related sensor readings
+    await SensorReading.updateMany(
+      { deviceId: device.deviceId, isDeleted: { $ne: true } },
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: now,
+          deletedBy,
+          scheduledPermanentDeletionAt: thirtyDaysFromNow,
+        },
+      }
+    );
+
+    // Cascade soft delete to related alerts
+    await Alert.updateMany(
+      { deviceId: device.deviceId, isDeleted: { $ne: true } },
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: now,
+          deletedBy,
+          scheduledPermanentDeletionAt: thirtyDaysFromNow,
+        },
+      }
+    );
+
+    logger.info(`Device ${device.deviceId} soft-deleted, recoverable for 30 days`, {
+      deviceId: device.deviceId,
+      deletedBy,
+      scheduledPermanentDeletionAt: thirtyDaysFromNow,
+    });
+
+    return { message: 'Device soft-deleted, recoverable for 30 days' };
+  }
+
+  /**
+   * Recover soft-deleted device with cascade
+   * Restores device and all related data if within 30-day window
+   */
+  async recoverDevice(id: string): Promise<{ message: string }> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestError(ERROR_MESSAGES.VALIDATION.INVALID_OBJECT_ID('Device ID'));
+    }
+
+    const device = await Device.findById(id);
+    if (!device) {
+      throw new NotFoundError(ERROR_MESSAGES.DEVICE.NOT_FOUND);
+    }
+
+    if (!device.isDeleted) {
+      throw new BadRequestError('Device is not deleted');
+    }
+
+    // Check if recovery window has passed
+    if (device.scheduledPermanentDeletionAt && new Date() > device.scheduledPermanentDeletionAt) {
+      throw new BadRequestError('Recovery window has expired. Device is permanently deleted.');
+    }
+
+    // Restore device
+    device.isDeleted = false;
+    device.deletedAt = undefined;
+    device.deletedBy = undefined;
+    device.scheduledPermanentDeletionAt = undefined;
+    await device.save();
+
+    // Restore related sensor readings
+    await SensorReading.updateMany(
+      { deviceId: device.deviceId, isDeleted: true },
+      {
+        $set: {
+          isDeleted: false,
+        },
+        $unset: {
+          deletedAt: '',
+          deletedBy: '',
+          scheduledPermanentDeletionAt: '',
+        },
+      }
+    );
+
+    // Restore related alerts
+    await Alert.updateMany(
+      { deviceId: device.deviceId, isDeleted: true },
+      {
+        $set: {
+          isDeleted: false,
+        },
+        $unset: {
+          deletedAt: '',
+          deletedBy: '',
+          scheduledPermanentDeletionAt: '',
+        },
+      }
+    );
+
+    logger.info(`Device ${device.deviceId} recovered from soft delete`, {
+      deviceId: device.deviceId,
+    });
+
+    return { message: 'Device and all historical data restored' };
+  }
+
+  /**
+   * Get soft-deleted devices (Admin only)
+   * Returns devices that can still be recovered
+   */
+  async getDeletedDevices(page = 1, limit = 50) {
+    const skip = (page - 1) * limit;
+    
+    const [devices, total] = await Promise.all([
+      Device.find({ 
+        isDeleted: true,
+        scheduledPermanentDeletionAt: { $gt: new Date() }
+      })
+        .sort({ deletedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Device.countDocuments({ 
+        isDeleted: true,
+        scheduledPermanentDeletionAt: { $gt: new Date() }
+      }),
+    ]);
+
+    // Add remaining days until permanent deletion
+    const devicesWithCountdown = devices.map((device: any) => {
+      const remainingMs = device.scheduledPermanentDeletionAt.getTime() - Date.now();
+      const remainingDays = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
+      
+      return {
+        ...device,
+        remainingDays,
+        remainingDaysMessage: `${remainingDays} days remaining until permanent deletion`,
+      };
+    });
+
+    return {
+      data: devicesWithCountdown,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   /**

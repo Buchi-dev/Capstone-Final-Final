@@ -117,6 +117,26 @@ const alertSchema = new Schema<IAlertDocument>(
     emailSentAt: {
       type: Date,
     },
+    // Soft delete fields
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      type: Schema.Types.ObjectId,
+      ref: COLLECTIONS.USERS,
+      default: null,
+    },
+    scheduledPermanentDeletionAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
   },
   {
     timestamps: true, // Adds createdAt and updatedAt
@@ -141,6 +161,9 @@ alertSchema.index({ deviceId: 1, parameter: 1, acknowledged: 1, createdAt: -1 })
 
 // Device-specific alert queries
 alertSchema.index({ deviceId: 1, status: 1, timestamp: -1 });
+
+// Soft delete cleanup queries
+alertSchema.index({ isDeleted: 1, scheduledPermanentDeletionAt: 1 });
 
 /**
  * Instance method to get public alert data
@@ -171,6 +194,10 @@ alertSchema.methods.toPublicProfile = function (this: IAlertDocument): IAlertPub
     currentValue: this.currentValue,
     emailSent: this.emailSent,
     emailSentAt: this.emailSentAt,
+    isDeleted: this.isDeleted,
+    deletedAt: this.deletedAt,
+    deletedBy: this.deletedBy,
+    scheduledPermanentDeletionAt: this.scheduledPermanentDeletionAt,
     createdAt: this.createdAt,
     updatedAt: this.updatedAt,
   };

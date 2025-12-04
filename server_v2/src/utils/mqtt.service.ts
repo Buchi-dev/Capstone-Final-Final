@@ -12,18 +12,23 @@
 import mqtt, { MqttClient, IClientOptions } from 'mqtt';
 import { mqttConfig } from '@core/configs';
 import { deviceService } from '@feature/devices';
+import { DeviceStatus } from '@feature/devices/device.types';
 import { sensorReadingService } from '@feature/sensorReadings';
 import logger from '@utils/logger.util';
 import { alertService } from '@feature/alerts';
 
 /**
  * MQTT Topics
+ * FIXED: Removed 'water-quality/' prefix to match Arduino device topics
+ * Device publishes to: devices/{deviceId}/data, devices/{deviceId}/register, devices/{deviceId}/presence
+ * FIXED: Added LWT status topic for offline detection
  */
 const TOPICS = {
-  SENSOR_DATA: 'water-quality/sensors/+/data',
-  DEVICE_REGISTRATION: 'water-quality/devices/+/registration',
-  DEVICE_PRESENCE: 'water-quality/devices/+/presence',
-  DEVICE_COMMANDS: (deviceId: string) => `water-quality/devices/${deviceId}/commands`,
+  SENSOR_DATA: 'devices/+/data',
+  DEVICE_REGISTRATION: 'devices/+/register',
+  DEVICE_PRESENCE: 'devices/+/presence',
+  DEVICE_STATUS: 'devices/+/status', // LWT - Last Will Testament
+  DEVICE_COMMANDS: (deviceId: string) => `devices/${deviceId}/commands`,
 } as const;
 
 /**
@@ -101,6 +106,7 @@ class MQTTService {
       TOPICS.SENSOR_DATA,
       TOPICS.DEVICE_REGISTRATION,
       TOPICS.DEVICE_PRESENCE,
+      TOPICS.DEVICE_STATUS, // LWT topic
     ];
 
     topics.forEach((topic) => {
@@ -134,6 +140,8 @@ class MQTTService {
         await this.handleDeviceRegistration(deviceId, message);
       } else if (topic.includes('/presence')) {
         await this.handleDevicePresence(deviceId, message);
+      } else if (topic.includes('/status')) {
+        await this.handleDeviceStatus(deviceId, message);
       }
     } catch (error: any) {
       logger.error('❌ MQTT: Message handling error', { error: error.message, stack: error.stack });
@@ -142,38 +150,107 @@ class MQTTService {
 
   /**
    * Handle sensor data messages
+   * BUG FIXES #2, #3, #4:
+   * - #2: Validate sensor validity flags (pH_valid, tds_valid, turbidity_valid)
+   * - #3: Validate timestamps are after Jan 1, 2020
+   * - #4: Validate sensor ranges (pH 0-14, TDS 0-2000, Turbidity 0-1000)
    */
   private async handleSensorData(deviceId: string, data: any): Promise<void> {
     try {
-      // Validate required fields
+      // Validate required fields exist
       if (typeof data.pH !== 'number' || typeof data.turbidity !== 'number' || typeof data.tds !== 'number') {
         logger.error('❌ MQTT: Invalid sensor data format', { deviceId, data });
         return;
       }
 
+      // BUG FIX #3: Timestamp validation
+      const MIN_VALID_EPOCH = 1609459200; // Jan 1, 2020
+      const now = Math.floor(Date.now() / 1000);
+      const MAX_FUTURE = 3600; // 1 hour tolerance
+
+      if (data.timestamp && data.timestamp < MIN_VALID_EPOCH) {
+        logger.error(`❌ MQTT: Invalid timestamp from ${deviceId}: ${data.timestamp} (before Jan 1, 2020)`, { deviceId, timestamp: data.timestamp });
+        return;
+      }
+
+      if (data.timestamp && data.timestamp > now + MAX_FUTURE) {
+        logger.error(`❌ MQTT: Future timestamp from ${deviceId}: ${data.timestamp} (${data.timestamp - now}s ahead of server)`, { deviceId, timestamp: data.timestamp });
+        return;
+      }
+
+      // BUG FIX #4: Sensor range validation
+      const rangeValidation = this.validateSensorRanges(data);
+      if (!rangeValidation.valid) {
+        logger.error(`❌ MQTT: Sensor values out of range from ${deviceId}:`, { deviceId, errors: rangeValidation.errors });
+        return;
+      }
+
+      // BUG FIX #2: Check sensor validity flags
+      const invalidSensors = [];
+      if (data.pH_valid === false) invalidSensors.push('pH');
+      if (data.tds_valid === false) invalidSensors.push('TDS');
+      if (data.turbidity_valid === false) invalidSensors.push('turbidity');
+
+      if (invalidSensors.length > 0) {
+        logger.warn(`⚠️ MQTT: Device ${deviceId} reporting invalid sensors:`, { deviceId, invalidSensors });
+      }
+
       // Update device heartbeat
       await deviceService.updateHeartbeat(deviceId);
 
-      // Store sensor reading
+      // Store sensor reading with validity flags
       await sensorReadingService.processSensorData(deviceId, {
-        pH: data.pH,
-        turbidity: data.turbidity,
-        tds: data.tds,
-        timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
+        pH: data.pH_valid !== false ? data.pH : null, // Store null if sensor invalid
+        turbidity: data.turbidity_valid !== false ? data.turbidity : null,
+        tds: data.tds_valid !== false ? data.tds : null,
+        pH_valid: data.pH_valid !== false,
+        tds_valid: data.tds_valid !== false,
+        turbidity_valid: data.turbidity_valid !== false,
+        timestamp: data.timestamp ? new Date(data.timestamp * 1000) : new Date(),
       });
 
-      // Check for threshold violations and create alerts
-      await alertService.checkThresholdsAndCreateAlerts(deviceId, data.deviceName || deviceId, {
-        pH: data.pH,
-        turbidity: data.turbidity,
-        tds: data.tds,
-        timestamp: data.timestamp ? new Date(data.timestamp) : new Date(),
-      });
+      // Only check thresholds for valid sensors
+      if (invalidSensors.length === 0) {
+        await alertService.checkThresholdsAndCreateAlerts(deviceId, data.deviceName || deviceId, {
+          pH: data.pH,
+          turbidity: data.turbidity,
+          tds: data.tds,
+          timestamp: data.timestamp ? new Date(data.timestamp * 1000) : new Date(),
+        });
+      }
 
-      logger.info(`📊 MQTT: Processed sensor data from ${deviceId}`);
+      logger.info(`📊 MQTT: Processed sensor data from ${deviceId}`, { invalidSensors: invalidSensors.length > 0 ? invalidSensors : undefined });
     } catch (error: any) {
       logger.error(`❌ MQTT: Error processing sensor data from ${deviceId}`, { error: error.message, stack: error.stack, deviceId });
     }
+  }
+
+  /**
+   * Validate sensor value ranges
+   * BUG FIX #4: Ensure sensor values are physically possible
+   */
+  private validateSensorRanges(data: any): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    // pH: 0-14 (standard pH scale)
+    if (data.pH < 0 || data.pH > 14) {
+      errors.push(`pH: ${data.pH} (valid range: 0-14)`);
+    }
+
+    // TDS: 0-2000 ppm
+    if (data.tds < 0 || data.tds > 2000) {
+      errors.push(`TDS: ${data.tds} (valid range: 0-2000 ppm)`);
+    }
+
+    // Turbidity: 0-1000 NTU
+    if (data.turbidity < 0 || data.turbidity > 1000) {
+      errors.push(`Turbidity: ${data.turbidity} (valid range: 0-1000 NTU)`);
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+    };
   }
 
   /**
@@ -206,6 +283,29 @@ class MQTTService {
   }
 
   /**
+   * Handle device status messages (LWT - Last Will Testament)
+   * BUG FIX #1: Critical fix for offline detection
+   * Devices send LWT to devices/{deviceId}/status when they disconnect unexpectedly
+   */
+  private async handleDeviceStatus(deviceId: string, data: any): Promise<void> {
+    try {
+      if (data.status === 'offline') {
+        // Device went offline (power loss, network failure, crash)
+        await deviceService.updateDeviceStatus(deviceId, DeviceStatus.OFFLINE);
+        await deviceService.updateHeartbeat(deviceId);
+        logger.warn(`🔴 MQTT: Device ${deviceId} went OFFLINE (LWT triggered)`);
+      } else if (data.status === 'online') {
+        // Device came online
+        await deviceService.updateDeviceStatus(deviceId, DeviceStatus.ONLINE);
+        await deviceService.updateHeartbeat(deviceId);
+        logger.info(`🟢 MQTT: Device ${deviceId} came ONLINE`);
+      }
+    } catch (error: any) {
+      logger.error(`❌ MQTT: Error processing device status from ${deviceId}`, { error: error.message, stack: error.stack, deviceId });
+    }
+  }
+
+  /**
    * Publish command to device
    */
   public async publishCommand(deviceId: string, command: any): Promise<void> {
@@ -231,11 +331,12 @@ class MQTTService {
 
   /**
    * Extract device ID from topic
+   * FIXED: Updated to match new topic structure devices/{deviceId}/data
    */
   private extractDeviceId(topic: string): string | null {
     const parts = topic.split('/');
-    // Topic format: water-quality/sensors/{deviceId}/data or water-quality/devices/{deviceId}/registration
-    return parts.length >= 3 && parts[2] ? parts[2] : null;
+    // Topic format: devices/{deviceId}/data or devices/{deviceId}/register
+    return parts.length >= 2 && parts[1] ? parts[1] : null;
   }
 
   /**

@@ -83,6 +83,26 @@ const deviceSchema = new Schema<IDeviceDocument>(
       hardware: { type: String },
       ipAddress: { type: String },
     },
+    // Soft delete fields
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      type: Schema.Types.ObjectId,
+      ref: COLLECTIONS.USERS,
+      default: null,
+    },
+    scheduledPermanentDeletionAt: {
+      type: Date,
+      default: null,
+      index: true, // For efficient cleanup job queries
+    },
   },
   {
     timestamps: true,
@@ -97,6 +117,7 @@ deviceSchema.index({ status: 1, lastSeen: -1 });
 deviceSchema.index({ registrationStatus: 1, createdAt: -1 });
 deviceSchema.index({ isRegistered: 1, status: 1 });
 deviceSchema.index({ deviceId: 1, isRegistered: 1 });
+deviceSchema.index({ isDeleted: 1, scheduledPermanentDeletionAt: 1 }); // For cleanup jobs
 
 /**
  * Instance method to get public device data
@@ -128,6 +149,10 @@ deviceSchema.methods.toPublicProfile = function (this: IDeviceDocument): IDevice
     registeredAt: toTimestamp(this.createdAt),
     lastSeen: toTimestamp(this.lastSeen),
     metadata: this.metadata,
+    isDeleted: this.isDeleted,
+    deletedAt: toTimestamp(this.deletedAt || null),
+    deletedBy: this.deletedBy,
+    scheduledPermanentDeletionAt: toTimestamp(this.scheduledPermanentDeletionAt || null),
     createdAt: this.createdAt,
     updatedAt: this.updatedAt,
   };

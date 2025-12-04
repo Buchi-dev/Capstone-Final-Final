@@ -7,14 +7,23 @@ import { Types, Document } from 'mongoose';
 
 /**
  * Base sensor reading interface
+ * BUG FIX #2: Added validity flags for graceful sensor degradation
  */
 export interface ISensorReading {
   _id: Types.ObjectId;
   deviceId: string;
-  pH: number;
-  turbidity: number;
-  tds: number;
+  pH: number | null;
+  turbidity: number | null;
+  tds: number | null;
+  pH_valid: boolean;
+  tds_valid: boolean;
+  turbidity_valid: boolean;
   timestamp: Date;
+  // Soft delete fields
+  isDeleted: boolean;
+  deletedAt?: Date;
+  deletedBy?: Types.ObjectId;
+  scheduledPermanentDeletionAt?: Date;
   createdAt: Date;
 }
 
@@ -25,12 +34,16 @@ export interface ISensorReadingDocument extends ISensorReading, Document {}
 
 /**
  * Sensor reading creation data
+ * BUG FIX #2: Added validity flags for graceful sensor degradation
  */
 export interface ICreateSensorReadingData {
   deviceId: string;
-  pH: number;
-  turbidity: number;
-  tds: number;
+  pH: number | null;
+  turbidity: number | null;
+  tds: number | null;
+  pH_valid?: boolean;
+  tds_valid?: boolean;
+  turbidity_valid?: boolean;
   timestamp: Date;
 }
 

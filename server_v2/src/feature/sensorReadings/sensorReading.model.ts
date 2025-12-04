@@ -10,6 +10,7 @@ import { COLLECTIONS } from '@core/configs/constants.config';
 /**
  * Sensor Reading Schema
  * High-volume data storage with optimized indexes for time-series queries
+ * BUG FIX #2: Added validity flags for graceful sensor degradation
  */
 const sensorReadingSchema = new Schema<ISensorReadingDocument>(
   {
@@ -20,20 +21,58 @@ const sensorReadingSchema = new Schema<ISensorReadingDocument>(
     },
     pH: {
       type: Number,
-      required: true,
+      required: false, // BUG FIX #2: Allow null for invalid sensors
+      default: null,
     },
     turbidity: {
       type: Number,
-      required: true,
+      required: false, // BUG FIX #2: Allow null for invalid sensors
+      default: null,
     },
     tds: {
       type: Number,
+      required: false, // BUG FIX #2: Allow null for invalid sensors
+      default: null,
+    },
+    pH_valid: {
+      type: Boolean,
       required: true,
+      default: true, // BUG FIX #2: Track sensor validity
+    },
+    tds_valid: {
+      type: Boolean,
+      required: true,
+      default: true, // BUG FIX #2: Track sensor validity
+    },
+    turbidity_valid: {
+      type: Boolean,
+      required: true,
+      default: true, // BUG FIX #2: Track sensor validity
     },
     timestamp: {
       type: Date,
       required: true,
       index: true, // Critical for time-based queries
+    },
+    // Soft delete fields
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      type: Schema.Types.ObjectId,
+      ref: COLLECTIONS.USERS,
+      default: null,
+    },
+    scheduledPermanentDeletionAt: {
+      type: Date,
+      default: null,
+      index: true,
     },
   },
   {
@@ -52,6 +91,9 @@ sensorReadingSchema.index({ deviceId: 1, timestamp: -1 });
 
 // Time-based queries for aggregation
 sensorReadingSchema.index({ timestamp: -1, deviceId: 1 });
+
+// Soft delete cleanup queries
+sensorReadingSchema.index({ isDeleted: 1, scheduledPermanentDeletionAt: 1 });
 
 // TTL index for automatic data cleanup (optional - 90 days retention)
 // Uncomment if you want automatic data expiration

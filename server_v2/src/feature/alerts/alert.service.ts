@@ -298,11 +298,12 @@ export class AlertService {
     const cooldownMinutes = ALERT.COOLDOWN[severity] || ALERT.DEFAULT_COOLDOWN;
     const cooldownMs = cooldownMinutes * TIME.ONE_MINUTE;
 
-    // Find active alert within cooldown period
+    // Find active alert within cooldown period (exclude soft-deleted)
     const activeAlert = await Alert.findOne({
       deviceId,
       parameter,
       acknowledged: false, // Only check unacknowledged alerts
+      isDeleted: { $ne: true }, // Exclude soft-deleted alerts
       createdAt: { $gte: new Date(Date.now() - cooldownMs) },
     }).sort({ createdAt: -1 }); // Get most recent
 
@@ -373,9 +374,13 @@ export class AlertService {
 
   /**
    * Get all alerts with filters and pagination
+   * Excludes soft-deleted alerts by default
    */
   async getAllAlerts(filters: IAlertFilters, page = 1, limit = 50) {
     const query = this.crud.query();
+
+    // Exclude soft-deleted alerts
+    query.filter({ isDeleted: { $ne: true } });
 
     // Apply filters
     if (filters.deviceId) query.filter({ deviceId: filters.deviceId });

@@ -59,6 +59,11 @@ export interface IAlert {
   currentValue: number;
   emailSent: boolean;
   emailSentAt?: Date;
+  // Soft delete fields
+  isDeleted: boolean;
+  deletedAt?: Date;
+  deletedBy?: Types.ObjectId;
+  scheduledPermanentDeletionAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -97,6 +102,11 @@ export interface IAlertPublic {
   currentValue: number;
   emailSent: boolean;
   emailSentAt?: Date;
+  // Soft delete fields
+  isDeleted: boolean;
+  deletedAt?: Date;
+  deletedBy?: Types.ObjectId;
+  scheduledPermanentDeletionAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
