@@ -18,7 +18,6 @@ import {
   ICreateAlertData,
   IAlertCooldownResult,
   IAlertFilters,
-  IAlertStatistics,
   AlertSeverity,
   AlertStatus,
   AlertParameter,
@@ -508,7 +507,7 @@ export class AlertService {
   /**
    * Get alert statistics
    */
-  async getAlertStatistics(deviceId?: string): Promise<IAlertStatistics> {
+  async getAlertStatistics(deviceId?: string): Promise<any> {
     const matchStage: any = {};
     if (deviceId) matchStage.deviceId = deviceId;
 
@@ -547,23 +546,12 @@ export class AlertService {
 
     const result = stats[0];
 
+    // Return data in the format the frontend expects (arrays)
     return {
       total: result.total[0]?.count || 0,
-      bySeverity: {
-        critical: result.bySeverity.find((s: any) => s._id === AlertSeverity.CRITICAL)?.count || 0,
-        warning: result.bySeverity.find((s: any) => s._id === AlertSeverity.WARNING)?.count || 0,
-        advisory: result.bySeverity.find((s: any) => s._id === AlertSeverity.ADVISORY)?.count || 0,
-      },
-      byStatus: {
-        unacknowledged: result.byStatus.find((s: any) => s._id === AlertStatus.UNACKNOWLEDGED)?.count || 0,
-        acknowledged: result.byStatus.find((s: any) => s._id === AlertStatus.ACKNOWLEDGED)?.count || 0,
-        resolved: result.byStatus.find((s: any) => s._id === AlertStatus.RESOLVED)?.count || 0,
-      },
-      byParameter: {
-        pH: result.byParameter.find((p: any) => p._id === AlertParameter.PH)?.count || 0,
-        turbidity: result.byParameter.find((p: any) => p._id === AlertParameter.TURBIDITY)?.count || 0,
-        tds: result.byParameter.find((p: any) => p._id === AlertParameter.TDS)?.count || 0,
-      },
+      bySeverity: result.bySeverity || [],
+      byStatus: result.byStatus || [],
+      byParameter: result.byParameter || [],
     };
   }
 

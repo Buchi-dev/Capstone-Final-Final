@@ -1,3 +1,4 @@
+// @ts-ignore - module-alias types not available
 import moduleAlias from 'module-alias';
 import * as path from 'path';
 

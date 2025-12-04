@@ -33,6 +33,12 @@ const router = Router();
 router.get('/', requireStaff, validateRequest(reportFiltersSchema), getAllReports);
 
 /**
+ * GET /api/v1/reports/history
+ * Get all reports with filters (alias for /)
+ */
+router.get('/history', requireStaff, validateRequest(reportFiltersSchema), getAllReports);
+
+/**
  * GET /api/v1/reports/my-reports
  * Get current user's reports
  */

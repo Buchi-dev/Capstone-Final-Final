@@ -37,3 +37,6 @@ coverage/
 temp/
 tmp/
 logs/
+# Docker
+docker-compose.override.yml
+.dockerignore.local

@@ -15,6 +15,7 @@ import { userRoutes } from '@feature/users';
 import { deviceRoutes } from '@feature/devices';
 import { sensorReadingRoutes } from '@feature/sensorReadings';
 import { reportRoutes } from '@feature/reports';
+import { analyticsRoutes } from '@feature/analytics';
 
 // Initialize Express app
 const app: Application = express();
@@ -59,6 +60,7 @@ app.use(`${API_V1}/users`, userRoutes);
 app.use(`${API_V1}/devices`, deviceRoutes);
 app.use(`${API_V1}/sensor-readings`, sensorReadingRoutes);
 app.use(`${API_V1}/reports`, reportRoutes);
+app.use(`${API_V1}/analytics`, analyticsRoutes);
 
 // 404 handler - Must be after all routes
 app.use((_req: Request, _res: Response, next: NextFunction) => {

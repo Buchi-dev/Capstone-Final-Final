@@ -35,9 +35,16 @@ const router = Router();
 /**
  * @route   GET /api/v1/devices/statistics
  * @desc    Get device statistics (must be before /:id)
- * @access  Protected (Admin only)
+ * @access  Protected (Staff/Admin)
  */
-router.get('/statistics', requireAdmin, getDeviceStatistics);
+router.get('/statistics', requireStaff, getDeviceStatistics);
+
+/**
+ * @route   GET /api/v1/devices/stats
+ * @desc    Get device statistics (alias for /statistics)
+ * @access  Protected (Staff/Admin)
+ */
+router.get('/stats', requireStaff, getDeviceStatistics);
 
 /**
  * @route   GET /api/v1/devices/pending

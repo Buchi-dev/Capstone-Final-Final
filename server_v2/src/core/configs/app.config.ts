@@ -20,6 +20,9 @@ interface ServerConfig {
 interface CorsConfig {
   origin: string | string[];
   credentials: boolean;
+  allowedHeaders: string[];
+  exposedHeaders: string[];
+  methods: string[];
 }
 
 interface Config {
@@ -44,6 +47,9 @@ export const appConfig: Config = {
   cors: {
     origin: process.env.CORS_ORIGIN || '*',
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    exposedHeaders: ['Authorization'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   },
 };
 

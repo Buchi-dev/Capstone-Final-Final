@@ -143,6 +143,28 @@ export const updateUserRole = asyncHandler(async (req: AuthRequest, res: Respons
 });
 
 /**
+ * Get user notification preferences
+ * @route GET /api/v1/users/:id/preferences
+ */
+export const getUserPreferences = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params;
+
+    if (!id) {
+      throw new Error('User ID is required');
+    }
+
+    const user = await userService.getUserById(id);
+
+    ResponseHandler.success(
+      res,
+      user.notificationPreferences,
+      'Notification preferences retrieved successfully'
+    );
+  }
+);
+
+/**
  * Update notification preferences
  * @route PATCH /api/v1/users/:id/preferences
  */
