@@ -180,11 +180,11 @@
 // ───────────────────────────────────────────────────────────────────────────
 // MQTT Broker Configuration (HiveMQ Cloud - SSL/TLS Port 8883)
 // ───────────────────────────────────────────────────────────────────────────
-#define MQTT_BROKER "f4f8d29564364fbdbe9b052230c33d40.s1.eu.hivemq.cloud"
+#define MQTT_BROKER "51a25bfc8aeb4a1488b1ce5579fc20b1.s1.eu.hivemq.cloud"
 #define MQTT_PORT 8883
 // FIXED: Client ID now generated dynamically from MAC address (see setup())
 // This prevents device ID collisions when multiple devices connect
-#define MQTT_USERNAME "Device_Production"
+#define MQTT_USERNAME "Device"
 #define MQTT_PASSWORD "Device123"
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1894,15 +1894,18 @@ void connectMQTT() {
   char lwtPayload[60];
   snprintf(lwtPayload, sizeof(lwtPayload), "{\"status\":\"offline\",\"deviceId\":\"%s\"}", DEVICE_ID.c_str());
   
-  mqttClient.setWill(statusTopic, lwtPayload, true, 1);
   Serial.print(F("✓ LWT configured: "));
   Serial.println(statusTopic);
 
-  // Connect with credentials
+  // Connect with credentials and LWT
   bool connected = mqttClient.connect(
     MQTT_CLIENT_ID.c_str(),
     MQTT_USERNAME,
-    MQTT_PASSWORD
+    MQTT_PASSWORD,
+    statusTopic,
+    0,  // willQoS
+    true,  // willRetain
+    lwtPayload
   );
 
 
@@ -1917,7 +1920,7 @@ void connectMQTT() {
     snprintf(onlinePayload, sizeof(onlinePayload), 
              "{\"status\":\"online\",\"deviceId\":\"%s\",\"firmware\":\"%s\"}", 
              DEVICE_ID.c_str(), FIRMWARE_VERSION);
-    mqttClient.publish(statusTopic, onlinePayload, true, 1);
+    mqttClient.publish(statusTopic, (uint8_t*)onlinePayload, strlen(onlinePayload), true);
     Serial.println(F("✓ Published online status"));
 
     // Subscribe to command topic with QoS 1
@@ -2197,7 +2200,7 @@ void publishSensorData() {
   // ═════════════════════════════════════════════════════════════════════════
   // CRITICAL FIX #2: MQTT QoS 1 - Guaranteed Delivery with Acknowledgment
   // ═════════════════════════════════════════════════════════════════════════
-  if (mqttClient.publish(topicData, payload, false, 1)) {
+  if (mqttClient.publish(topicData, (uint8_t*)payload, strlen(payload), false)) {
     Serial.println(F("✓ Published (QoS 1 - acknowledged)!"));
     consecutiveMqttFailures = 0;
   } else {
@@ -2274,7 +2277,7 @@ void sendRegistration() {
   Serial.println(payload);
 
 
-  bool published = mqttClient.publish(topicRegister, payload, false, 1);  // QoS 1
+  bool published = mqttClient.publish(topicRegister, (uint8_t*)payload, strlen(payload), false);
 
 
   if (published) {
@@ -2370,7 +2373,7 @@ void handlePresenceQuery(const char* message) {
     char presenceResponseTopic[30];
     strcpy_P(presenceResponseTopic, PRESENCE_RESPONSE_TOPIC);
     
-    bool published = mqttClient.publish(presenceResponseTopic, responsePayload, false, 1);  // QoS 1
+    bool published = mqttClient.publish(presenceResponseTopic, (uint8_t*)responsePayload, strlen(responsePayload), false);
     
     if (published) {
       Serial.println(F("✓ Presence response published (QoS 1)"));
@@ -2425,7 +2428,7 @@ void publishPresenceOnline() {
 
 
   // Publish WITHOUT retained flag - server will poll to verify
-  if (mqttClient.publish(topicPresence, presencePayload, false, 1)) {  // QoS 1
+  if (mqttClient.publish(topicPresence, (uint8_t*)presencePayload, strlen(presencePayload), false)) {
     Serial.println(F("✓ Presence status: online (QoS 1)"));
     consecutiveMqttFailures = 0;
   } else {
@@ -3322,54 +3325,3 @@ void loop() {
     delay(10);   // Calibration mode: 10ms for tight 255ms sensor timing
   }
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-//                              END OF PROGRAM
-// ═══════════════════════════════════════════════════════════════════════════
-// 
-// FIRMWARE SUMMARY:
-//   Total Lines: ~2400+
-//   Memory Optimizations: F() macro, PROGMEM, optimized buffers
-//   WiFi: Manager with EEPROM persistence
-//   MQTT: SSL/TLS secure connection (HiveMQ Cloud)
-//   Sensors: pH, TDS, Turbidity with smoothing algorithms
-//   Modes: Normal (60s + MQTT) and Calibration (255ms, no MQTT)
-// 
-// DEPLOYMENT CHECKLIST:
-//   ☐ Set CALIBRATION_MODE to false for production
-//   ☐ Verify MQTT broker credentials (MQTT_BROKER, MQTT_USERNAME, etc.)
-//   ☐ Confirm device ID is unique (DEVICE_ID, MQTT_CLIENT_ID)
-//   ☐ Test WiFi Manager configuration process
-//   ☐ Verify sensor calibration constants
-//   ☐ Check Serial Monitor output at 115200 baud
-//   ☐ Confirm data transmission at :00 and :30 minutes
-//   ☐ Wait for server "go" command before expecting data
-// 
-// MAINTENANCE:
-//   - Device restarts automatically at midnight (Philippine Time)
-//   - WiFi credentials persist across reboots (EEPROM)
-//   - Approval status persists across reboots (EEPROM)
-//   - Check boot counter in Serial Monitor for restart tracking
-//   - Monitor "uptime without WiFi" for connectivity issues
-// 
-// SUPPORT:
-//   - Serial Monitor: 115200 baud for debug output
-//   - WiFi Manager: http://192.168.4.1 when AP active
-//   - MQTT Commands: go, deregister, restart, send_now
-//   - Factory Reset: Call clearEEPROM() to erase all settings
-// 
-// VERSION HISTORY:
-//   v7.0.0 - December 2025
-//     • Added WiFi Manager with web portal
-//     • Implemented WiFi credential EEPROM persistence
-//     • Simplified HTML for microcontroller performance
-//     • Enhanced POST request parsing with validation
-//     • Added comprehensive inline documentation
-//     • Optimized for Arduino UNO R4 WiFi platform
-// 
-// COPYRIGHT:
-//   PureTrack Team
-//   December 2025
-//   All Rights Reserved
-// 
-// ═══════════════════════════════════════════════════════════════════════════

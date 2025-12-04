@@ -60,6 +60,9 @@ const legacyStatusConfig: Record<DeviceStatus, { color: string; icon: ReactNode 
 };
 
 export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalProps) => {
+  // Early return MUST come before any hooks to avoid "Rendered more hooks than during the previous render" error
+  if (!device) return null;
+
   const token = useThemeToken();
   const [commandState, setCommandState] = useState<{
     status: 'idle' | 'sending' | 'queued' | 'acknowledged' | 'timeout' | 'failed';
@@ -72,8 +75,6 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
     error: null,
     result: null,
   });
-
-  if (!device) return null;
 
   // Check if device is likely offline
   const isDeviceOffline = device.uiStatus === 'offline' || device.status === 'offline';

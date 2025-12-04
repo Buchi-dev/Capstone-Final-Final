@@ -136,7 +136,7 @@ class MQTTService {
       // Route message to appropriate handler
       if (topic.includes('/data')) {
         await this.handleSensorData(deviceId, message);
-      } else if (topic.includes('/registration')) {
+      } else if (topic.includes('/registration') || topic.includes('/register')) {
         await this.handleDeviceRegistration(deviceId, message);
       } else if (topic.includes('/presence')) {
         await this.handleDevicePresence(deviceId, message);
@@ -221,7 +221,26 @@ class MQTTService {
 
       logger.info(`📊 MQTT: Processed sensor data from ${deviceId}`, { invalidSensors: invalidSensors.length > 0 ? invalidSensors : undefined });
     } catch (error: any) {
-      logger.error(`❌ MQTT: Error processing sensor data from ${deviceId}`, { error: error.message, stack: error.stack, deviceId });
+      // Auto-register device if not found
+      if (error.message === 'Device not found' || error.message?.includes('not found')) {
+        logger.warn(`⚠️ MQTT: Device ${deviceId} not registered, auto-registering from sensor data...`);
+        try {
+          await deviceService.processDeviceRegistration({
+            deviceId,
+            name: data.deviceName || `Auto-registered ${deviceId}`,
+            type: 'Unknown',
+            sensors: ['pH', 'turbidity', 'tds'],
+          });
+          logger.info(`✅ MQTT: Auto-registered device ${deviceId} from sensor data`);
+          
+          // Retry processing sensor data after registration
+          await this.handleSensorData(deviceId, data);
+        } catch (regError: any) {
+          logger.error(`❌ MQTT: Failed to auto-register device ${deviceId}`, { error: regError.message, stack: regError.stack });
+        }
+      } else {
+        logger.error(`❌ MQTT: Error processing sensor data from ${deviceId}`, { error: error.message, stack: error.stack, deviceId });
+      }
     }
   }
 
@@ -272,13 +291,33 @@ class MQTTService {
 
   /**
    * Handle device presence/heartbeat messages
+   * AUTO-REGISTRATION: If device is not found, auto-register it
    */
-  private async handleDevicePresence(deviceId: string, _data: any): Promise<void> {
+  private async handleDevicePresence(deviceId: string, data: any): Promise<void> {
     try {
       await deviceService.updateHeartbeat(deviceId);
       logger.info(`💓 MQTT: Heartbeat from ${deviceId}`);
     } catch (error: any) {
-      logger.error(`❌ MQTT: Error processing heartbeat from ${deviceId}`, { error: error.message, stack: error.stack, deviceId });
+      // Auto-register device if not found
+      if (error.message === 'Device not found' || error.message?.includes('not found')) {
+        logger.warn(`⚠️ MQTT: Device ${deviceId} not registered, auto-registering from heartbeat...`);
+        try {
+          await deviceService.processDeviceRegistration({
+            deviceId,
+            name: data.name || `Auto-registered ${deviceId}`,
+            type: data.type || 'Unknown',
+            sensors: data.sensors || [],
+          });
+          logger.info(`✅ MQTT: Auto-registered device ${deviceId} from heartbeat`);
+          
+          // Retry heartbeat update after registration
+          await deviceService.updateHeartbeat(deviceId);
+        } catch (regError: any) {
+          logger.error(`❌ MQTT: Failed to auto-register device ${deviceId}`, { error: regError.message, stack: regError.stack });
+        }
+      } else {
+        logger.error(`❌ MQTT: Error processing heartbeat from ${deviceId}`, { error: error.message, stack: error.stack, deviceId });
+      }
     }
   }
 
@@ -286,6 +325,7 @@ class MQTTService {
    * Handle device status messages (LWT - Last Will Testament)
    * BUG FIX #1: Critical fix for offline detection
    * Devices send LWT to devices/{deviceId}/status when they disconnect unexpectedly
+   * AUTO-REGISTRATION: If device is not found, auto-register it
    */
   private async handleDeviceStatus(deviceId: string, data: any): Promise<void> {
     try {
@@ -301,7 +341,43 @@ class MQTTService {
         logger.info(`🟢 MQTT: Device ${deviceId} came ONLINE`);
       }
     } catch (error: any) {
-      logger.error(`❌ MQTT: Error processing device status from ${deviceId}`, { error: error.message, stack: error.stack, deviceId });
+      // Auto-register device if not found
+      if (error.message === 'Device not found') {
+        logger.warn(`⚠️ MQTT: Device ${deviceId} not registered, auto-registering with partial data...`);
+        logger.info(`📦 MQTT: Received data from ${deviceId}:`, data);
+        try {
+          // Extract device type from deviceId if possible (e.g., "arduino_r4_xxx")
+          let deviceType = data.type || 'Unknown';
+          if (!data.type && deviceId.includes('arduino_r4')) {
+            deviceType = 'Arduino UNO R4 WiFi';
+          } else if (!data.type && deviceId.includes('arduino')) {
+            deviceType = 'Arduino';
+          }
+
+          await deviceService.processDeviceRegistration({
+            deviceId,
+            name: data.name || `Auto-registered ${deviceId}`,
+            type: deviceType,
+            firmwareVersion: data.firmwareVersion || '',
+            macAddress: data.macAddress || '',
+            ipAddress: data.ipAddress || '',
+            sensors: data.sensors || [],
+            location: data.location || '',
+          });
+          logger.info(`✅ MQTT: Auto-registered device ${deviceId} (partial registration - please update device details)`);
+          
+          // Retry status update after registration
+          if (data.status === 'online') {
+            await deviceService.updateDeviceStatus(deviceId, DeviceStatus.ONLINE);
+          } else if (data.status === 'offline') {
+            await deviceService.updateDeviceStatus(deviceId, DeviceStatus.OFFLINE);
+          }
+        } catch (regError: any) {
+          logger.error(`❌ MQTT: Failed to auto-register device ${deviceId}`, { error: regError.message, stack: regError.stack });
+        }
+      } else {
+        logger.error(`❌ MQTT: Error processing device status from ${deviceId}`, { error: error.message, stack: error.stack, deviceId });
+      }
     }
   }
 

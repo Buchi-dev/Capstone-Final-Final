@@ -45,13 +45,21 @@ export class BackupService {
   private drive: any;
   private backupDir: string;
   private encryptionKey: string;
+  private initializationPromise: Promise<void>;
 
   constructor() {
     this.backupDir = path.join(process.cwd(), 'backups');
     this.encryptionKey = process.env.BACKUP_ENCRYPTION_KEY || this.generateEncryptionKey();
     
-    // Initialize Google Drive API
-    this.initializeGoogleDrive();
+    // Initialize Google Drive API asynchronously
+    this.initializationPromise = this.initializeGoogleDrive();
+  }
+
+  /**
+   * Wait for Google Drive initialization to complete
+   */
+  private async waitForInitialization(): Promise<void> {
+    await this.initializationPromise;
   }
 
   /**
@@ -95,8 +103,50 @@ export class BackupService {
 
       this.drive = google.drive({ version: 'v3', auth });
       logger.info('✅ Google Drive API initialized with service account');
+
+      // Create backup folder structure on initialization
+      await this.createBackupFolderStructure();
     } catch (error) {
       logger.error('Failed to initialize Google Drive API', error);
+    }
+  }
+
+  /**
+   * Create the PureTrack_Backups folder structure in Google Drive
+   * Creates: PureTrack_Backups/Daily, Weekly, Monthly, Manual
+   */
+  private async createBackupFolderStructure(): Promise<void> {
+    if (!this.drive) return;
+
+    try {
+      logger.info('Creating backup folder structure in Google Drive...');
+
+      // Create or get root folder
+      let rootFolderId = await this.findFolder('PureTrack_Backups');
+      if (!rootFolderId) {
+        rootFolderId = await this.createFolder('PureTrack_Backups');
+        logger.info('✅ Created root folder: PureTrack_Backups');
+      } else {
+        logger.info('📁 Root folder already exists: PureTrack_Backups');
+      }
+
+      // Create subfolders for each backup type
+      const subfolders = ['Daily', 'Weekly', 'Monthly', 'Manual'];
+      
+      for (const folderName of subfolders) {
+        let subfolderId = await this.findFolder(folderName, rootFolderId);
+        if (!subfolderId) {
+          subfolderId = await this.createFolder(folderName, rootFolderId);
+          logger.info(`✅ Created subfolder: ${folderName}`);
+        } else {
+          logger.info(`📁 Subfolder already exists: ${folderName}`);
+        }
+      }
+
+      logger.info('✅ Backup folder structure verified in Google Drive');
+    } catch (error) {
+      logger.error('Failed to create backup folder structure', error);
+      logger.warn('Backups will still work - folders will be created on first backup');
     }
   }
 
@@ -433,6 +483,9 @@ export class BackupService {
     try {
       logger.info(`Starting ${type} backup...`);
 
+      // Ensure Google Drive is initialized before proceeding
+      await this.waitForInitialization();
+
       await this.ensureBackupDirectory();
 
       // Export collections
@@ -557,6 +610,9 @@ export class BackupService {
    * Delete old backups based on retention policy
    */
   async cleanupOldBackups(): Promise<void> {
+    // Ensure Google Drive is initialized
+    await this.waitForInitialization();
+
     if (!this.drive) return;
 
     logger.info('Cleaning up old backups...');
@@ -597,6 +653,9 @@ export class BackupService {
    */
   async listBackups(): Promise<IBackup[]> {
     const backups: IBackup[] = [];
+
+    // Ensure Google Drive is initialized
+    await this.waitForInitialization();
 
     if (!this.drive) {
       logger.warn('Google Drive not initialized. Cannot list backups.');
