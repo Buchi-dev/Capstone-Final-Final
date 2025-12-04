@@ -117,6 +117,22 @@ class PDFService {
   private readonly ERROR_COLOR = '#dc2626'; // Red
   private readonly GRAY_COLOR = '#6b7280'; // Gray
 
+  // WHO Water Quality Standards (for reference in compliance calculations)
+  // @ts-ignore - kept for reference
+  private readonly WHO_STANDARDS = {
+    ph: { min: 6.5, max: 8.5, unit: '', name: 'pH' },
+    tds: { min: 0, max: 1000, unit: 'ppm', name: 'TDS' },
+    turbidity: { min: 0, max: 5, unit: 'NTU', name: 'Turbidity' },
+  };
+
+  // Philippine National Standards for Drinking Water (PNSDW) (for reference)
+  // @ts-ignore - kept for reference
+  private readonly PNSDW_STANDARDS = {
+    ph: { min: 6.5, max: 8.5, unit: '', name: 'pH' },
+    tds: { min: 0, max: 1000, unit: 'ppm', name: 'TDS' },
+    turbidity: { min: 0, max: 5, unit: 'NTU', name: 'Turbidity' },
+  };
+
   /**
    * Generate PDF report based on type
    * @param type - Report type
@@ -156,81 +172,496 @@ class PDFService {
 
   /**
    * Generate Water Quality Report
-   * Time-series charts for pH/turbidity/TDS
+   * Time-series charts for pH/turbidity/TDS with WHO standards compliance
    */
   private generateWaterQualityReport(params: IWaterQualityReportParams): jsPDF {
     const doc = new jsPDF();
+    let yPos = 20;
 
-    // Header
-    this.addHeader(doc, 'Water Quality Report');
-    this.addSubheader(doc, `Device: ${params.deviceName} (${params.deviceId})`);
-    this.addDateRange(doc, params.startDate, params.endDate);
+    // ============================================================================
+    // HEADER
+    // ============================================================================
+    doc.setFontSize(20);
+    doc.setTextColor(this.BRAND_COLOR);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Water Quality Monitoring Report', 14, yPos);
+    yPos += 3;
+    
+    // Underline
+    doc.setDrawColor(this.BRAND_COLOR);
+    doc.setLineWidth(0.5);
+    doc.line(14, yPos, 196, yPos);
+    yPos += 10;
 
-    let yPos = 60;
+    // ============================================================================
+    // REPORT METADATA
+    // ============================================================================
+    doc.setFontSize(11);
+    doc.setTextColor(this.GRAY_COLOR);
+    doc.setFont('helvetica', 'normal');
+    
+    const deviceName = params.deviceName || 'Unknown Device';
+    const deviceLocation = (params as any).deviceLocation || 'Not specified';
+    const deviceStatus = (params as any).deviceStatus || 'unknown';
+    
+    doc.text(`Device: ${deviceName}`, 14, yPos);
+    yPos += 6;
+    doc.text(`Location: ${deviceLocation}`, 14, yPos);
+    yPos += 6;
+    doc.text(`Status: ${deviceStatus.toUpperCase()}`, 14, yPos);
+    yPos += 6;
+    doc.text(`Period: ${new Date(params.startDate).toLocaleDateString()} - ${new Date(params.endDate).toLocaleDateString()}`, 14, yPos);
+    yPos += 6;
+    doc.text(`Total Readings: ${(params as any).totalReadings || params.readings.length}`, 14, yPos);
+    yPos += 12;
 
-    // Statistics Summary
+    // ============================================================================
+    // EXECUTIVE SUMMARY
+    // ============================================================================
     doc.setFontSize(14);
     doc.setTextColor(this.BRAND_COLOR);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Executive Summary', 14, yPos);
+    yPos += 8;
+
+    // Calculate compliance
+    const compliance = this.calculateCompliance(params);
+    const overallStatus = compliance.overallStatus;
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    
+    // Overall Status
+    const statusColor = overallStatus === 'Safe' ? this.SUCCESS_COLOR : 
+                       overallStatus === 'Warning' ? this.WARNING_COLOR : this.ERROR_COLOR;
+    doc.setTextColor(statusColor);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Overall Water Quality: ${overallStatus.toUpperCase()}`, 14, yPos);
+    yPos += 6;
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(this.GRAY_COLOR);
+    doc.text(`WHO Compliance Rate: ${compliance.complianceRate.toFixed(1)}%`, 14, yPos);
+    yPos += 6;
+    doc.text(`Violations Detected: ${compliance.totalViolations}`, 14, yPos);
+    yPos += 6;
+    doc.text(`Data Completeness: ${compliance.dataCompleteness.toFixed(1)}%`, 14, yPos);
+    yPos += 12;
+
+    // ============================================================================
+    // STATISTICAL SUMMARY
+    // ============================================================================
+    doc.setFontSize(14);
+    doc.setTextColor(this.BRAND_COLOR);
+    doc.setFont('helvetica', 'bold');
     doc.text('Statistical Summary', 14, yPos);
     yPos += 8;
 
     const statsData = [
-      ['Parameter', 'Average', 'Minimum', 'Maximum'],
+      ['Parameter', 'Average', 'Minimum', 'Maximum', 'Std Dev', 'Samples'],
       [
         'pH',
-        params.statistics.avgPh.toFixed(2),
-        params.statistics.minPh.toFixed(2),
-        params.statistics.maxPh.toFixed(2),
+        params.statistics.avgPh?.toFixed(2) || 'N/A',
+        params.statistics.minPh?.toFixed(2) || 'N/A',
+        params.statistics.maxPh?.toFixed(2) || 'N/A',
+        (params.statistics as any).ph?.stdDev?.toFixed(2) || 'N/A',
+        (params.statistics as any).ph?.count?.toString() || '0',
       ],
       [
         'Turbidity (NTU)',
-        params.statistics.avgTurbidity.toFixed(2),
-        params.statistics.minTurbidity.toFixed(2),
-        params.statistics.maxTurbidity.toFixed(2),
+        params.statistics.avgTurbidity?.toFixed(2) || 'N/A',
+        params.statistics.minTurbidity?.toFixed(2) || 'N/A',
+        params.statistics.maxTurbidity?.toFixed(2) || 'N/A',
+        (params.statistics as any).turbidity?.stdDev?.toFixed(2) || 'N/A',
+        (params.statistics as any).turbidity?.count?.toString() || '0',
       ],
       [
         'TDS (ppm)',
-        params.statistics.avgTds.toFixed(2),
-        params.statistics.minTds.toFixed(2),
-        params.statistics.maxTds.toFixed(2),
+        params.statistics.avgTds?.toFixed(2) || 'N/A',
+        params.statistics.minTds?.toFixed(2) || 'N/A',
+        params.statistics.maxTds?.toFixed(2) || 'N/A',
+        (params.statistics as any).tds?.stdDev?.toFixed(2) || 'N/A',
+        (params.statistics as any).tds?.count?.toString() || '0',
       ],
     ];
 
     autoTable(doc, {
       startY: yPos,
-      head: statsData[0] ? [statsData[0]] : [],
+      head: statsData[0] ? [statsData[0]] : [['Parameter', 'Average', 'Minimum', 'Maximum', 'Std Dev', 'Samples']],
       body: statsData.slice(1),
       theme: 'grid',
-      headStyles: { fillColor: this.BRAND_COLOR },
+      headStyles: { 
+        fillColor: this.BRAND_COLOR,
+        textColor: '#ffffff',
+        fontStyle: 'bold',
+        fontSize: 10,
+      },
+      styles: {
+        fontSize: 9,
+        cellPadding: 3,
+      },
+      alternateRowStyles: {
+        fillColor: '#f3f4f6',
+      },
     });
 
     yPos = (doc as any).lastAutoTable.finalY + 15;
 
-    // Recent Readings Table
+    // ============================================================================
+    // WHO STANDARDS COMPLIANCE
+    // ============================================================================
+    if (yPos > 240) {
+      doc.addPage();
+      yPos = 20;
+    }
+
     doc.setFontSize(14);
     doc.setTextColor(this.BRAND_COLOR);
-    doc.text('Recent Readings', 14, yPos);
+    doc.setFont('helvetica', 'bold');
+    doc.text('WHO Standards Compliance Analysis', 14, yPos);
     yPos += 8;
 
-    const readingsData = params.readings.slice(0, 20).map((reading) => [
-      new Date(reading.timestamp).toLocaleString(),
-      reading.ph.toFixed(2),
-      reading.turbidity.toFixed(2),
-      reading.tds.toFixed(2),
-    ]);
+    const complianceData = [
+      ['Parameter', 'WHO Standard', 'PNSDW Standard', 'Observed Range', 'Status', 'Compliance'],
+      [
+        'pH',
+        '6.5 - 8.5',
+        '6.5 - 8.5',
+        `${params.statistics.minPh?.toFixed(2) || 'N/A'} - ${params.statistics.maxPh?.toFixed(2) || 'N/A'}`,
+        compliance.ph.status,
+        `${compliance.ph.percentage.toFixed(1)}%`,
+      ],
+      [
+        'TDS (ppm)',
+        '< 1000',
+        '< 1000',
+        `${params.statistics.minTds?.toFixed(2) || 'N/A'} - ${params.statistics.maxTds?.toFixed(2) || 'N/A'}`,
+        compliance.tds.status,
+        `${compliance.tds.percentage.toFixed(1)}%`,
+      ],
+      [
+        'Turbidity (NTU)',
+        '< 5',
+        '< 5',
+        `${params.statistics.minTurbidity?.toFixed(2) || 'N/A'} - ${params.statistics.maxTurbidity?.toFixed(2) || 'N/A'}`,
+        compliance.turbidity.status,
+        `${compliance.turbidity.percentage.toFixed(1)}%`,
+      ],
+    ];
 
     autoTable(doc, {
       startY: yPos,
-      head: [['Timestamp', 'pH', 'Turbidity (NTU)', 'TDS (ppm)']],
-      body: readingsData,
-      theme: 'striped',
-      headStyles: { fillColor: this.BRAND_COLOR },
+      head: complianceData[0] ? [complianceData[0]] : [['Parameter', 'WHO Standard', 'PNSDW Standard', 'Observed Range', 'Status', 'Compliance']],
+      body: complianceData.slice(1),
+      theme: 'grid',
+      headStyles: { 
+        fillColor: this.BRAND_COLOR,
+        textColor: '#ffffff',
+        fontStyle: 'bold',
+        fontSize: 9,
+      },
+      styles: {
+        fontSize: 8,
+        cellPadding: 3,
+      },
+      columnStyles: {
+        3: { cellWidth: 35 },
+        4: { fontStyle: 'bold' },
+      },
+      didParseCell: (data) => {
+        // Color code status column
+        if (data.column.index === 4 && data.section === 'body') {
+          const status = data.cell.raw as string;
+          if (status === 'Pass') {
+            data.cell.styles.textColor = this.SUCCESS_COLOR;
+          } else if (status === 'Fail') {
+            data.cell.styles.textColor = this.ERROR_COLOR;
+          }
+        }
+      },
     });
 
-    // Footer
-    this.addFooter(doc);
+    yPos = (doc as any).lastAutoTable.finalY + 15;
+
+    // ============================================================================
+    // RECENT READINGS TABLE
+    // ============================================================================
+    if (yPos > 240) {
+      doc.addPage();
+      yPos = 20;
+    }
+
+    doc.setFontSize(14);
+    doc.setTextColor(this.BRAND_COLOR);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Recent Readings (Last 50)', 14, yPos);
+    yPos += 8;
+
+    const readingsData = params.readings.slice(0, 50).map((reading) => {
+      const timestamp = new Date(reading.timestamp);
+      const phValue = reading.ph != null ? reading.ph.toFixed(2) : 'N/A';
+      const turbValue = reading.turbidity != null ? reading.turbidity.toFixed(2) : 'N/A';
+      const tdsValue = reading.tds != null ? reading.tds.toFixed(2) : 'N/A';
+      const tempValue = (reading as any).temperature != null ? (reading as any).temperature.toFixed(1) + '°C' : 'N/A';
+      
+      // Compliance indicators
+      const phOk = reading.ph != null && reading.ph >= 6.5 && reading.ph <= 8.5 ? '✓' : '✗';
+      const turbOk = reading.turbidity != null && reading.turbidity < 5 ? '✓' : '✗';
+      const tdsOk = reading.tds != null && reading.tds < 1000 ? '✓' : '✗';
+      
+      return [
+        timestamp.toLocaleString('en-US', { 
+          month: 'short', 
+          day: 'numeric', 
+          year: 'numeric', 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        }),
+        `${phValue} ${phOk}`,
+        `${turbValue} ${turbOk}`,
+        `${tdsValue} ${tdsOk}`,
+        tempValue,
+      ];
+    });
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [['Timestamp', 'pH', 'Turbidity (NTU)', 'TDS (ppm)', 'Temp']],
+      body: readingsData.length > 0 ? readingsData : [['No readings available', '', '', '', '']],
+      theme: 'striped',
+      headStyles: { 
+        fillColor: this.BRAND_COLOR,
+        textColor: '#ffffff',
+        fontStyle: 'bold',
+        fontSize: 9,
+      },
+      styles: {
+        fontSize: 8,
+        cellPadding: 2,
+      },
+      columnStyles: {
+        0: { cellWidth: 45 },
+        1: { cellWidth: 25 },
+        2: { cellWidth: 30 },
+        3: { cellWidth: 28 },
+        4: { cellWidth: 22 },
+      },
+      alternateRowStyles: {
+        fillColor: '#f9fafb',
+      },
+    });
+
+    yPos = (doc as any).lastAutoTable.finalY + 15;
+
+    // ============================================================================
+    // RECOMMENDATIONS SECTION
+    // ============================================================================
+    if (yPos > 240) {
+      doc.addPage();
+      yPos = 20;
+    }
+
+    doc.setFontSize(14);
+    doc.setTextColor(this.BRAND_COLOR);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Recommendations', 14, yPos);
+    yPos += 8;
+
+    const recommendations = this.generateRecommendations(params, compliance);
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor('#000000');
+    
+    recommendations.forEach((rec, index) => {
+      if (yPos > 270) {
+        doc.addPage();
+        yPos = 20;
+      }
+      
+      const bullet = `${index + 1}.`;
+      doc.setFont('helvetica', 'bold');
+      doc.text(bullet, 14, yPos);
+      doc.setFont('helvetica', 'normal');
+      
+      const lines = doc.splitTextToSize(rec, 175);
+      doc.text(lines, 20, yPos);
+      yPos += (lines.length * 6) + 3;
+    });
+
+    // Footer on all pages
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      this.addFooter(doc, i, pageCount);
+    }
 
     return doc;
+  }
+
+  /**
+   * Calculate WHO standards compliance
+   */
+  private calculateCompliance(params: IWaterQualityReportParams) {
+    const readings = params.readings;
+    const totalReadings = readings.length;
+    
+    if (totalReadings === 0) {
+      return {
+        overallStatus: 'No Data',
+        complianceRate: 0,
+        totalViolations: 0,
+        dataCompleteness: 0,
+        ph: { status: 'N/A', percentage: 0, violations: 0 },
+        tds: { status: 'N/A', percentage: 0, violations: 0 },
+        turbidity: { status: 'N/A', percentage: 0, violations: 0 },
+      };
+    }
+
+    // Check pH compliance
+    const phReadings = readings.filter(r => r.ph != null);
+    const phCompliant = phReadings.filter(r => r.ph >= 6.5 && r.ph <= 8.5).length;
+    const phViolations = phReadings.length - phCompliant;
+    const phPercentage = phReadings.length > 0 ? (phCompliant / phReadings.length) * 100 : 0;
+    const phStatus = phPercentage === 100 ? 'Pass' : 'Fail';
+
+    // Check TDS compliance
+    const tdsReadings = readings.filter(r => r.tds != null);
+    const tdsCompliant = tdsReadings.filter(r => r.tds < 1000).length;
+    const tdsViolations = tdsReadings.length - tdsCompliant;
+    const tdsPercentage = tdsReadings.length > 0 ? (tdsCompliant / tdsReadings.length) * 100 : 0;
+    const tdsStatus = tdsPercentage === 100 ? 'Pass' : 'Fail';
+
+    // Check Turbidity compliance
+    const turbidityReadings = readings.filter(r => r.turbidity != null);
+    const turbidityCompliant = turbidityReadings.filter(r => r.turbidity < 5).length;
+    const turbidityViolations = turbidityReadings.length - turbidityCompliant;
+    const turbidityPercentage = turbidityReadings.length > 0 ? (turbidityCompliant / turbidityReadings.length) * 100 : 0;
+    const turbidityStatus = turbidityPercentage === 100 ? 'Pass' : 'Fail';
+
+    // Overall compliance
+    const totalViolations = phViolations + tdsViolations + turbidityViolations;
+    const totalChecks = phReadings.length + tdsReadings.length + turbidityReadings.length;
+    const complianceRate = totalChecks > 0 ? ((totalChecks - totalViolations) / totalChecks) * 100 : 0;
+    
+    // Determine overall status
+    let overallStatus = 'Safe';
+    if (totalViolations === 0) {
+      overallStatus = 'Safe';
+    } else if (complianceRate >= 90) {
+      overallStatus = 'Warning';
+    } else {
+      overallStatus = 'Critical';
+    }
+    
+    // Check for critical pH violations
+    const criticalPh = readings.some(r => r.ph != null && (r.ph < 6.0 || r.ph > 9.0));
+    if (criticalPh) {
+      overallStatus = 'Critical';
+    }
+
+    // Data completeness
+    const expectedReadings = totalReadings;
+    const actualReadings = readings.filter(r => r.ph != null || r.tds != null || r.turbidity != null).length;
+    const dataCompleteness = (actualReadings / expectedReadings) * 100;
+
+    return {
+      overallStatus,
+      complianceRate,
+      totalViolations,
+      dataCompleteness,
+      ph: { status: phStatus, percentage: phPercentage, violations: phViolations },
+      tds: { status: tdsStatus, percentage: tdsPercentage, violations: tdsViolations },
+      turbidity: { status: turbidityStatus, percentage: turbidityPercentage, violations: turbidityViolations },
+    };
+  }
+
+  /**
+   * Generate recommendations based on water quality data
+   */
+  private generateRecommendations(params: IWaterQualityReportParams, compliance: any): string[] {
+    const recommendations: string[] = [];
+
+    // pH recommendations
+    if (compliance.ph.violations > 0) {
+      const severity = compliance.ph.percentage < 90 ? 'CRITICAL' : 'WARNING';
+      recommendations.push(
+        `[${severity}] pH levels exceeded WHO standards in ${compliance.ph.violations} reading(s). ` +
+        `Recommend immediate water treatment system inspection and pH correction measures.`
+      );
+    }
+
+    // TDS recommendations
+    if (compliance.tds.violations > 0) {
+      if (compliance.tds.percentage < 95) {
+        recommendations.push(
+          `[WARNING] TDS levels exceeded 1000 ppm threshold in ${compliance.tds.violations} reading(s). ` +
+          `Monitor for increasing trend and consider water filtration system maintenance.`
+        );
+      }
+    }
+
+    // Turbidity recommendations
+    if (compliance.turbidity.violations > 0) {
+      recommendations.push(
+        `[WARNING] Turbidity exceeded 5 NTU standard in ${compliance.turbidity.violations} reading(s). ` +
+        `Check for sediment buildup and inspect filtration system.`
+      );
+    }
+
+    // Device status recommendations
+    const deviceStatus = (params as any).deviceStatus;
+    if (deviceStatus === 'offline') {
+      recommendations.push(
+        `[CRITICAL] Device is currently offline. Check network connectivity and power supply immediately.`
+      );
+    }
+
+    // Data completeness recommendation
+    if (compliance.dataCompleteness < 80) {
+      recommendations.push(
+        `[WARNING] Data completeness is ${compliance.dataCompleteness.toFixed(1)}%. ` +
+        `Missing data may affect accuracy of water quality assessment. Check sensor connectivity.`
+      );
+    }
+
+    // Positive recommendation if all is well
+    if (compliance.overallStatus === 'Safe' && compliance.complianceRate === 100) {
+      recommendations.push(
+        `[GOOD] All water quality parameters are within WHO acceptable ranges. Continue routine monitoring schedule.`
+      );
+    }
+
+    // General maintenance recommendation
+    if (recommendations.length === 0 || compliance.overallStatus !== 'Critical') {
+      recommendations.push(
+        `Regular calibration of sensors is recommended every 3-6 months to ensure accurate readings.`
+      );
+    }
+
+    return recommendations;
+  }
+
+  /**
+   * Add footer with page numbers
+   */
+  private addFooter(doc: jsPDF, pageNum?: number, totalPages?: number) {
+    const pageHeight = doc.internal.pageSize.getHeight();
+    doc.setFontSize(8);
+    doc.setTextColor(this.GRAY_COLOR);
+    doc.setFont('helvetica', 'normal');
+    
+    // Generation timestamp
+    const timestamp = new Date().toLocaleString();
+    doc.text(`Generated: ${timestamp}`, 14, pageHeight - 10);
+    
+    // System name
+    doc.text('PureTrack Water Quality Monitoring System', 105, pageHeight - 10, { align: 'center' });
+    
+    // Page numbers
+    if (pageNum && totalPages) {
+      doc.text(`Page ${pageNum} of ${totalPages}`, 196, pageHeight - 10, { align: 'right' });
+    }
   }
 
   /**
@@ -488,23 +919,6 @@ class PDFService {
     doc.setTextColor(this.GRAY_COLOR);
     const dateRange = `Period: ${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`;
     doc.text(dateRange, 14, 40);
-  }
-
-  /**
-   * Helper: Add footer with page numbers
-   */
-  private addFooter(doc: jsPDF): void {
-    const pageCount = doc.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(this.GRAY_COLOR);
-      doc.text(
-        `Page ${i} of ${pageCount} | Generated by Water Quality Monitoring System | ${new Date().toLocaleDateString()}`,
-        14,
-        285
-      );
-    }
   }
 }
 

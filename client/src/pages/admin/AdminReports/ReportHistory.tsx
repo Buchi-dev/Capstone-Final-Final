@@ -50,16 +50,37 @@ const { Option } = Select;
 
 interface ReportHistoryItem {
   id: string;
-  reportId: string;
   type: string;
   title: string;
-  createdAt: string;
-  fileSize: number;
-  downloadCount: number;
-  startDate: string;
-  endDate: string;
-  deviceCount: number;
-  downloadUrl: string;
+  description?: string;
+  status: string;
+  format: string;
+  parameters: {
+    deviceIds?: string[];
+    startDate?: string;
+    endDate?: string;
+    [key: string]: any;
+  };
+  file?: {
+    fileId: string;
+    filename: string;
+    format: string;
+    size: number;
+    mimeType: string;
+  };
+  generatedBy: string;
+  generatedAt?: {
+    seconds: number;
+    nanoseconds: number;
+  };
+  createdAt: {
+    seconds: number;
+    nanoseconds: number;
+  };
+  updatedAt: {
+    seconds: number;
+    nanoseconds: number;
+  };
 }
 
 const ReportHistory: React.FC = () => {
@@ -117,6 +138,29 @@ const ReportHistory: React.FC = () => {
     }
   };
 
+  // Helper function to convert Firebase Timestamp to Date
+  const timestampToDate = (timestamp: { seconds: number; nanoseconds: number } | undefined): Date => {
+    if (!timestamp) return new Date();
+    return new Date(timestamp.seconds * 1000);
+  };
+
+  // Helper function to get device count from parameters
+  const getDeviceCount = (report: ReportHistoryItem): number => {
+    return report.parameters?.deviceIds?.length || 0;
+  };
+
+  // Helper function to get file size
+  const getFileSize = (report: ReportHistoryItem): number => {
+    return report.file?.size || 0;
+  };
+
+  // Helper function to get date range
+  const getDateRange = (report: ReportHistoryItem): { start: string; end: string } => {
+    const startDate = report.parameters?.startDate || '';
+    const endDate = report.parameters?.endDate || '';
+    return { start: startDate, end: endDate };
+  };
+
   // Initial load
   useEffect(() => {
     loadReports();
@@ -155,7 +199,7 @@ const ReportHistory: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `report_${record.reportId}.pdf`;
+      link.download = record.file?.filename || `report_${record.id}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -212,7 +256,7 @@ const ReportHistory: React.FC = () => {
             </Tag>
           </Space>
           <Text type="secondary" style={{ fontSize: '12px' }}>
-            ID: {record.reportId}
+            ID: {record.id}
           </Text>
         </Space>
       ),
@@ -221,59 +265,67 @@ const ReportHistory: React.FC = () => {
       title: 'Date Range',
       key: 'dateRange',
       width: '25%',
-      render: (record: ReportHistoryItem) => (
-        <Space direction="vertical" size={2}>
-          <Text style={{ fontSize: '13px' }}>
-            {dayjs(record.startDate).format('MMM DD, YYYY')}
-          </Text>
-          <Text type="secondary" style={{ fontSize: '12px' }}>
-            to {dayjs(record.endDate).format('Dec 01, 2025')}
-          </Text>
-        </Space>
-      ),
+      render: (record: ReportHistoryItem) => {
+        const dateRange = getDateRange(record);
+        return (
+          <Space direction="vertical" size={2}>
+            <Text style={{ fontSize: '13px' }}>
+              {dateRange.start ? dayjs(dateRange.start).format('MMM DD, YYYY') : 'N/A'}
+            </Text>
+            <Text type="secondary" style={{ fontSize: '12px' }}>
+              to {dateRange.end ? dayjs(dateRange.end).format('MMM DD, YYYY') : 'N/A'}
+            </Text>
+          </Space>
+        );
+      },
     },
     {
       title: 'Devices',
-      dataIndex: 'deviceCount',
       key: 'deviceCount',
       width: '10%',
       align: 'center' as const,
-      render: (count: number) => (
-        <Text strong style={{ fontSize: '14px' }}>
-          {count} <Text type="secondary" style={{ fontSize: '12px' }}>devices</Text>
-        </Text>
-      ),
+      render: (record: ReportHistoryItem) => {
+        const count = getDeviceCount(record);
+        return (
+          <Text strong style={{ fontSize: '14px' }}>
+            {count} <Text type="secondary" style={{ fontSize: '12px' }}>devices</Text>
+          </Text>
+        );
+      },
     },
     {
       title: 'Size',
-      dataIndex: 'fileSize',
       key: 'fileSize',
       width: '10%',
       align: 'center' as const,
-      render: (size: number) => <Text style={{ fontSize: '13px' }}>{formatFileSize(size)}</Text>,
+      render: (record: ReportHistoryItem) => {
+        const size = getFileSize(record);
+        return <Text style={{ fontSize: '13px' }}>{formatFileSize(size)}</Text>;
+      },
     },
     {
       title: 'Downloads',
-      dataIndex: 'downloadCount',
       key: 'downloadCount',
       width: '8%',
       align: 'center' as const,
-      render: (count: number) => (
-        <Tag color={count > 0 ? 'green' : 'default'} style={{ margin: 0 }}>
-          {count || 0}
+      render: () => (
+        <Tag color="default" style={{ margin: 0 }}>
+          N/A
         </Tag>
       ),
     },
     {
       title: 'Generated',
-      dataIndex: 'createdAt',
       key: 'createdAt',
       width: '12%',
-      render: (date: string) => (
-        <Tooltip title={dayjs(date).format('YYYY-MM-DD HH:mm:ss')}>
-          <Text style={{ fontSize: '13px' }}>{dayjs(date).fromNow()}</Text>
-        </Tooltip>
-      ),
+      render: (record: ReportHistoryItem) => {
+        const date = timestampToDate(record.createdAt);
+        return (
+          <Tooltip title={dayjs(date).format('YYYY-MM-DD HH:mm:ss')}>
+            <Text style={{ fontSize: '13px' }}>{dayjs(date).fromNow()}</Text>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Actions',
@@ -287,6 +339,7 @@ const ReportHistory: React.FC = () => {
               icon={<DownloadOutlined />}
               onClick={() => handleDownload(record)}
               size="small"
+              disabled={!record.file}
             >
               Download
             </Button>
@@ -355,7 +408,10 @@ const ReportHistory: React.FC = () => {
               <Card>
                 <Statistic
                   title="This Month"
-                  value={reports.filter(r => dayjs(r.createdAt).isAfter(dayjs().startOf('month'))).length}
+                  value={reports.filter(r => {
+                    const date = timestampToDate(r.createdAt);
+                    return dayjs(date).isAfter(dayjs().startOf('month'));
+                  }).length}
                   prefix={<CalendarOutlined />}
                 />
               </Card>
@@ -364,7 +420,7 @@ const ReportHistory: React.FC = () => {
               <Card>
                 <Statistic
                   title="Total Downloads"
-                  value={reports.reduce((sum, r) => sum + (r.downloadCount || 0), 0)}
+                  value="N/A"
                   prefix={<DownloadOutlined />}
                 />
               </Card>
@@ -373,7 +429,7 @@ const ReportHistory: React.FC = () => {
               <Card>
                 <Statistic
                   title="Storage Used"
-                  value={formatFileSize(reports.reduce((sum, r) => sum + r.fileSize, 0))}
+                  value={formatFileSize(reports.reduce((sum, r) => sum + getFileSize(r), 0))}
                   prefix={<DatabaseOutlined />}
                 />
               </Card>

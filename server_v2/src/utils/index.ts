@@ -29,3 +29,4 @@ export {
   logStream,
   initializeLogger 
 } from './logger.util';
+export { googleDriveService } from './googleDrive.service';

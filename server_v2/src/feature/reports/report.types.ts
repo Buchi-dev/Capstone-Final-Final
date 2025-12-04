@@ -59,6 +59,8 @@ export interface IReportFile {
   format: ReportFormat;
   size: number;
   mimeType: string;
+  googleDriveFileId?: string;
+  googleDriveWebViewLink?: string;
 }
 
 /**
@@ -98,6 +100,8 @@ export interface IReportPublic {
     format: ReportFormat;
     size: number;
     mimeType: string;
+    googleDriveFileId?: string;
+    googleDriveWebViewLink?: string;
   };
   generatedBy: string;
   generatedAt?: {

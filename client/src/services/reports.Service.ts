@@ -91,16 +91,37 @@ export interface ReportListResponse {
 
 export interface ReportHistoryItem {
   id: string;
-  reportId: string;
   type: string;
   title: string;
-  createdAt: string;
-  fileSize: number;
-  downloadCount: number;
-  startDate: string;
-  endDate: string;
-  deviceCount: number;
-  downloadUrl: string;
+  description?: string;
+  status: string;
+  format: string;
+  parameters: {
+    deviceIds?: string[];
+    startDate?: string;
+    endDate?: string;
+    [key: string]: any;
+  };
+  file?: {
+    fileId: string;
+    filename: string;
+    format: string;
+    size: number;
+    mimeType: string;
+  };
+  generatedBy: string;
+  generatedAt?: {
+    seconds: number;
+    nanoseconds: number;
+  };
+  createdAt: {
+    seconds: number;
+    nanoseconds: number;
+  };
+  updatedAt: {
+    seconds: number;
+    nanoseconds: number;
+  };
 }
 
 export interface ReportHistoryFilters {

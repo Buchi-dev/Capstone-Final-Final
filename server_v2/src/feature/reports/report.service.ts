@@ -154,6 +154,8 @@ export class ReportService {
       format: ReportFormat;
       size: number;
       mimeType: string;
+      googleDriveFileId?: string;
+      googleDriveWebViewLink?: string;
     }
   ): Promise<IReportDocument> {
     const report = await Report.findByIdAndUpdate(
@@ -177,7 +179,7 @@ export class ReportService {
 
   /**
    * Delete report
-   * Also deletes associated file from GridFS
+   * Also deletes associated file from GridFS and Google Drive
    */
   async deleteReport(reportId: string): Promise<void> {
     // Get report to check for file
@@ -187,6 +189,18 @@ export class ReportService {
     if (report.file?.fileId) {
       const { gridfsService } = await import('@utils');
       await gridfsService.deleteFile(report.file.fileId);
+    }
+
+    // Delete file from Google Drive if exists
+    if (report.file?.googleDriveFileId) {
+      try {
+        const { googleDriveService } = await import('@utils');
+        await googleDriveService.deleteFile(report.file.googleDriveFileId);
+        logger.info(`Deleted report from Google Drive: ${report.file.googleDriveFileId}`);
+      } catch (error) {
+        logger.error('Failed to delete report from Google Drive', error);
+        // Don't throw - continue with local deletion
+      }
     }
 
     await Report.findByIdAndDelete(reportId);
@@ -213,6 +227,23 @@ export class ReportService {
       if (fileIds.length > 0) {
         const { gridfsService } = await import('@utils');
         await gridfsService.deleteFiles(fileIds);
+      }
+
+      // Delete files from Google Drive
+      const driveFileIds = expiredReports
+        .filter((report) => report.file?.googleDriveFileId)
+        .map((report) => report.file!.googleDriveFileId!);
+
+      if (driveFileIds.length > 0) {
+        const { googleDriveService } = await import('@utils');
+        for (const driveFileId of driveFileIds) {
+          try {
+            await googleDriveService.deleteFile(driveFileId);
+          } catch (error) {
+            logger.error(`Failed to delete expired report from Google Drive: ${driveFileId}`, error);
+            // Continue with other deletions
+          }
+        }
       }
     }
 
@@ -332,13 +363,33 @@ export class ReportService {
         uploadedAt: new Date(),
       });
 
-      // Attach file to report
+      // Upload to Google Drive (using shared PureTrack_Backups folder)
+      // Reports are stored in Manual folder (same as manual backups)
+      // Note: Service accounts need to upload to shared folders, not their own storage
+      const { googleDriveService } = await import('@utils');
+      const folderPath = ['PureTrack_Backups', 'Manual'];
+      const driveResult = await googleDriveService.uploadFile(pdfBuffer, filename, {
+        mimeType: 'application/pdf',
+        folderPath,
+        description: `Report: ${report.title} | Type: ${report.type} | Generated: ${new Date().toISOString()}`,
+      });
+
+      // Log Google Drive upload status
+      if (driveResult) {
+        logger.info(`✅ Report uploaded to Google Drive: ${driveResult.fileId}`);
+      } else {
+        logger.warn('⚠️ Failed to upload report to Google Drive. Report saved locally only.');
+      }
+
+      // Attach file to report (with Google Drive info if available)
       await this.attachFile(reportId.toString(), {
         fileId: uploadResult.fileId,
         filename: uploadResult.filename,
         format: ReportFormat.PDF,
         size: uploadResult.size,
         mimeType: 'application/pdf',
+        googleDriveFileId: driveResult?.fileId,
+        googleDriveWebViewLink: driveResult?.webViewLink,
       });
     } catch (error) {
       await this.updateReportStatus(
@@ -359,45 +410,124 @@ export class ReportService {
 
     switch (report.type) {
       case ReportType.WATER_QUALITY: {
-        // Fetch sensor readings for device in date range
+        // Fetch actual Device document first for accurate device information
+        const Device = (await import('@feature/devices/device.model')).default;
+        let deviceInfo: any = null;
+        
+        if (parameters.deviceId) {
+          deviceInfo = await Device.findOne({ deviceId: parameters.deviceId }).lean();
+        }
+
+        // Fetch sensor readings for device(s) in date range
         const SensorReading = (await import('@feature/sensorReadings/sensorReading.model')).default;
-        const readings = await SensorReading.find({
-          deviceId: parameters.deviceId,
+        const query: any = {
           timestamp: {
             $gte: parameters.startDate,
             $lte: parameters.endDate,
           },
-        })
+        };
+
+        // Support both single device and multiple devices
+        if (parameters.deviceId) {
+          query.deviceId = parameters.deviceId;
+        } else if (parameters.deviceIds && parameters.deviceIds.length > 0) {
+          query.deviceId = { $in: parameters.deviceIds };
+        }
+
+        const readings = await SensorReading.find(query)
           .sort({ timestamp: -1 })
-          .limit(100)
+          .limit(1000) // Increased limit for better statistics
           .lean();
 
-        // Calculate statistics
-        const phValues = readings.map((r: any) => r.ph).filter((v: number) => v != null);
-        const turbidityValues = readings.map((r: any) => r.turbidity).filter((v: number) => v != null);
-        const tdsValues = readings.map((r: any) => r.tds).filter((v: number) => v != null);
+        // Helper function to safely filter and validate numeric values
+        const getValidNumbers = (values: any[]): number[] => {
+          return values
+            .filter((v: any) => v != null && typeof v === 'number' && isFinite(v))
+            .map((v: number) => Number(v));
+        };
+
+        // Extract valid values for each parameter
+        const phValues = getValidNumbers(readings.map((r: any) => r.ph));
+        const turbidityValues = getValidNumbers(readings.map((r: any) => r.turbidity));
+        const tdsValues = getValidNumbers(readings.map((r: any) => r.tds));
+        const temperatureValues = getValidNumbers(readings.map((r: any) => r.temperature));
+
+        // Helper function to calculate statistics safely
+        const calculateStats = (values: number[]) => {
+          if (values.length === 0) {
+            return {
+              avg: 0,
+              min: 0,
+              max: 0,
+              median: 0,
+              stdDev: 0,
+              count: 0,
+            };
+          }
+
+          const sorted = [...values].sort((a, b) => a - b);
+          const sum = values.reduce((a, b) => a + b, 0);
+          const avg = sum / values.length;
+          
+          // Calculate median
+          const mid = Math.floor(sorted.length / 2);
+          const median = sorted.length % 2 === 0 
+            ? ((sorted[mid - 1] || 0) + (sorted[mid] || 0)) / 2 
+            : (sorted[mid] || 0);
+
+          // Calculate standard deviation
+          const variance = values.reduce((acc, val) => acc + Math.pow(val - avg, 2), 0) / values.length;
+          const stdDev = Math.sqrt(variance);
+
+          return {
+            avg: Math.round(avg * 100) / 100,
+            min: Math.round((sorted[0] || 0) * 100) / 100,
+            max: Math.round((sorted[sorted.length - 1] || 0) * 100) / 100,
+            median: Math.round(median * 100) / 100,
+            stdDev: Math.round(stdDev * 100) / 100,
+            count: values.length,
+          };
+        };
+
+        const phStats = calculateStats(phValues);
+        const turbidityStats = calculateStats(turbidityValues);
+        const tdsStats = calculateStats(tdsValues);
+        const temperatureStats = calculateStats(temperatureValues);
+
+        // Determine device name with proper fallback
+        const deviceName = deviceInfo?.name || parameters.deviceName || parameters.deviceId || 'Unknown Device';
+        const deviceLocation = deviceInfo?.location || 'Not specified';
 
         return {
-          deviceId: parameters.deviceId,
-          deviceName: parameters.deviceName || parameters.deviceId,
+          deviceId: parameters.deviceId || 'multiple',
+          deviceName: deviceName,
+          deviceLocation: deviceLocation,
+          deviceStatus: deviceInfo?.status || 'unknown',
           startDate: parameters.startDate,
           endDate: parameters.endDate,
-          readings: readings.map((r: any) => ({
+          totalReadings: readings.length,
+          readings: readings.slice(0, 50).map((r: any) => ({
             timestamp: r.timestamp,
-            ph: r.ph,
-            turbidity: r.turbidity,
-            tds: r.tds,
+            ph: r.ph != null ? Math.round(r.ph * 100) / 100 : null,
+            turbidity: r.turbidity != null ? Math.round(r.turbidity * 100) / 100 : null,
+            tds: r.tds != null ? Math.round(r.tds * 100) / 100 : null,
+            temperature: r.temperature != null ? Math.round(r.temperature * 100) / 100 : null,
           })),
           statistics: {
-            avgPh: phValues.reduce((a: number, b: number) => a + b, 0) / phValues.length || 0,
-            avgTurbidity: turbidityValues.reduce((a: number, b: number) => a + b, 0) / turbidityValues.length || 0,
-            avgTds: tdsValues.reduce((a: number, b: number) => a + b, 0) / tdsValues.length || 0,
-            minPh: Math.min(...phValues) || 0,
-            maxPh: Math.max(...phValues) || 0,
-            minTurbidity: Math.min(...turbidityValues) || 0,
-            maxTurbidity: Math.max(...turbidityValues) || 0,
-            minTds: Math.min(...tdsValues) || 0,
-            maxTds: Math.max(...tdsValues) || 0,
+            ph: phStats,
+            turbidity: turbidityStats,
+            tds: tdsStats,
+            temperature: temperatureStats,
+            // Legacy format for backward compatibility
+            avgPh: phStats.avg,
+            avgTurbidity: turbidityStats.avg,
+            avgTds: tdsStats.avg,
+            minPh: phStats.min,
+            maxPh: phStats.max,
+            minTurbidity: turbidityStats.min,
+            maxTurbidity: turbidityStats.max,
+            minTds: tdsStats.min,
+            maxTds: tdsStats.max,
           },
         };
       }
