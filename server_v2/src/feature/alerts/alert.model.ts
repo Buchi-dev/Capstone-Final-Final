@@ -36,6 +36,10 @@ const alertSchema = new Schema<IAlertDocument>(
       type: String,
       required: true,
     },
+    deviceLocation: {
+      type: String,
+      default: '',
+    },
     severity: {
       type: String,
       enum: Object.values(AlertSeverity),
@@ -175,6 +179,7 @@ alertSchema.methods.toPublicProfile = function (this: IAlertDocument): IAlertPub
     alertId: this.alertId,
     deviceId: this.deviceId,
     deviceName: this.deviceName,
+    deviceLocation: this.deviceLocation,
     severity: this.severity,
     parameter: this.parameter,
     value: this.value,

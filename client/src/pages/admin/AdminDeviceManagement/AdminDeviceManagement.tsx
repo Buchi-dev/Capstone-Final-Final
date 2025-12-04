@@ -10,7 +10,7 @@ import {
   RegisterDeviceModal,
 } from './components';
 import { useDeviceFilter } from './hooks';
-import { useDevices, useDeviceMutations } from '../../../hooks';
+import { useDevices, useDeviceMutations, useDeletedDevices } from '../../../hooks';
 import type { DeviceWithReadings } from '../../../schemas';
 import './DeviceManagement.css';
 
@@ -29,7 +29,7 @@ const { Search } = Input;
  */
 export const AdminDeviceManagement = () => {
   const [searchText, setSearchText] = useState('');
-  const [activeTab, setActiveTab] = useState<'registered' | 'unregistered'>('registered');
+  const [activeTab, setActiveTab] = useState<'registered' | 'unregistered' | 'deleted'>('registered');
   const [selectedDevice, setSelectedDevice] = useState<DeviceWithReadings | null>(null);
   const [isViewModalVisible, setIsViewModalVisible] = useState(false);
   const [isRegisterModalVisible, setIsRegisterModalVisible] = useState(false);
@@ -54,18 +54,30 @@ export const AdminDeviceManagement = () => {
   const {
     deleteDevice,
     registerDevice,
+    recoverDevice,
   } = useDeviceMutations();
+
+  // ✅ GLOBAL HOOK - Deleted devices
+  const {
+    deletedDevices,
+    isLoading: isLoadingDeleted,
+    refetch: refetchDeleted,
+  } = useDeletedDevices({ enabled: activeTab === 'deleted' });
 
   // Extract devices - useDevices now returns enriched DeviceWithReadings with uiStatus
   const devices = useMemo(() => {
+    if (activeTab === 'deleted') {
+      return deletedDevices;
+    }
     return devicesWithSensorData; // Already DeviceWithReadings[] with computed uiStatus
-  }, [devicesWithSensorData]);
+  }, [devicesWithSensorData, deletedDevices, activeTab]);
 
   // ✅ LOCAL HOOK - UI-specific filtering logic
   const { filteredDevices, stats } = useDeviceFilter({
     devices,
     activeTab,
     searchText,
+    deletedDevices,
   });
 
   // Auto-refetch when switching to unregistered tab to see latest pending devices
@@ -157,13 +169,45 @@ export const AdminDeviceManagement = () => {
     }
   };
 
+  const handleRecover = (device: DeviceWithReadings) => {
+    Modal.confirm({
+      title: 'Recover Device',
+      content: (
+        <div>
+          <p>Are you sure you want to recover "<strong>{device.name || device.deviceId}</strong>"?</p>
+          <p style={{ marginTop: '8px' }}>
+            This will restore the device and all its associated data.
+          </p>
+        </div>
+      ),
+      okText: 'Recover',
+      okType: 'primary',
+      cancelText: 'Cancel',
+      onOk: async () => {
+        try {
+          await recoverDevice(device.deviceId);
+          message.success('Device recovered successfully');
+          refetchDeleted();
+          refetch();
+        } catch (error) {
+          message.error('Failed to recover device');
+          console.error('Error recovering device:', error);
+        }
+      },
+    });
+  };
+
   // Handle refresh with loading state
   const handleRefresh = async () => {
     if (isRefreshing) return; // Prevent spam clicks
     
     setIsRefreshing(true);
     try {
-      await refetch();
+      if (activeTab === 'deleted') {
+        await refetchDeleted();
+      } else {
+        await refetch();
+      }
       setTimeout(() => setIsRefreshing(false), 500);
     } catch (error) {
       console.error('Refresh error:', error);
@@ -210,11 +254,12 @@ export const AdminDeviceManagement = () => {
             activeTab={activeTab}
             onTabChange={setActiveTab}
             filteredDevices={filteredDevices}
-            loading={isLoading}
+            loading={activeTab === 'deleted' ? isLoadingDeleted : isLoading}
             stats={stats}
             onView={handleView}
             onDelete={handleDelete}
             onRegister={handleRegister}
+            onRecover={handleRecover}
           />
         </Space>
 

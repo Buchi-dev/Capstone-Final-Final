@@ -20,8 +20,9 @@ export const createReportSchema = z.object({
     format: z.nativeEnum(ReportFormat).default(ReportFormat.PDF),
     parameters: z.object({
       deviceIds: z.array(z.string()).optional(),
-      startDate: z.union([z.string().datetime(), z.date()]).optional(),
-      endDate: z.union([z.string().datetime(), z.date()]).optional(),
+      // Accept both date strings (YYYY-MM-DD) and datetime strings (ISO 8601)
+      startDate: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?)?$/, 'Invalid date format'), z.date()]).optional(),
+      endDate: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?)?$/, 'Invalid date format'), z.date()]).optional(),
       includeCharts: z.boolean().optional(),
       includeStatistics: z.boolean().optional(),
       parameters: z.array(z.string()).optional(),
@@ -39,8 +40,9 @@ export const reportFiltersSchema = z.object({
     status: z.nativeEnum(ReportStatus).optional(),
     format: z.nativeEnum(ReportFormat).optional(),
     generatedBy: z.string().optional(),
-    startDate: z.string().datetime().optional(),
-    endDate: z.string().datetime().optional(),
+    // Accept both date strings (YYYY-MM-DD) and datetime strings (ISO 8601)
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?)?$/, 'Invalid date format').optional(),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?Z?)?$/, 'Invalid date format').optional(),
     page: z.string().transform(Number).pipe(z.number().int().positive()).optional(),
     limit: z.string().transform(Number).pipe(z.number().int().positive().max(100)).optional(),
   }),

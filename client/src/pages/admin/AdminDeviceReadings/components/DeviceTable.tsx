@@ -141,16 +141,19 @@ export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
       key: 'ph',
       width: 150,
       render: (device: DeviceWithReadings) => {
-        if (!device.latestReading || typeof device.latestReading.ph !== 'number') {
+        // Handle both pH (capital H) and ph (lowercase) for backwards compatibility
+        const phValue = device.latestReading?.pH ?? device.latestReading?.ph;
+        
+        if (!device.latestReading || typeof phValue !== 'number') {
           return <Text type="secondary">-</Text>;
         }
 
-        const quality = getQualityStatus('ph', device.latestReading.ph);
+        const quality = getQualityStatus('ph', phValue);
         return (
           <Space direction="vertical" size={2}>
             <Space align="center" size={8}>
               <ExperimentOutlined style={{ fontSize: '16px', color: '#1890ff' }} />
-              <Text strong style={{ fontSize: '16px' }}>{device.latestReading.ph.toFixed(2)}</Text>
+              <Text strong style={{ fontSize: '16px' }}>{phValue.toFixed(2)}</Text>
             </Space>
             <Space align="center" size={4}>
               {quality.icon}

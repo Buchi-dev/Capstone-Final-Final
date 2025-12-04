@@ -6,22 +6,27 @@
  * @module feature/reports/report.controller
  */
 
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import reportService from './report.service';
 import { asyncHandler } from '@utils/asyncHandler.util';
 import { ResponseHandler } from '@utils/response.util';
-import { BadRequestError } from '@utils/errors.util';
+import { BadRequestError, UnauthorizedError } from '@utils/errors.util';
 import { IReportFilters, ReportType, ReportFormat } from './report.types';
 import { Types } from 'mongoose';
+import { AuthRequest } from '@core/middlewares';
 
 /**
  * Create report request
  */
-export const createReport = asyncHandler(async (req: Request, res: Response) => {
+export const createReport = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { type, title, description, format, parameters, expiresAt } = req.body;
 
-  // TODO: Get user ID from auth middleware (req.user)
-  const generatedBy = new Types.ObjectId(); // Placeholder
+  // Get user ID from auth middleware
+  if (!req.user?.userId) {
+    throw new UnauthorizedError('User authentication required');
+  }
+
+  const generatedBy = new Types.ObjectId(req.user.userId);
 
   const report = await reportService.createReport({
     type,
@@ -39,7 +44,7 @@ export const createReport = asyncHandler(async (req: Request, res: Response) => 
 /**
  * Get all reports with filters
  */
-export const getAllReports = asyncHandler(async (req: Request, res: Response) => {
+export const getAllReports = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { page = 1, limit = 20 } = req.query;
 
   const filters: IReportFilters = {
@@ -64,13 +69,15 @@ export const getAllReports = asyncHandler(async (req: Request, res: Response) =>
 /**
  * Get current user's reports
  */
-export const getMyReports = asyncHandler(async (req: Request, res: Response) => {
+export const getMyReports = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { page = 1, limit = 20 } = req.query;
 
-  // TODO: Get user ID from auth middleware
-  const userId = 'placeholder-user-id';
+  // Get user ID from auth middleware
+  if (!req.user?.userId) {
+    throw new UnauthorizedError('User authentication required');
+  }
 
-  const result = await reportService.getUserReports(userId, Number(page), Number(limit));
+  const result = await reportService.getUserReports(req.user.userId, Number(page), Number(limit));
 
   ResponseHandler.paginated(
     res,
@@ -83,7 +90,7 @@ export const getMyReports = asyncHandler(async (req: Request, res: Response) => 
 /**
  * Get report by ID
  */
-export const getReportById = asyncHandler(async (req: Request, res: Response) => {
+export const getReportById = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
 
   if (!id) {
@@ -98,7 +105,7 @@ export const getReportById = asyncHandler(async (req: Request, res: Response) =>
 /**
  * Download report file
  */
-export const downloadReport = asyncHandler(async (req: Request, res: Response) => {
+export const downloadReport = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
 
   if (!id) {
@@ -125,7 +132,7 @@ export const downloadReport = asyncHandler(async (req: Request, res: Response) =
 /**
  * Delete report
  */
-export const deleteReport = asyncHandler(async (req: Request, res: Response) => {
+export const deleteReport = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { id } = req.params;
 
   if (!id) {
@@ -140,7 +147,7 @@ export const deleteReport = asyncHandler(async (req: Request, res: Response) => 
 /**
  * Get report statistics
  */
-export const getReportStatistics = asyncHandler(async (req: Request, res: Response) => {
+export const getReportStatistics = asyncHandler(async (req: AuthRequest, res: Response) => {
   const { userId } = req.query;
 
   const stats = await reportService.getReportStatistics(userId as string);
@@ -151,7 +158,7 @@ export const getReportStatistics = asyncHandler(async (req: Request, res: Respon
 /**
  * Delete expired reports (Admin only)
  */
-export const deleteExpiredReports = asyncHandler(async (_req: Request, res: Response) => {
+export const deleteExpiredReports = asyncHandler(async (_req: AuthRequest, res: Response) => {
   const count = await reportService.deleteExpiredReports();
 
   ResponseHandler.success(

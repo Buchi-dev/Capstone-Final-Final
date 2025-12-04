@@ -119,19 +119,19 @@ export const DeviceListItem = memo(({ device }: DeviceListItemProps) => {
               )}
             </Space>
 
-            {latestReading && typeof latestReading.ph === 'number' && typeof latestReading.tds === 'number' && typeof latestReading.turbidity === 'number' ? (
+            {latestReading && typeof (latestReading.pH ?? latestReading.ph) === 'number' && typeof latestReading.tds === 'number' && typeof latestReading.turbidity === 'number' ? (
               <Row gutter={24} style={{ marginTop: 8 }}>
                 <Col xs={8} sm={8} md={6} lg={4}>
                   <Statistic
                     title="pH"
-                    value={latestReading.ph.toFixed(2)}
+                    value={(latestReading.pH ?? latestReading.ph)!.toFixed(2)}
                     prefix={<ExperimentOutlined style={{ fontSize: '14px' }} />}
                     valueStyle={{
                       fontSize: '18px',
                       color:
-                        getQualityColor('ph', latestReading.ph) === 'success'
+                        getQualityColor('ph', latestReading.pH ?? latestReading.ph!) === 'success'
                           ? '#52c41a'
-                          : getQualityColor('ph', latestReading.ph) === 'warning'
+                          : getQualityColor('ph', latestReading.pH ?? latestReading.ph!) === 'warning'
                           ? '#faad14'
                           : '#ff4d4f',
                     }}

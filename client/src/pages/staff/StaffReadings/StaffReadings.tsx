@@ -100,7 +100,7 @@ export const StaffReadings = () => {
         location: device.metadata?.location 
           ? `${device.metadata.location.building}, ${device.metadata.location.floor}`
           : 'Unknown',
-        ph: reading.ph || 0,
+        ph: reading.pH ?? reading.ph ?? 0,
         tds: reading.tds || 0,
         turbidity: reading.turbidity || 0,
         status,

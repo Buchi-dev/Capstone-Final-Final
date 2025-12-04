@@ -75,16 +75,20 @@ export const StaffAnalytics = () => {
       const reading = device.latestReading;
       if (!reading) return;
 
+      const phValue = reading.pH ?? reading.ph ?? 0;
+      const turbidityValue = reading.turbidity ?? 0;
+      const tdsValue = reading.tds ?? 0;
+
       deviceStats.push({
         device: device.name || device.deviceId,
-        ph: reading.ph ? Number(reading.ph.toFixed(2)) : 0,
-        turbidity: reading.turbidity ? Number(reading.turbidity.toFixed(2)) : 0,
-        tds: reading.tds ? Number(reading.tds.toFixed(2)) : 0,
+        ph: phValue ? Number(phValue.toFixed(2)) : 0,
+        turbidity: turbidityValue ? Number(turbidityValue.toFixed(2)) : 0,
+        tds: tdsValue ? Number(tdsValue.toFixed(2)) : 0,
       });
 
-      if (reading.ph) totalPh += reading.ph;
-      if (reading.turbidity) totalTurbidity += reading.turbidity;
-      if (reading.tds) totalTds += reading.tds;
+      if (phValue) totalPh += phValue;
+      if (turbidityValue) totalTurbidity += turbidityValue;
+      if (tdsValue) totalTds += tdsValue;
       count++;
     });
 

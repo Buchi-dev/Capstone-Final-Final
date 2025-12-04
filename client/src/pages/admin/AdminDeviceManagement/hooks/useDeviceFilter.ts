@@ -4,16 +4,22 @@ import { isDeviceRegistered } from '../../../../schemas';
 
 interface UseDeviceFilterProps {
   devices: DeviceWithReadings[];
-  activeTab: 'registered' | 'unregistered';
+  activeTab: 'registered' | 'unregistered' | 'deleted';
   searchText: string;
+  deletedDevices?: DeviceWithReadings[];
 }
 
-export const useDeviceFilter = ({ devices, activeTab, searchText }: UseDeviceFilterProps) => {
+export const useDeviceFilter = ({ devices, activeTab, searchText, deletedDevices = [] }: UseDeviceFilterProps) => {
   return useMemo(() => {
     const registered = devices.filter((d) => isDeviceRegistered(d));
     const unregistered = devices.filter((d) => !isDeviceRegistered(d));
     
-    const currentDevices = activeTab === 'registered' ? registered : unregistered;
+    const currentDevices = activeTab === 'registered' 
+      ? registered 
+      : activeTab === 'unregistered'
+      ? unregistered
+      : deletedDevices;
+    
     const searchLower = searchText.toLowerCase();
     const filtered = searchText
       ? currentDevices.filter(
@@ -35,7 +41,8 @@ export const useDeviceFilter = ({ devices, activeTab, searchText }: UseDeviceFil
         offline: devices.filter((d) => d.status === 'offline').length,
         registered: registered.length,
         unregistered: unregistered.length,
+        deleted: deletedDevices.length,
       },
     };
-  }, [devices, activeTab, searchText]);
+  }, [devices, activeTab, searchText, deletedDevices]);
 };

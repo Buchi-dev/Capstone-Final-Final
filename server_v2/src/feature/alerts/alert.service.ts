@@ -69,9 +69,19 @@ export class AlertService {
     const alerts: IAlertDocument[] = [];
 
     try {
+      // Fetch device details to get location
+      let deviceLocation = '';
+      try {
+        const { default: deviceService } = await import('@feature/devices/device.service');
+        const device = await deviceService.getDeviceById(deviceId);
+        deviceLocation = device.location || '';
+      } catch (error) {
+        logger.warn(`Could not fetch device location for ${deviceId}`);
+      }
+
       // Check pH thresholds
       if (reading.pH !== undefined && reading.pH !== null) {
-        const pHAlert = await this.checkpHThreshold(deviceId, deviceName, reading.pH, reading.timestamp);
+        const pHAlert = await this.checkpHThreshold(deviceId, deviceName, deviceLocation, reading.pH, reading.timestamp);
         if (pHAlert) alerts.push(pHAlert);
       }
 
@@ -80,6 +90,7 @@ export class AlertService {
         const turbidityAlert = await this.checkTurbidityThreshold(
           deviceId,
           deviceName,
+          deviceLocation,
           reading.turbidity,
           reading.timestamp
         );
@@ -91,6 +102,7 @@ export class AlertService {
         const tdsAlert = await this.checkTDSThreshold(
           deviceId,
           deviceName,
+          deviceLocation,
           reading.tds,
           reading.timestamp
         );
@@ -111,6 +123,7 @@ export class AlertService {
   private async checkpHThreshold(
     deviceId: string,
     deviceName: string,
+    deviceLocation: string,
     value: number,
     timestamp: Date
   ): Promise<IAlertDocument | null> {
@@ -121,6 +134,7 @@ export class AlertService {
       return this.createOrUpdateAlert(
         deviceId,
         deviceName,
+        deviceLocation,
         AlertParameter.PH,
         value,
         value < critical.min ? critical.min : critical.max,
@@ -134,6 +148,7 @@ export class AlertService {
       return this.createOrUpdateAlert(
         deviceId,
         deviceName,
+        deviceLocation,
         AlertParameter.PH,
         value,
         value < min ? min : max,
@@ -152,6 +167,7 @@ export class AlertService {
   private async checkTurbidityThreshold(
     deviceId: string,
     deviceName: string,
+    deviceLocation: string,
     value: number,
     timestamp: Date
   ): Promise<IAlertDocument | null> {
@@ -162,6 +178,7 @@ export class AlertService {
       return this.createOrUpdateAlert(
         deviceId,
         deviceName,
+        deviceLocation,
         AlertParameter.TURBIDITY,
         value,
         critical,
@@ -175,6 +192,7 @@ export class AlertService {
       return this.createOrUpdateAlert(
         deviceId,
         deviceName,
+        deviceLocation,
         AlertParameter.TURBIDITY,
         value,
         warning,
@@ -193,6 +211,7 @@ export class AlertService {
   private async checkTDSThreshold(
     deviceId: string,
     deviceName: string,
+    deviceLocation: string,
     value: number,
     timestamp: Date
   ): Promise<IAlertDocument | null> {
@@ -203,6 +222,7 @@ export class AlertService {
       return this.createOrUpdateAlert(
         deviceId,
         deviceName,
+        deviceLocation,
         AlertParameter.TDS,
         value,
         critical,
@@ -216,6 +236,7 @@ export class AlertService {
       return this.createOrUpdateAlert(
         deviceId,
         deviceName,
+        deviceLocation,
         AlertParameter.TDS,
         value,
         warning,
@@ -235,6 +256,7 @@ export class AlertService {
   private async createOrUpdateAlert(
     deviceId: string,
     deviceName: string,
+    deviceLocation: string,
     parameter: AlertParameter,
     value: number,
     threshold: number,
@@ -268,12 +290,14 @@ export class AlertService {
     const alertData: ICreateAlertData = {
       deviceId,
       deviceName,
+      deviceLocation,
       severity,
       parameter,
       value,
       threshold,
       message,
       timestamp,
+      currentValue: value,
     };
 
     const newAlert = await this.crud.create(alertData as any);

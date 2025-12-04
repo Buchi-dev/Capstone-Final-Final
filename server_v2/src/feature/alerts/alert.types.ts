@@ -40,6 +40,7 @@ export interface IAlert {
   alertId: string;
   deviceId: string;
   deviceName: string;
+  deviceLocation?: string; // Device location string
   severity: AlertSeverity;
   parameter: AlertParameter;
   value: number;
@@ -83,6 +84,7 @@ export interface IAlertPublic {
   alertId: string;
   deviceId: string;
   deviceName: string;
+  deviceLocation?: string;
   severity: AlertSeverity;
   parameter: AlertParameter;
   value: number;
@@ -126,12 +128,14 @@ export interface IUserPublic {
 export interface ICreateAlertData {
   deviceId: string;
   deviceName: string;
+  deviceLocation?: string;
   severity: AlertSeverity;
   parameter: AlertParameter;
   value: number;
   threshold: number;
   message: string;
   timestamp: Date;
+  currentValue: number;
 }
 
 /**

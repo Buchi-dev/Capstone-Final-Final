@@ -2,6 +2,7 @@ import { Card, Tabs, Badge, Space, Typography, Table } from 'antd';
 import {
   CheckCircleOutlined,
   InfoCircleOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import type { DeviceWithReadings } from '../../../../schemas';
 import { useThemeToken } from '../../../../theme';
@@ -11,17 +12,19 @@ import { UnregisteredDevicesGrid } from './UnregisteredDevicesGrid';
 const { Text } = Typography;
 
 interface DeviceTableProps {
-  activeTab: 'registered' | 'unregistered';
-  onTabChange: (key: 'registered' | 'unregistered') => void;
+  activeTab: 'registered' | 'unregistered' | 'deleted';
+  onTabChange: (key: 'registered' | 'unregistered' | 'deleted') => void;
   filteredDevices: DeviceWithReadings[];
   loading: boolean;
   stats: {
     registered: number;
     unregistered: number;
+    deleted?: number;
   };
   onView: (device: DeviceWithReadings) => void;
   onDelete: (device: DeviceWithReadings) => void;
   onRegister: (device: DeviceWithReadings) => void;
+  onRecover?: (device: DeviceWithReadings) => void;
 }
 
 export const DeviceTable = ({
@@ -33,15 +36,17 @@ export const DeviceTable = ({
   onView,
   onDelete,
   onRegister,
+  onRecover,
 }: DeviceTableProps) => {
   const token = useThemeToken();
   
   const columns = useDeviceColumns({
-    activeTab,
+    activeTab: activeTab === 'deleted' ? 'registered' : activeTab, // Use registered columns for deleted
     token,
     onView,
-    onDelete,
+    onDelete: activeTab === 'deleted' ? undefined : onDelete,
     onRegister,
+    onRecover: activeTab === 'deleted' ? onRecover : undefined,
   });
 
   return (
@@ -58,7 +63,7 @@ export const DeviceTable = ({
     >
       <Tabs
         activeKey={activeTab}
-        onChange={(key) => onTabChange(key as 'registered' | 'unregistered')}
+        onChange={(key) => onTabChange(key as 'registered' | 'unregistered' | 'deleted')}
         size="large"
         style={{
           flex: 1,
@@ -139,6 +144,53 @@ export const DeviceTable = ({
                 loading={loading}
                 onRegister={onRegister}
               />
+            ),
+            style: { height: '100%' },
+          },
+          {
+            key: 'deleted',
+            label: (
+              <Space size="middle">
+                <DeleteOutlined style={{ fontSize: '16px' }} />
+                <span style={{ fontSize: '14px', fontWeight: 500 }}>Deleted Devices</span>
+                <Badge
+                  count={stats.deleted || 0}
+                  style={{
+                    backgroundColor: token.colorError,
+                    fontWeight: 600,
+                  }}
+                />
+              </Space>
+            ),
+            children: (
+              <div style={{ padding: '16px' }}>
+                <Table
+                  className="device-table"
+                  columns={columns}
+                  dataSource={filteredDevices}
+                  rowKey="deviceId"
+                  loading={loading}
+                  size="middle"
+                  pagination={{
+                    pageSize: 10,
+                    showSizeChanger: true,
+                    pageSizeOptions: ['10', '20', '50', '100'],
+                    showTotal: (total) => (
+                      <Text strong style={{ fontSize: '13px' }}>
+                        Total {total} deleted device{total !== 1 ? 's' : ''}
+                      </Text>
+                    ),
+                    size: 'default',
+                    position: ['bottomCenter'],
+                  }}
+                  scroll={{ y: 'calc(100vh - 520px)' }}
+                  bordered
+                  rowClassName={(_, index) => (index % 2 === 0 ? '' : 'ant-table-row-striped')}
+                  style={{
+                    backgroundColor: token.colorBgContainer,
+                  }}
+                />
+              </div>
             ),
             style: { height: '100%' },
           },

@@ -70,6 +70,7 @@ export const WaterQualityAlertSchema = z.object({
   alertId: z.string(),
   deviceId: z.string(),
   deviceName: z.string(),
+  deviceLocation: z.string().optional(), // Device location from devices collection
   severity: WaterQualityAlertSeveritySchema,
   parameter: WaterQualityParameterSchema,
   value: z.number(), // ✅ V2 field name (primary)

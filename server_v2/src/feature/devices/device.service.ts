@@ -68,9 +68,10 @@ export class DeviceService {
 
   /**
    * Approve device registration
-   * Changes status from pending to registered
+   * Changes status from pending to registered and updates location/metadata
+   * Automatically sends 'go' command to device via MQTT
    */
-  async approveDeviceRegistration(deviceId: string): Promise<IDeviceDocument> {
+  async approveDeviceRegistration(deviceId: string, updateData?: Partial<IUpdateDeviceData>): Promise<IDeviceDocument> {
     const device = await Device.findOne({ deviceId });
     if (!device) {
       throw new NotFoundError(ERROR_MESSAGES.DEVICE.NOT_FOUND);
@@ -80,13 +81,16 @@ export class DeviceService {
       throw new ConflictError('Device is already registered');
     }
 
-    // Atomic update
+    // Atomic update with location and metadata
     const updatedDevice = await Device.findByIdAndUpdate(
       device._id,
       {
         $set: {
           registrationStatus: DeviceRegistrationStatus.REGISTERED,
           isRegistered: true,
+          registeredAt: new Date(),
+          ...(updateData?.location && { location: updateData.location }),
+          ...(updateData?.metadata && { metadata: updateData.metadata }),
         },
       },
       { new: true }
@@ -96,19 +100,43 @@ export class DeviceService {
       throw new NotFoundError(ERROR_MESSAGES.DEVICE.NOT_FOUND);
     }
 
+    // Send 'go' command to device via MQTT
+    try {
+      const mqttService = (await import('@utils/mqtt.service')).default;
+      await mqttService.publishCommand(deviceId, { 
+        command: 'go', 
+        timestamp: new Date() 
+      });
+      logger.info(`✅ Sent 'go' command to device ${deviceId} after registration approval`);
+    } catch (mqttError: any) {
+      // Log error but don't fail the registration
+      logger.error(`⚠️ Failed to send 'go' command to device ${deviceId}`, { 
+        error: mqttError.message, 
+        stack: mqttError.stack 
+      });
+    }
+
     return updatedDevice;
   }
 
   /**
    * Get device by ID
    * Excludes soft-deleted devices
+   * Accepts either MongoDB ObjectId or deviceId
    */
   async getDeviceById(id: string): Promise<IDeviceDocument> {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestError(ERROR_MESSAGES.VALIDATION.INVALID_OBJECT_ID('Device ID'));
+    let device;
+
+    // Try as MongoDB ObjectId first
+    if (Types.ObjectId.isValid(id)) {
+      device = await Device.findOne({ _id: id, isDeleted: { $ne: true } });
     }
 
-    const device = await Device.findOne({ _id: id, isDeleted: { $ne: true } });
+    // If not found, try as deviceId
+    if (!device) {
+      device = await Device.findOne({ deviceId: id, isDeleted: { $ne: true } });
+    }
+
     if (!device) {
       throw new NotFoundError(ERROR_MESSAGES.DEVICE.NOT_FOUND);
     }
@@ -127,6 +155,7 @@ export class DeviceService {
   /**
    * Get all devices with filters and pagination
    * Excludes soft-deleted devices by default
+   * Includes latest sensor reading for each device
    */
   async getAllDevices(filters: IDeviceFilters, page = 1, limit = 50) {
     const query = this.crud.query();
@@ -147,25 +176,56 @@ export class DeviceService {
     // Pagination and sorting
     query.paginate(page, limit).sortBy('-lastSeen');
 
-    return query.execute();
+    const result = await query.execute();
+
+    // Enrich each device with latest sensor reading
+    const devicesWithReadings = await Promise.all(
+      result.data.map(async (device: any) => {
+        const latestReading = await SensorReading.findOne({
+          deviceId: device.deviceId,
+          isDeleted: { $ne: true },
+        })
+          .sort({ timestamp: -1 })
+          .limit(1)
+          .lean();
+
+        return {
+          ...device.toObject(),
+          latestReading: latestReading || null,
+        };
+      })
+    );
+
+    return {
+      data: devicesWithReadings,
+      pagination: result.pagination,
+    };
   }
 
   /**
    * Update device
+   * Accepts either MongoDB ObjectId or deviceId
    */
   async updateDevice(id: string, updateData: IUpdateDeviceData): Promise<IDeviceDocument> {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestError(ERROR_MESSAGES.VALIDATION.INVALID_OBJECT_ID('Device ID'));
+    let device;
+
+    // Try as MongoDB ObjectId first
+    if (Types.ObjectId.isValid(id)) {
+      device = await this.crud.findById(id);
     }
 
-    const device = await this.crud.findById(id);
+    // If not found, try as deviceId
+    if (!device) {
+      device = await Device.findOne({ deviceId: id });
+    }
+
     if (!device) {
       throw new NotFoundError(ERROR_MESSAGES.DEVICE.NOT_FOUND);
     }
 
-    // Atomic update
+    // Atomic update using the MongoDB _id
     const updatedDevice = await Device.findByIdAndUpdate(
-      id,
+      device._id,
       { $set: updateData },
       { new: true }
     );
@@ -245,19 +305,44 @@ export class DeviceService {
   /**
    * Soft delete device with cascade
    * Marks device and all related data as deleted, recoverable for 30 days
+   * Sends 'deregister' command to device via MQTT
+   * Accepts either MongoDB ObjectId or deviceId
    */
   async deleteDevice(id: string, deletedBy?: Types.ObjectId): Promise<{ message: string }> {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestError(ERROR_MESSAGES.VALIDATION.INVALID_OBJECT_ID('Device ID'));
+    let device;
+
+    // Try as MongoDB ObjectId first
+    if (Types.ObjectId.isValid(id)) {
+      device = await Device.findById(id);
     }
 
-    const device = await Device.findById(id);
+    // If not found, try as deviceId
+    if (!device) {
+      device = await Device.findOne({ deviceId: id });
+    }
+
     if (!device) {
       throw new NotFoundError(ERROR_MESSAGES.DEVICE.NOT_FOUND);
     }
 
     if (device.isDeleted) {
       throw new BadRequestError('Device is already deleted');
+    }
+
+    // Send 'deregister' command to device via MQTT BEFORE deleting
+    try {
+      const mqttService = (await import('@utils/mqtt.service')).default;
+      await mqttService.publishCommand(device.deviceId, { 
+        command: 'deregister', 
+        timestamp: new Date() 
+      });
+      logger.info(`✅ Sent 'deregister' command to device ${device.deviceId} before deletion`);
+    } catch (mqttError: any) {
+      // Log error but don't fail the deletion
+      logger.error(`⚠️ Failed to send 'deregister' command to device ${device.deviceId}`, { 
+        error: mqttError.message, 
+        stack: mqttError.stack 
+      });
     }
 
     const now = new Date();
@@ -308,13 +393,21 @@ export class DeviceService {
   /**
    * Recover soft-deleted device with cascade
    * Restores device and all related data if within 30-day window
+   * Accepts either MongoDB ObjectId or deviceId
    */
   async recoverDevice(id: string): Promise<{ message: string }> {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestError(ERROR_MESSAGES.VALIDATION.INVALID_OBJECT_ID('Device ID'));
+    let device;
+
+    // Try as MongoDB ObjectId first
+    if (Types.ObjectId.isValid(id)) {
+      device = await Device.findById(id);
     }
 
-    const device = await Device.findById(id);
+    // If not found, try as deviceId
+    if (!device) {
+      device = await Device.findOne({ deviceId: id });
+    }
+
     if (!device) {
       throw new NotFoundError(ERROR_MESSAGES.DEVICE.NOT_FOUND);
     }
@@ -364,6 +457,25 @@ export class DeviceService {
         },
       }
     );
+
+    // Send 'go' command via MQTT to instruct device to resume data transmission
+    try {
+      const mqttService = (await import('@utils/mqtt.service')).default;
+      await mqttService.publishCommand(device.deviceId, { 
+        command: 'go', 
+        timestamp: new Date() 
+      });
+      logger.info(`✅ Sent 'go' command to recovered device ${device.deviceId}`, {
+        deviceId: device.deviceId,
+      });
+    } catch (mqttError: any) {
+      logger.warn(`⚠️ Failed to send 'go' command to device ${device.deviceId}`, {
+        deviceId: device.deviceId,
+        error: mqttError.message,
+        stack: mqttError.stack,
+      });
+      // Don't fail the recovery if MQTT publish fails
+    }
 
     logger.info(`Device ${device.deviceId} recovered from soft delete`, {
       deviceId: device.deviceId,
@@ -514,8 +626,21 @@ export class DeviceService {
       return device;
     }
 
-    // Create new device
-    return this.registerDevice(registrationData);
+    // Create new device with ONLINE status (auto-registration)
+    const existingDevice = await Device.findOne({ deviceId: registrationData.deviceId });
+    if (existingDevice) {
+      throw new ConflictError(ERROR_MESSAGES.DEVICE.ALREADY_REGISTERED);
+    }
+
+    const newDevice = await this.crud.create({
+      ...registrationData,
+      registrationStatus: DeviceRegistrationStatus.PENDING,
+      isRegistered: false,
+      status: DeviceStatus.ONLINE, // Set to ONLINE for auto-registration
+      lastSeen: new Date(),
+    } as any);
+
+    return newDevice;
   }
 
   /**

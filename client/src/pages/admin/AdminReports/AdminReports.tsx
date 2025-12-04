@@ -219,15 +219,16 @@ export const AdminReports = () => {
             setRefreshHistoryKey(prev => prev + 1);
           } catch (downloadError) {
             console.error('[AdminReports] Instant download failed:', downloadError);
-            // Fallback to separate download call
-            if (response.data.gridFsFileId) {
+            // Fallback to separate download call using report ID
+            const reportId = (response.data as any)._id || response.data.id;
+            if (reportId) {
               try {
-                const blob = await reportsService.downloadReport(response.data.gridFsFileId);
+                const blob = await reportsService.downloadReport(reportId);
                 
                 const url = window.URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `water_quality_report_${response.data.reportId}.pdf`;
+                link.download = `water_quality_report_${reportId}.pdf`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -281,44 +282,67 @@ export const AdminReports = () => {
               setRefreshHistoryKey(prev => prev + 1);
             }
           }
-        } else if (response.data.gridFsFileId) {
-          // Fallback: PDF not included in response, download separately
-          try {
-            const blob = await reportsService.downloadReport(response.data.gridFsFileId);
-            
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `water_quality_report_${response.data.reportId}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
+        } else {
+          // PDF not included in response, report is being generated asynchronously
+          // Wait a moment and try to download
+          const reportId = (response.data as any)._id || response.data.id;
+          if (reportId) {
+            try {
+              // Wait a bit for the report to be generated
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              
+              const blob = await reportsService.downloadReport(reportId);
+              
+              const url = window.URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `water_quality_report_${reportId}.pdf`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              window.URL.revokeObjectURL(url);
 
+              setBackupProgress({ 
+                status: 'completed', 
+                message: 'Report downloaded and saved to database successfully!', 
+                percent: 100 
+              });
+
+              message.success({
+                content: 'Report generated, downloaded, and saved to database!',
+                key: 'report',
+                duration: 5
+              });
+
+              // Trigger history refresh
+              setRefreshHistoryKey(prev => prev + 1);
+            } catch (downloadError) {
+              console.error('[AdminReports] Download failed:', downloadError);
+              setBackupProgress({ 
+                status: 'failed', 
+                message: 'Report saved to database but download failed', 
+                percent: 100 
+              });
+              
+              message.warning({
+                content: 'Report saved to database successfully, but instant download failed. You can download it from Report History.',
+                key: 'report',
+                duration: 5
+              });
+
+              // Trigger history refresh
+              setRefreshHistoryKey(prev => prev + 1);
+            }
+          } else {
+            // No reportId available, but report was generated
             setBackupProgress({ 
               status: 'completed', 
-              message: 'Report downloaded and saved to database successfully!', 
+              message: 'Report generated and saved to database successfully!', 
               percent: 100 
             });
 
             message.success({
-              content: 'Report generated, downloaded, and saved to database!',
-              key: 'report',
-              duration: 5
-            });
-
-            // Trigger history refresh
-            setRefreshHistoryKey(prev => prev + 1);
-          } catch (downloadError) {
-            console.error('[AdminReports] Download failed:', downloadError);
-            setBackupProgress({ 
-              status: 'failed', 
-              message: 'Report saved to database but download failed', 
-              percent: 100 
-            });
-            
-            message.warning({
-              content: 'Report saved to database successfully, but instant download failed. You can download it from Report History.',
+              content: 'Report generated and saved to database successfully! You can download it from Report History.',
               key: 'report',
               duration: 5
             });
@@ -326,22 +350,6 @@ export const AdminReports = () => {
             // Trigger history refresh
             setRefreshHistoryKey(prev => prev + 1);
           }
-        } else {
-          // No PDF available, but report was generated
-          setBackupProgress({ 
-            status: 'completed', 
-            message: 'Report generated and saved to database successfully!', 
-            percent: 100 
-          });
-
-          message.success({
-            content: 'Report generated and saved to database successfully! You can download it from Report History.',
-            key: 'report',
-            duration: 5
-          });
-
-          // Trigger history refresh
-          setRefreshHistoryKey(prev => prev + 1);
         }
 
         form.resetFields();

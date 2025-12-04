@@ -131,29 +131,8 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
       key: 'deviceLocation',
       width: 220,
       render: (_, record) => {
-        // Try to extract location from deviceName or use deviceBuilding/Floor if available
-        let deviceDisplayName = record.deviceName || record.deviceId;
-        let locationText = '';
-        
-        // Check if we have separate building/floor fields
-        if (record.deviceBuilding || record.deviceFloor) {
-          locationText = [record.deviceBuilding, record.deviceFloor]
-            .filter(Boolean)
-            .join(', ');
-        } else if (deviceDisplayName) {
-          // Try to parse location from deviceName
-          // Pattern: "NAME - LOCATION" or "NAME (LOCATION)"
-          const dashMatch = deviceDisplayName.match(/^(.+?)\s*-\s*(.+)$/);
-          const parenMatch = deviceDisplayName.match(/^(.+?)\s*\((.+)\)$/);
-          
-          if (dashMatch) {
-            deviceDisplayName = dashMatch[1].trim();
-            locationText = dashMatch[2].trim();
-          } else if (parenMatch) {
-            deviceDisplayName = parenMatch[1].trim();
-            locationText = parenMatch[2].trim();
-          }
-        }
+        const deviceDisplayName = record.deviceName || record.deviceId;
+        const locationText = record.deviceLocation || '';
         
         return (
           <Space direction="vertical" size={2}>

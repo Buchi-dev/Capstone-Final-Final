@@ -10,6 +10,7 @@ import {
   restoreBackup,
   deleteBackup,
   getBackupStatus,
+  shareBackupFolder,
 } from './backup.controller';
 import { requireAdmin } from '@core/middlewares';
 
@@ -35,6 +36,13 @@ router.get('/', requireAdmin, listBackups);
  * @access  Protected (Admin only)
  */
 router.post('/trigger', requireAdmin, triggerBackup);
+
+/**
+ * @route   POST /api/v1/backups/share-folder
+ * @desc    Share Google Drive backup folder with specified email
+ * @access  Protected (Admin only)
+ */
+router.post('/share-folder', requireAdmin, shareBackupFolder);
 
 /**
  * @route   POST /api/v1/backups/:backupId/restore

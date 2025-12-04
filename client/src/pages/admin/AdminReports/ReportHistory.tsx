@@ -95,7 +95,13 @@ const ReportHistory: React.FC = () => {
         limit: pageSize,
       });
 
-      setReports(response.data);
+      // Ensure each report has an id field (transform _id to id if needed)
+      const normalizedReports = response.data.map((report: any) => ({
+        ...report,
+        id: report.id || report._id,
+      }));
+
+      setReports(normalizedReports);
       setPagination({
         current: page,
         pageSize,
@@ -140,8 +146,9 @@ const ReportHistory: React.FC = () => {
     try {
       message.loading({ content: 'Downloading report...', key: 'download', duration: 0 });
       
-      // Extract fileId from downloadUrl or use it directly
-      const fileId = record.downloadUrl.split('/').pop() || record.id;
+      // Use report ID as the file identifier
+      // The backend will look up the file.fileId from the report document
+      const fileId = record.id;
       const blob = await reportsService.downloadReport(fileId);
 
       // Create download link

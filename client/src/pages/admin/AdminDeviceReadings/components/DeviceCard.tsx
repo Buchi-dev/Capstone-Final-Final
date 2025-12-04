@@ -153,7 +153,7 @@ export const DeviceCard = memo(({ device }: DeviceCardProps) => {
           )}
 
           {/* Readings */}
-          {latestReading && typeof latestReading.ph === 'number' && typeof latestReading.tds === 'number' && typeof latestReading.turbidity === 'number' ? (
+          {latestReading && typeof (latestReading.pH ?? latestReading.ph) === 'number' && typeof latestReading.tds === 'number' && typeof latestReading.turbidity === 'number' ? (
             <>
               <Row gutter={[8, 12]}>
                 {/* pH Level */}
@@ -173,16 +173,16 @@ export const DeviceCard = memo(({ device }: DeviceCardProps) => {
                       </Text>
                       <Space>
                         <Text strong style={{ fontSize: '16px' }}>
-                          {latestReading.ph.toFixed(2)}
+                          {(latestReading.pH ?? latestReading.ph)!.toFixed(2)}
                         </Text>
-                        <Tag color={getQualityStatus('ph', latestReading.ph).status}>
-                          {getQualityStatus('ph', latestReading.ph).text}
+                        <Tag color={getQualityStatus('ph', latestReading.pH ?? latestReading.ph!)!.status}>
+                          {getQualityStatus('ph', latestReading.pH ?? latestReading.ph!)!.text}
                         </Tag>
                       </Space>
                     </div>
                     <Progress
-                      percent={getProgressPercent('ph', latestReading.ph)}
-                      strokeColor={getProgressColor('ph', latestReading.ph)}
+                      percent={getProgressPercent('ph', latestReading.pH ?? latestReading.ph!)}
+                      strokeColor={getProgressColor('ph', latestReading.pH ?? latestReading.ph!)}
                       showInfo={false}
                       size="small"
                     />

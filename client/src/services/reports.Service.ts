@@ -149,38 +149,62 @@ export class ReportsService {
     request: WaterQualityReportRequest
   ): Promise<ReportResponse> {
     try {
-      if (import.meta.env.DEV) {
-        // DEBUG: Log request being sent to backend
-        console.log('[ReportsService] DEBUG - Sending request to backend:', {
-          endpoint: REPORT_ENDPOINTS.WATER_QUALITY,
+      // Transform frontend request to match backend API schema
+      const backendRequest = {
+        type: 'water-quality', // ReportType.WATER_QUALITY
+        title: `Water Quality Report - ${request.startDate} to ${request.endDate}`,
+        description: request.deviceIds?.length 
+          ? `Water quality analysis for ${request.deviceIds.length} device(s)`
+          : 'Water quality analysis for all devices',
+        format: 'pdf', // ReportFormat.PDF
+        parameters: {
           startDate: request.startDate,
           endDate: request.endDate,
           deviceIds: request.deviceIds,
-          deviceCount: request.deviceIds?.length || 0,
+          includeCharts: true,
+          includeStatistics: true,
+        },
+      };
+
+      if (import.meta.env.DEV) {
+        // DEBUG: Log request being sent to backend
+        console.log('[ReportsService] DEBUG - Sending request to backend:', {
+          endpoint: REPORT_ENDPOINTS.LIST, // POST /api/v1/reports
+          backendRequest,
         });
       }
 
-      const response = await apiClient.post<ReportResponse>(
-        REPORT_ENDPOINTS.WATER_QUALITY,
-        request,
+      const response = await apiClient.post<any>(
+        REPORT_ENDPOINTS.LIST, // Use unified endpoint: POST /api/v1/reports
+        backendRequest,
         {
           timeout: REQUEST_TIMEOUT.LONG, // 60 seconds for report generation
         }
       );
 
+      // Transform backend response to match frontend ReportResponse interface
+      const transformedResponse: ReportResponse = {
+        success: response.data.status === 'success',
+        message: response.data.message,
+        data: response.data.data,
+        pdfBlob: response.data.pdfBlob,
+        pdfContentType: response.data.pdfContentType,
+        pdfFilename: response.data.pdfFilename,
+      };
+
       if (import.meta.env.DEV) {
         // DEBUG: Log response from backend
         console.log('[ReportsService] DEBUG - Response from backend:', {
-          success: response.data.success,
-          message: response.data.message,
-          hasPdfBlob: !!response.data.pdfBlob,
-          pdfBlobSize: response.data.pdfBlob?.length,
-          hasData: !!response.data.data,
-          summary: response.data.data?.summary,
+          success: transformedResponse.success,
+          message: transformedResponse.message,
+          hasPdfBlob: !!transformedResponse.pdfBlob,
+          pdfBlobSize: transformedResponse.pdfBlob?.length,
+          hasData: !!transformedResponse.data,
+          summary: transformedResponse.data?.summary,
         });
       }
 
-      return response.data;
+      return transformedResponse;
     } catch (error) {
       const message = getErrorMessage(error);
       console.error('[ReportsService] Water quality report error:', message);
@@ -204,14 +228,56 @@ export class ReportsService {
     request: DeviceStatusReportRequest
   ): Promise<ReportResponse> {
     try {
-      const response = await apiClient.post<ReportResponse>(
-        REPORT_ENDPOINTS.DEVICE_STATUS,
-        request,
+      // Transform frontend request to match backend API schema
+      const backendRequest = {
+        type: 'device-status', // ReportType.DEVICE_STATUS
+        title: `Device Status Report - ${request.startDate} to ${request.endDate}`,
+        description: request.deviceIds?.length 
+          ? `Device health analysis for ${request.deviceIds.length} device(s)`
+          : 'Device health analysis for all devices',
+        format: 'pdf', // ReportFormat.PDF
+        parameters: {
+          startDate: request.startDate,
+          endDate: request.endDate,
+          deviceIds: request.deviceIds,
+          includeCharts: true,
+          includeStatistics: true,
+        },
+      };
+
+      if (import.meta.env.DEV) {
+        console.log('[ReportsService] DEBUG - Sending device status report request:', {
+          endpoint: REPORT_ENDPOINTS.LIST,
+          backendRequest,
+        });
+      }
+
+      const response = await apiClient.post<any>(
+        REPORT_ENDPOINTS.LIST, // Use unified endpoint: POST /api/v1/reports
+        backendRequest,
         {
           timeout: REQUEST_TIMEOUT.LONG, // 60 seconds for report generation
         }
       );
-      return response.data;
+
+      // Transform backend response to match frontend ReportResponse interface
+      const transformedResponse: ReportResponse = {
+        success: response.data.status === 'success',
+        message: response.data.message,
+        data: response.data.data,
+        pdfBlob: response.data.pdfBlob,
+        pdfContentType: response.data.pdfContentType,
+        pdfFilename: response.data.pdfFilename,
+      };
+
+      if (import.meta.env.DEV) {
+        console.log('[ReportsService] DEBUG - Device status report response:', {
+          success: transformedResponse.success,
+          message: transformedResponse.message,
+        });
+      }
+
+      return transformedResponse;
     } catch (error) {
       const message = getErrorMessage(error);
       console.error('[ReportsService] Device status report error:', message);
@@ -237,8 +303,14 @@ export class ReportsService {
   async getReports(filters?: ReportFilters): Promise<ReportListResponse> {
     try {
       const url = buildReportsUrl(filters);
-      const response = await apiClient.get<ReportListResponse>(url);
-      return response.data;
+      const response = await apiClient.get<any>(url);
+      
+      // Transform backend response to match frontend interface
+      return {
+        success: response.data.status === 'success',
+        data: response.data.data || [],
+        pagination: response.data.pagination,
+      };
     } catch (error) {
       const message = getErrorMessage(error);
       console.error('[ReportsService] Get reports error:', message);
@@ -256,10 +328,16 @@ export class ReportsService {
    */
   async getReportById(reportId: string): Promise<ReportResponse> {
     try {
-      const response = await apiClient.get<ReportResponse>(
+      const response = await apiClient.get<any>(
         REPORT_ENDPOINTS.BY_ID(reportId)
       );
-      return response.data;
+      
+      // Transform backend response to match frontend interface
+      return {
+        success: response.data.status === 'success',
+        message: response.data.message,
+        data: response.data.data,
+      };
     } catch (error) {
       const message = getErrorMessage(error);
       console.error('[ReportsService] Get report error:', message);
@@ -277,10 +355,15 @@ export class ReportsService {
    */
   async deleteReport(reportId: string): Promise<{ success: boolean; message: string }> {
     try {
-      const response = await apiClient.delete<{ success: boolean; message: string }>(
+      const response = await apiClient.delete<any>(
         REPORT_ENDPOINTS.DELETE(reportId)
       );
-      return response.data;
+      
+      // Transform backend response to match frontend interface
+      return {
+        success: response.data.status === 'success',
+        message: response.data.message || 'Report deleted successfully',
+      };
     } catch (error) {
       const message = getErrorMessage(error);
       console.error('[ReportsService] Delete report error:', message);
@@ -338,11 +421,12 @@ export class ReportsService {
       if (filters.limit) params.append('limit', filters.limit.toString());
 
       const url = `${REPORT_ENDPOINTS.HISTORY}?${params.toString()}`;
-      const response = await apiClient.get(url);
+      const response = await apiClient.get<any>(url);
 
+      // Transform backend response to match frontend interface
       return {
-        success: response.data.success,
-        data: response.data.data,
+        success: response.data.status === 'success',
+        data: response.data.data || [],
         pagination: response.data.pagination,
       };
     } catch (error) {

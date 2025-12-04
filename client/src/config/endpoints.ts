@@ -54,16 +54,20 @@ export const ALERT_ENDPOINTS = {
 // ==================== DEVICES ====================
 // ✅ V2 Backend Routes:
 // GET /api/v1/devices - List devices
+// GET /api/v1/devices/deleted - Get deleted devices
 // GET /api/v1/devices/:id - Get by ID
 // PUT /api/v1/devices/:id - Update device
 // DELETE /api/v1/devices/:id - Delete device
+// POST /api/v1/devices/:id/recover - Recover deleted device
 export const DEVICE_ENDPOINTS = {
   LIST: `${API_VERSION}/devices`,
+  DELETED: `${API_VERSION}/devices/deleted`,
   STATS: `${API_VERSION}/devices/stats`,
   BY_ID: (deviceId: string) => `${API_VERSION}/devices/${deviceId}`,
   READINGS: (deviceId: string) => `${API_VERSION}/devices/${deviceId}/readings`,
   UPDATE: (deviceId: string) => `${API_VERSION}/devices/${deviceId}`,
   DELETE: (deviceId: string) => `${API_VERSION}/devices/${deviceId}`,
+  RECOVER: (deviceId: string) => `${API_VERSION}/devices/${deviceId}/recover`,
   PROCESS_READING: `${API_VERSION}/devices/readings`,
 } as const;
 
@@ -84,13 +88,20 @@ export const SENSOR_READING_ENDPOINTS = {
 } as const;
 
 // ==================== REPORTS ====================
+// ✅ V2 Backend Routes:
+// POST /api/v1/reports - Create report (unified endpoint for all report types)
+// GET /api/v1/reports - List all reports
+// GET /api/v1/reports/history - Alias for list
+// GET /api/v1/reports/statistics - Get statistics
+// GET /api/v1/reports/:id - Get by ID
+// GET /api/v1/reports/:id/download - Download report file
+// DELETE /api/v1/reports/:id - Delete report
 export const REPORT_ENDPOINTS = {
-  WATER_QUALITY: `${API_VERSION}/reports/water-quality`,
-  DEVICE_STATUS: `${API_VERSION}/reports/device-status`,
-  LIST: `${API_VERSION}/reports`,
+  LIST: `${API_VERSION}/reports`, // Also used for POST to create reports
   HISTORY: `${API_VERSION}/reports/history`,
-  DOWNLOAD: (fileId: string) => `${API_VERSION}/reports/download/${fileId}`,
+  STATISTICS: `${API_VERSION}/reports/statistics`,
   BY_ID: (reportId: string) => `${API_VERSION}/reports/${reportId}`,
+  DOWNLOAD: (reportId: string) => `${API_VERSION}/reports/${reportId}/download`,
   DELETE: (reportId: string) => `${API_VERSION}/reports/${reportId}`,
 } as const;
 

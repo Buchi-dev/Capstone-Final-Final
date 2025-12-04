@@ -121,10 +121,12 @@ router.patch('/:deviceId/status', requireAdmin, validateRequest(updateDeviceStat
 
 /**
  * @route   POST /api/v1/devices/:deviceId/command
+ * @route   POST /api/v1/devices/:deviceId/commands (alias)
  * @desc    Send command to device
  * @access  Protected (Admin only)
  */
 router.post('/:deviceId/command', requireAdmin, validateRequest(sendCommandSchema), sendCommand);
+router.post('/:deviceId/commands', requireAdmin, validateRequest(sendCommandSchema), sendCommand); // Alias for compatibility
 
 /**
  * @route   POST /api/v1/devices/:deviceId/send-now

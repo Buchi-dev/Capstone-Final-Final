@@ -123,11 +123,25 @@ export class BackupService {
 
       // Create or get root folder
       let rootFolderId = await this.findFolder('PureTrack_Backups');
+      const wasJustCreated = !rootFolderId;
+      
       if (!rootFolderId) {
         rootFolderId = await this.createFolder('PureTrack_Backups');
         logger.info('✅ Created root folder: PureTrack_Backups');
       } else {
         logger.info('📁 Root folder already exists: PureTrack_Backups');
+      }
+
+      // Share the folder with owner if email is provided and folder was just created
+      if (wasJustCreated && rootFolderId) {
+        const ownerEmail = process.env.GOOGLE_DRIVE_OWNER_EMAIL;
+        if (ownerEmail) {
+          await this.shareFolderWithUser(rootFolderId, ownerEmail, 'writer');
+          logger.info(`✅ Shared PureTrack_Backups folder with: ${ownerEmail}`);
+        } else {
+          logger.warn('⚠️  GOOGLE_DRIVE_OWNER_EMAIL not set - backup folder not shared');
+          logger.warn('📌 Set GOOGLE_DRIVE_OWNER_EMAIL in .env to access backups in your Google Drive');
+        }
       }
 
       // Create subfolders for each backup type
@@ -248,6 +262,74 @@ export class BackupService {
 
     logger.info(`Created Google Drive folder: ${name}`);
     return response.data.id;
+  }
+
+  /**
+   * Share a Google Drive folder with a user
+   */
+  private async shareFolderWithUser(
+    folderId: string,
+    emailAddress: string,
+    role: 'reader' | 'writer' | 'owner' = 'writer'
+  ): Promise<void> {
+    try {
+      await this.drive.permissions.create({
+        fileId: folderId,
+        requestBody: {
+          type: 'user',
+          role: role,
+          emailAddress: emailAddress,
+        },
+        sendNotificationEmail: true,
+        emailMessage: 'You now have access to PureTrack water quality system backups.',
+      });
+      
+      logger.info(`Shared folder ${folderId} with ${emailAddress} as ${role}`);
+    } catch (error) {
+      logger.error(`Failed to share folder with ${emailAddress}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Manually share existing backup folder with an email address
+   * Use this if folder was already created before setting GOOGLE_DRIVE_OWNER_EMAIL
+   */
+  async shareBackupFolder(emailAddress: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await this.waitForInitialization();
+
+      if (!this.drive) {
+        return {
+          success: false,
+          message: 'Google Drive not initialized',
+        };
+      }
+
+      // Find root folder
+      const rootFolderId = await this.findFolder('PureTrack_Backups');
+      
+      if (!rootFolderId) {
+        return {
+          success: false,
+          message: 'PureTrack_Backups folder not found in Google Drive',
+        };
+      }
+
+      // Share folder
+      await this.shareFolderWithUser(rootFolderId, emailAddress, 'writer');
+
+      return {
+        success: true,
+        message: `Successfully shared PureTrack_Backups folder with ${emailAddress}`,
+      };
+    } catch (error) {
+      logger.error('Failed to share backup folder', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Failed to share folder',
+      };
+    }
   }
 
   /**

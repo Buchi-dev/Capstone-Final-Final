@@ -55,6 +55,7 @@ export {
   useDevices,
   useDeviceReadings,
   useDeviceMutations,
+  useDeletedDevices,
   type UseDevicesOptions,
   type UseDevicesReturn,
   type UseDeviceReadingsOptions,

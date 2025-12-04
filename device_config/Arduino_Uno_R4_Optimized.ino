@@ -2090,6 +2090,10 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     consecutiveMqttFailures = 0;
     lastMqttReconnect = millis() - MQTT_RECONNECT_INTERVAL;
     
+    // Trigger immediate re-registration after reconnect by resetting timer
+    lastRegistrationAttempt = 0;
+    Serial.println(F("Will send registration info immediately on next connection"));
+    
   } else if (strcmp(command, "restart") == 0) {
     Serial.println(F("CMD: RESTART"));
     delay(1000);

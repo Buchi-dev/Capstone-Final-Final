@@ -49,10 +49,11 @@ export const registerDeviceSchema = z.object({
 
 /**
  * Update device schema
+ * Accepts either MongoDB ObjectId or deviceId
  */
 export const updateDeviceSchema = z.object({
   params: z.object({
-    id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid MongoDB ObjectId'),
+    id: z.string().min(1, 'Device ID is required'),
   }),
   body: z.object({
     name: z.string().optional(),
@@ -84,6 +85,19 @@ export const approveDeviceSchema = z.object({
   params: z.object({
     deviceId: z.string().min(1, 'Device ID is required'),
   }),
+  body: z.object({
+    location: z.string().optional(),
+    metadata: z.object({
+      location: z.object({
+        building: z.string().optional(),
+        floor: z.string().optional(),
+        notes: z.string().optional(),
+      }).optional(),
+      firmware: z.string().optional(),
+      hardware: z.string().optional(),
+      ipAddress: z.string().optional(),
+    }).optional(),
+  }),
 });
 
 /**
@@ -108,24 +122,31 @@ export const sendCommandSchema = z.object({
   body: z.object({
     command: z.string().min(1, 'Command is required'),
     payload: z.any().optional(),
-  }),
+    data: z.any().optional(), // Alias for payload (frontend compatibility)
+  }).transform((body) => ({
+    command: body.command,
+    // Use 'data' if provided, otherwise use 'payload'
+    payload: body.data !== undefined ? body.data : body.payload,
+  })),
 });
 
 /**
  * Get device by ID schema
+ * Accepts either MongoDB ObjectId or deviceId
  */
 export const getDeviceByIdSchema = z.object({
   params: z.object({
-    id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid MongoDB ObjectId'),
+    id: z.string().min(1, 'Device ID is required'),
   }),
 });
 
 /**
  * Delete device schema
+ * Accepts either MongoDB ObjectId or deviceId
  */
 export const deleteDeviceSchema = z.object({
   params: z.object({
-    id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid MongoDB ObjectId'),
+    id: z.string().min(1, 'Device ID is required'),
   }),
 });
 

@@ -5,9 +5,11 @@
 
 import { Request, Response } from 'express';
 import deviceService from './device.service';
+import { userService } from '@feature/users';
 import { ResponseHandler } from '@utils/response.util';
 import { asyncHandler } from '@utils/asyncHandler.util';
 import { SUCCESS_MESSAGES } from '@core/configs/messages.config';
+import { DeviceStatus } from './device.types';
 
 /**
  * Get all devices with filters
@@ -32,7 +34,18 @@ export const getAllDevices = asyncHandler(async (req: Request, res: Response) =>
 
   const result = await deviceService.getAllDevices(filters, Number(page), Number(limit));
 
-  const devicesData = result.data.map((device) => device.toPublicProfile());
+  // Map devices to public profile, preserving latestReading
+  const devicesData = result.data.map((device: any) => {
+    // If device has toPublicProfile method, use it
+    if (typeof device.toPublicProfile === 'function') {
+      return {
+        ...device.toPublicProfile(),
+        latestReading: device.latestReading || null,
+      };
+    }
+    // Otherwise, device is already a plain object with latestReading
+    return device;
+  });
 
   ResponseHandler.paginated(res, devicesData, result.pagination);
 });
@@ -71,12 +84,13 @@ export const registerDevice = asyncHandler(async (req: Request, res: Response) =
  */
 export const approveDeviceRegistration = asyncHandler(async (req: Request, res: Response) => {
   const { deviceId } = req.params;
+  const updateData = req.body;
 
   if (!deviceId) {
     throw new Error('Device ID is required');
   }
 
-  const device = await deviceService.approveDeviceRegistration(deviceId);
+  const device = await deviceService.approveDeviceRegistration(deviceId, updateData);
 
   ResponseHandler.success(
     res,
@@ -127,17 +141,25 @@ export const updateDeviceStatus = asyncHandler(async (req: Request, res: Respons
 
 /**
  * Soft delete device
+ * Sends 'deregister' command to device before deletion
  * @route DELETE /api/v1/devices/:id
  */
 export const deleteDevice = asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  const userId = (req as any).user?.uid; // Get from auth middleware
+  const firebaseUid = (req as any).user?.uid; // Get Firebase UID from auth middleware
 
   if (!id) {
     throw new Error('Device ID is required');
   }
 
-  const result = await deviceService.deleteDevice(id, userId);
+  // Convert Firebase UID to MongoDB ObjectId
+  let deletedBy;
+  if (firebaseUid) {
+    const user = await userService.getUserByFirebaseUid(firebaseUid);
+    deletedBy = user?._id;
+  }
+
+  const result = await deviceService.deleteDevice(id, deletedBy);
 
   ResponseHandler.success(res, null, result.message);
 });
@@ -213,6 +235,7 @@ export const getOnlineDevices = asyncHandler(async (_req: Request, res: Response
 /**
  * Send command to device
  * @route POST /api/v1/devices/:deviceId/command
+ * @route POST /api/v1/devices/:deviceId/commands
  */
 export const sendCommand = asyncHandler(async (req: Request, res: Response) => {
   const { deviceId } = req.params;
@@ -223,9 +246,21 @@ export const sendCommand = asyncHandler(async (req: Request, res: Response) => {
 
   const { command, payload } = req.body;
 
-  await deviceService.sendCommand(deviceId, command, payload);
+  await deviceService.sendCommand(deviceId, command, payload || {});
 
-  ResponseHandler.success(res, null, SUCCESS_MESSAGES.DEVICE.COMMAND_SENT);
+  // Get device to check current status
+  const device = await deviceService.getDeviceByDeviceId(deviceId);
+
+  // Return structured response expected by frontend
+  const responseData = {
+    commandId: `${deviceId}-${command}-${Date.now()}`,
+    status: device?.status === DeviceStatus.ONLINE ? 'sent' : 'queued',
+    deviceStatus: device?.status || DeviceStatus.OFFLINE,
+    command,
+    timestamp: new Date().toISOString(),
+  };
+
+  ResponseHandler.success(res, responseData, SUCCESS_MESSAGES.DEVICE.COMMAND_SENT);
 });
 
 /**

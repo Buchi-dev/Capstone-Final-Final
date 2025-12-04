@@ -10,6 +10,7 @@ import {
   EnvironmentOutlined,
   InfoCircleOutlined,
   WarningOutlined,
+  RollbackOutlined,
 } from '@ant-design/icons';
 import type { DeviceWithReadings, DeviceStatus, DeviceUIStatus } from '../../../../schemas';
 import { isDeviceRegistered } from '../../../../schemas';
@@ -34,8 +35,9 @@ interface UseDeviceColumnsProps {
   activeTab: 'registered' | 'unregistered';
   token: GlobalToken;
   onView: (device: DeviceWithReadings) => void;
-  onDelete: (device: DeviceWithReadings) => void;
+  onDelete?: (device: DeviceWithReadings) => void;
   onRegister: (device: DeviceWithReadings) => void;
+  onRecover?: (device: DeviceWithReadings) => void;
 }
 
 export const useDeviceColumns = ({
@@ -44,6 +46,7 @@ export const useDeviceColumns = ({
   onView,
   onDelete,
   onRegister,
+  onRecover,
 }: UseDeviceColumnsProps) => {
   // Table columns for registered devices
   const registeredColumns: ColumnsType<DeviceWithReadings> = [
@@ -223,7 +226,8 @@ export const useDeviceColumns = ({
                   Register
                 </Button>
               </Tooltip>
-            ) : (
+            ) : onRecover ? (
+              // Deleted devices - show recover button
               <>
                 <Tooltip title="View Details">
                   <Button
@@ -233,15 +237,40 @@ export const useDeviceColumns = ({
                     size="small"
                   />
                 </Tooltip>
-                <Tooltip title="Delete Device">
+                <Tooltip title="Recover Device">
+                  <Button
+                    type="primary"
+                    icon={<RollbackOutlined />}
+                    onClick={() => onRecover(record)}
+                    size="small"
+                    style={{ fontWeight: 500 }}
+                  >
+                    Recover
+                  </Button>
+                </Tooltip>
+              </>
+            ) : (
+              // Registered devices - show view and delete
+              <>
+                <Tooltip title="View Details">
                   <Button
                     type="default"
-                    danger
-                    icon={<DeleteOutlined />}
-                    onClick={() => onDelete(record)}
+                    icon={<EyeOutlined />}
+                    onClick={() => onView(record)}
                     size="small"
                   />
                 </Tooltip>
+                {onDelete && (
+                  <Tooltip title="Delete Device">
+                    <Button
+                      type="default"
+                      danger
+                      icon={<DeleteOutlined />}
+                      onClick={() => onDelete(record)}
+                      size="small"
+                    />
+                  </Tooltip>
+                )}
               </>
             )}
           </Space>

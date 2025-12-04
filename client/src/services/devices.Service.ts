@@ -183,6 +183,51 @@ export class DevicesService {
     }
   }
 
+  /**
+   * Get deleted devices (admin only)
+   * Retrieves soft-deleted devices that can be recovered
+   * 
+   * @returns Promise with list of deleted devices
+   * @example
+   * const deletedDevices = await devicesService.getDeletedDevices();
+   */
+  async getDeletedDevices(): Promise<DeviceListResponse> {
+    try {
+      const response = await apiClient.get<DeviceListResponse>(DEVICE_ENDPOINTS.DELETED);
+      return response.data;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      if (import.meta.env.DEV) {
+        console.error('[DevicesService] Get deleted devices error:', message);
+      }
+      throw new Error(message);
+    }
+  }
+
+  /**
+   * Recover a deleted device (admin only)
+   * Restores a soft-deleted device and its data
+   * 
+   * @param deviceId - Device ID to recover
+   * @throws {Error} If recovery fails
+   * @example
+   * await devicesService.recoverDevice('WQ-001');
+   */
+  async recoverDevice(deviceId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await apiClient.post<{ success: boolean; message: string }>(
+        DEVICE_ENDPOINTS.RECOVER(deviceId)
+      );
+      return response.data;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      if (import.meta.env.DEV) {
+        console.error('[DevicesService] Recover device error:', message);
+      }
+      throw new Error(message);
+    }
+  }
+
   // ==========================================================================
   // READ OPERATIONS (REST API)
   // ==========================================================================
@@ -355,7 +400,7 @@ export class DevicesService {
     payload: UpdateDevicePayload
   ): Promise<DeviceResponse> {
     try {
-      const response = await apiClient.post<DeviceResponse>(
+      const response = await apiClient.patch<DeviceResponse>(
         `${DEVICE_ENDPOINTS.BY_ID(deviceId)}/approve`,
         payload
       );

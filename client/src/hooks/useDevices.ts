@@ -72,6 +72,7 @@ export interface UseDeviceReadingsReturn {
 export interface UseDeviceMutationsReturn {
   updateDevice: (deviceId: string, payload: UpdateDevicePayload) => Promise<void>;
   deleteDevice: (deviceId: string) => Promise<void>;
+  recoverDevice: (deviceId: string) => Promise<void>;
   registerDevice: (deviceId: string, building: string, floor: string, notes?: string) => Promise<void>;
   isLoading: boolean;
   error: Error | null;
@@ -365,11 +366,99 @@ export function useDeviceMutations(): UseDeviceMutationsReturn {
     []
   );
 
+  const recoverDevice = useCallback(
+    async (deviceId: string) => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        await devicesService.recoverDevice(deviceId);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error('Failed to recover device');
+        setError(error);
+        throw error;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    []
+  );
+
   return {
     updateDevice,
     deleteDevice,
     registerDevice,
+    recoverDevice,
     isLoading,
     error,
+  };
+}
+
+/**
+ * useDeletedDevices - Hook for Deleted Devices
+ * 
+ * Fetches soft-deleted devices that can be recovered
+ * 
+ * @param options - Configuration options
+ * @returns Deleted devices list and utilities
+ * 
+ * @example
+ * const { deletedDevices, isLoading, refetch } = useDeletedDevices();
+ */
+export function useDeletedDevices(options: { enabled?: boolean } = {}) {
+  const { enabled = true } = options;
+
+  const {
+    data,
+    error,
+    isLoading,
+    mutate,
+  } = useSWR(
+    enabled ? 'deleted-devices' : null,
+    () => devicesService.getDeletedDevices(),
+    {
+      ...SWR_CONFIG,
+      revalidateOnFocus: true,
+      refreshInterval: 0, // Don't auto-refresh deleted devices
+    }
+  );
+
+  const deletedDevices = useMemo(() => {
+    if (!data?.data || !Array.isArray(data.data)) return [];
+    
+    // Map to DeviceWithReadings format with computed uiStatus
+    return data.data.map((device) => {
+      // Cast to DeviceWithReadings
+      const deviceWithReading = device as DeviceWithReadings;
+      
+      // Calculate UI status using centralized helper
+      const statusResult = calculateDeviceUIStatus({
+        status: device.status,
+        lastSeen: device.lastSeen,
+        deviceId: device.deviceId,
+        latestReading: deviceWithReading.latestReading || null,
+      });
+      
+      return {
+        ...deviceWithReading,
+        uiStatus: statusResult.uiStatus,
+        statusReason: statusResult.statusReason,
+        hasRecentData: statusResult.hasRecentData,
+        hasQualityWarnings: statusResult.hasQualityWarnings,
+        lastSeenMs: statusResult.lastSeenMs,
+        sensorReadings: [] as SensorReading[], // No sensor readings for deleted devices
+      };
+    }) as DeviceWithReadings[];
+  }, [data]);
+
+  const refetch = useCallback(async () => {
+    await mutate();
+  }, [mutate]);
+
+  return {
+    deletedDevices,
+    isLoading,
+    error,
+    refetch,
+    mutate,
   };
 }
