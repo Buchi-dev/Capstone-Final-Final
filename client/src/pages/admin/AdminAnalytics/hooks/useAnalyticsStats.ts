@@ -14,12 +14,9 @@
 import { useMemo } from 'react';
 import type { DeviceWithReadings } from '../../../../schemas';
 import type { WaterQualityAlert } from '../../../../schemas';
-import type { SystemHealth } from '../../../../services/health.Service';
+import type { SystemHealthMetrics } from '../../../../services/health.Service';
 import { calculateSystemHealth, type AlertScoreBreakdown } from '../../AdminDashboard/utils';
-import { 
-  HEALTH_COLORS,
-  calculateServerHealthScore 
-} from '../../AdminDashboard/config';
+import { HEALTH_COLORS } from '../../AdminDashboard/config';
 import { ALERT_STATUS, ALERT_SEVERITY } from '../../../../constants';
 
 /**
@@ -179,21 +176,35 @@ const calculateWaterQualityMetrics = (devices: DeviceWithReadings[]): WaterQuali
 
 /**
  * Calculate system health from Express server, devices, and alerts
+ * Uses the same weighted calculation as AdminDashboard for consistency
  */
 const calculateSystemHealthSummary = (
   devices: DeviceWithReadings[],
   alerts: WaterQualityAlert[],
-  systemHealthData: SystemHealth | null
+  systemHealthData: SystemHealthMetrics | null
 ): SystemHealthSummary => {
-  // Calculate Express server health score
-  const serverScore = systemHealthData
-    ? calculateServerHealthScore(
-        systemHealthData.checks?.memory?.usage?.rss ? systemHealthData.checks.memory.usage.rss * 1024 * 1024 : 0,
-        0, // CPU not available from health endpoint
-        systemHealthData.checks?.database?.status === 'OK',
-        systemHealthData.status === 'OK' ? 'healthy' : systemHealthData.status === 'DEGRADED' ? 'degraded' : 'unhealthy'
-      )
-    : 0;
+  // Calculate Express server health score using weighted component scores
+  // This matches the AdminDashboard OverallHealthCard calculation
+  const serverScore = systemHealthData ? (() => {
+    const cpuScore = systemHealthData.cpu.status === 'ok' ? 100 : 
+                     systemHealthData.cpu.status === 'warning' ? 70 : 
+                     systemHealthData.cpu.status === 'critical' ? 30 : 0;
+    
+    const memoryScore = systemHealthData.memory.status === 'ok' ? 100 : 
+                        systemHealthData.memory.status === 'warning' ? 70 : 
+                        systemHealthData.memory.status === 'critical' ? 30 : 0;
+    
+    const storageScore = systemHealthData.storage.status === 'ok' ? 100 : 
+                         systemHealthData.storage.status === 'warning' ? 70 : 
+                         systemHealthData.storage.status === 'critical' ? 30 : 0;
+    
+    const databaseScore = systemHealthData.database.connectionStatus === 'connected' ? 100 : 0;
+    
+    // Weighted average: CPU(30%), Memory(30%), Storage(20%), Database(20%)
+    const weightedScore = (cpuScore * 0.3) + (memoryScore * 0.3) + (storageScore * 0.2) + (databaseScore * 0.2);
+    
+    return Math.round(weightedScore);
+  })() : 0;
 
   // Calculate system health
   const deviceStats = calculateDeviceStats(devices);
@@ -413,7 +424,7 @@ const calculateAggregatedMetrics = (devices: DeviceWithReadings[]) => {
 export const useAnalyticsStats = (
   devices: DeviceWithReadings[],
   alerts: WaterQualityAlert[],
-  systemHealthData: SystemHealth | null
+  systemHealthData: SystemHealthMetrics | null
 ) => {
   const deviceStats = useMemo(() => calculateDeviceStats(devices), [devices]);
   const alertStats = useMemo(() => calculateAlertStats(alerts), [alerts]);

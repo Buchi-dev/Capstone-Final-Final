@@ -101,6 +101,15 @@ export const ANALYTICS_ENDPOINTS = {
   PARAMETERS: `${API_VERSION}/analytics/parameters`,
 } as const;
 
+// ==================== HEALTH MONITORING ====================
+export const HEALTH_ENDPOINTS = {
+  SYSTEM: `${API_VERSION}/health/system`,
+  CPU: `${API_VERSION}/health/cpu`,
+  MEMORY: `${API_VERSION}/health/memory`,
+  STORAGE: `${API_VERSION}/health/storage`,
+  DATABASE: `${API_VERSION}/health/database`,
+} as const;
+
 // ==================== QUERY BUILDERS ====================
 /**
  * Build query string from object

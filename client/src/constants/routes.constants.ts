@@ -65,6 +65,9 @@ export const ADMIN_ROUTES = {
   SETTINGS_NOTIFICATIONS: '/admin/settings/notifications',
   SETTINGS_THRESHOLDS: '/admin/settings/thresholds',
   SETTINGS_SYSTEM: '/admin/settings/system',
+  
+  // System Health
+  HEALTH: '/admin/health',
 } as const;
 
 /**

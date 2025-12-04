@@ -1,4 +1,4 @@
-import { Space, Alert, Tabs, Layout } from 'antd';
+import { Space, Alert, Tabs, Layout, Row, Col } from 'antd';
 import { 
   DashboardOutlined, 
   ReloadOutlined,
@@ -7,7 +7,7 @@ import { memo, useState } from 'react';
 import { AdminLayout } from "../../../components/layouts";
 import { PageHeader } from "../../../components/PageHeader";
 import { 
-  useSystemHealth,
+  useHealth,
   useDevices, 
   useAlerts 
 } from '../../../hooks';
@@ -40,9 +40,7 @@ export const AdminDashboard = memo(() => {
   const {
     health: systemHealth,
     isLoading: healthLoading,
-    error: healthError,
-    refetch: healthRefetch,
-  } = useSystemHealth({ pollInterval: 10000 });
+  } = useHealth({ refreshInterval: 10000 });
 
   const {
     devices,
@@ -71,7 +69,6 @@ export const AdminDashboard = memo(() => {
     setRefreshing(true);
     try {
       await Promise.all([
-        healthRefetch(),
         devicesRefetch(),
         alertsRefetch()
       ]);
@@ -97,15 +94,6 @@ export const AdminDashboard = memo(() => {
       children: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           {/* Error Alerts */}
-          {healthError && (
-            <Alert
-              message="System Health Connection Error"
-              description={healthError.message}
-              type="error"
-              showIcon
-              closable
-            />
-          )}
           {devicesError && (
             <Alert
               message="Device Monitoring Error"
@@ -125,14 +113,25 @@ export const AdminDashboard = memo(() => {
             />
           )}
 
-          {/* PRIORITY 1: Overall System Health + Key Metrics (TOP) */}
-          <OverallHealthCard
-            deviceStats={deviceStats}
-            alertStats={alertStats}
-            alerts={alerts}
-            systemHealth={systemHealth}
-            loading={isLoading}
-          />
+          {/* PRIORITY 1: Overall System Health + Recent Alerts (TOP ROW) */}
+          <Row gutter={[16, 16]}>
+            <Col xs={24} lg={16}>
+              <OverallHealthCard
+                deviceStats={deviceStats}
+                alertStats={alertStats}
+                alerts={alerts}
+                systemHealth={systemHealth}
+                loading={isLoading}
+              />
+            </Col>
+            <Col xs={24} lg={8}>
+              <RecentAlertsList
+                alerts={alerts}
+                loading={alertsLoading}
+                maxItems={10}
+              />
+            </Col>
+          </Row>
 
           {/* PRIORITY 2: Quick Stats - Devices & Alerts */}
           <QuickStatsCard
@@ -144,13 +143,6 @@ export const AdminDashboard = memo(() => {
           <SystemHealthCard
             systemHealth={systemHealth}
             loading={healthLoading}
-          />
-
-          {/* PRIORITY 4: Recent Alerts List */}
-          <RecentAlertsList
-            alerts={alerts}
-            loading={alertsLoading}
-            maxItems={10}
           />
         </Space>
       ),

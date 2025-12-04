@@ -8,7 +8,7 @@ import { memo, useMemo, useState, useEffect } from 'react';
 import { LiveMetricIndicator } from './LiveMetricIndicator';
 import { RecentAlertsList } from './RecentAlertsList';
 import { Row, Col } from 'antd';
-import type { SystemHealth } from '../../../../services/health.Service';
+import type { SystemHealthMetrics } from '../../../../services/health.Service';
 import type { WaterQualityAlert } from '../../../../schemas';
 import {
   calculateServerHealthScore,
@@ -36,7 +36,7 @@ interface DashboardSummaryProps {
     advisory: number;
   };
   alerts: WaterQualityAlert[];
-  systemHealth: SystemHealth | null; // Express server health from /health endpoint
+  systemHealth: SystemHealthMetrics | null; // Express server health from /health endpoint
   loading: boolean;
 }
 
@@ -51,22 +51,19 @@ export const DashboardSummary = memo<DashboardSummaryProps>(({
 
   // Calculate Express server health score using RSS and CPU
   const serverScore: number = useMemo(() => {
-    if (!systemHealth?.checks?.memory || !systemHealth?.checks?.database) return 0;
+    if (!systemHealth?.memory || !systemHealth?.database) return 0;
     
-    // Extract memory usage (RSS in MB, convert to bytes)
-    const rssBytes = systemHealth.checks.memory.usage.rss * 1024 * 1024;
-    
-    // We don't have CPU from health endpoint, so we'll use memory-only scoring
-    // Use 0 for CPU to focus on memory health
-    const cpuPercent = 0;
+    // Convert memory usage from GB to bytes
+    const rssBytes = systemHealth.memory.usedGB * 1024 * 1024 * 1024;
+    const cpuPercent = systemHealth.cpu.usagePercent;
     
     // Determine health status from systemHealth
-    const healthStatus = systemHealth.status === 'OK' ? 'healthy' : systemHealth.status === 'DEGRADED' ? 'degraded' : 'unhealthy';
+    const healthStatus = systemHealth.overallStatus === 'ok' ? 'healthy' : systemHealth.overallStatus === 'warning' ? 'degraded' : 'unhealthy';
     
     return calculateServerHealthScore(
       rssBytes,
       cpuPercent,
-      systemHealth.checks.database.status === 'OK',
+      systemHealth.database.connectionStatus === 'connected',
       healthStatus
     );
   }, [systemHealth]);
@@ -87,10 +84,6 @@ export const DashboardSummary = memo<DashboardSummaryProps>(({
       setHealthHistory(prev => [...prev, serverScore].slice(-MAX_HISTORY));
     }
   }, [serverScore]);
-
-  const formatBytes = (bytes: number): string => {
-    return (bytes / (1024 * 1024)).toFixed(2);
-  };
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -235,15 +228,15 @@ export const DashboardSummary = memo<DashboardSummaryProps>(({
                 }
                 unit="%"
                 subtitle={
-                  systemHealth?.checks?.memory
-                    ? `${formatBytes(systemHealth.checks.memory.usage.rss)}MB RAM`
-                    : systemHealth?.checks?.database?.status === 'OK' ? 'Connected' : 'Disconnected'
+                  systemHealth?.memory
+                    ? `${systemHealth.memory.usedGB.toFixed(2)}GB RAM`
+                    : systemHealth?.database?.connectionStatus === 'connected' ? 'Connected' : 'Disconnected'
                 }
                 dataHistory={healthHistory}
                 tooltip={
-                  systemHealth?.checks
-                    ? `Status: ${systemHealth.status}\nDatabase: ${systemHealth.checks.database?.status || 'Unknown'}\nRedis: ${systemHealth.checks.redis?.status || 'Unknown'}\nMemory: ${formatBytes(systemHealth.checks.memory?.usage.rss || 0)}MB\nHealth Score: ${serverScore}%`
-                    : `Express Server: ${systemHealth?.status || 'unknown'}`
+                  systemHealth
+                    ? `Status: ${systemHealth.overallStatus}\nDatabase: ${systemHealth.database?.connectionStatus || 'Unknown'}\nCPU: ${systemHealth.cpu?.usagePercent || 0}%\nMemory: ${systemHealth.memory?.usedGB.toFixed(2) || 0}GB\nHealth Score: ${serverScore}%`
+                    : `Express Server: unknown`
                 }
                 loading={loading}
               />

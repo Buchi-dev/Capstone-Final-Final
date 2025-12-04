@@ -13,7 +13,8 @@ import {
   AdminAlerts,
   AdminAnalytics,
   AdminUserManagement,
-  AdminSettings
+  AdminSettings,
+  AdminSystemHealth
 } from '../pages/admin';
 import ReportHistory from '../pages/admin/AdminReports/ReportHistory';
 
@@ -180,6 +181,14 @@ const router = createBrowserRouter([
     element: (
       <AdminRoute>
         <AdminSettings />
+      </AdminRoute>
+    ),
+  },
+  {
+    path: '/admin/health',
+    element: (
+      <AdminRoute>
+        <AdminSystemHealth />
       </AdminRoute>
     ),
   },

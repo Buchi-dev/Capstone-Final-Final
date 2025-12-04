@@ -15,7 +15,7 @@
  * - Analytics: useAnalyticsSummary, useAnalyticsTrends, useParameterAnalytics
  * - Users: useUsers, useUser, useUserPreferences, useUserMutations
  * - Reports: useReports, useReport, useReportMutations
- * - Health: useSystemHealth, useLiveness, useReadiness
+ * - Health: useHealth, useHealthStatusBadge, formatBytes
  * 
  * @module hooks/index
  */
@@ -116,13 +116,7 @@ export {
 // ============================================================================
 
 export {
-  useSystemHealth,
-  useLiveness,
-  useReadiness,
-  type UseSystemHealthOptions,
-  type UseSystemHealthReturn,
-  type UseLivenessOptions,
-  type UseLivenessReturn,
-  type UseReadinessOptions,
-  type UseReadinessReturn,
+  useHealth,
+  useHealthStatusBadge,
+  formatBytes,
 } from './useHealth';

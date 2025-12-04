@@ -28,7 +28,7 @@ import type { DeviceWithReadings } from '../../../schemas';
 import { 
   useDevices,
   useAlerts,
-  useSystemHealth,
+  useHealth,
   useAnalyticsSummary
 } from '../../../hooks';
 import { useAnalyticsProcessing, useAnalyticsStats } from './hooks';
@@ -64,8 +64,7 @@ export const AdminAnalytics = memo(() => {
   const {
     health: systemHealthData,
     isLoading: healthLoading,
-    refetch: refetchHealth,
-  } = useSystemHealth({ pollInterval: 30000 });
+  } = useHealth({ refreshInterval: 30000 });
 
   const {
     summary: analyticsSummary,
@@ -143,7 +142,7 @@ export const AdminAnalytics = memo(() => {
     
     setIsRefreshing(true);
     try {
-      await Promise.all([refetchDevices(), refetchAlerts(), refetchHealth(), refetchSummary()]);
+      await Promise.all([refetchDevices(), refetchAlerts(), refetchSummary()]);
       setTimeout(() => setIsRefreshing(false), 500);
     } catch (error) {
       console.error('Refresh error:', error);
