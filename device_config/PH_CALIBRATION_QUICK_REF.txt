@@ -1,0 +1,52 @@
+# pH Calibration Quick Reference
+**Updated:** December 4, 2025
+
+## Calibration Values
+
+| Sample | ADC | pH   | Type    |
+|--------|-----|------|---------|
+| 1      | 166 | 4.01 | Acidic  |
+| 2      | 434 | 6.86 | Neutral |
+| 3      | 539 | 9.18 | Basic   |
+
+## Code Applied
+```cpp
+const int PH_CALIB_COUNT = 3;
+const int phCalibADC[3] = {166, 434, 539};
+const float phCalibPH[3] = {4.01, 6.86, 9.18};
+```
+
+## Expected Results
+When you test:
+- **ADC ~166** → pH **4.01** (acidic buffer)
+- **ADC ~434** → pH **6.86** (neutral buffer)  
+- **ADC ~539** → pH **9.18** (basic buffer)
+
+## How It Works
+**Piecewise Linear Interpolation:**
+
+**Segment 1 (ADC 166-434):** Acidic to Neutral
+- Slope: 0.01063 pH/ADC
+- Example: ADC 300 → pH 5.43
+
+**Segment 2 (ADC 434-539):** Neutral to Basic
+- Slope: 0.02210 pH/ADC  
+- Example: ADC 490 → pH 8.10
+
+## Files Updated
+✅ `Arduino_Uno_R4_Optimized.ino` - Firmware
+✅ `PH_CALIBRATION_SUMMARY.md` - Full docs
+✅ `PH_VALIDATION_CHECKLIST.txt` - Testing guide
+✅ `PH_CALIBRATION_QUICK_REF.txt` - This file
+
+## Next Steps
+1. Upload firmware to Arduino
+2. Test with buffer solutions
+3. Verify accuracy within ±0.1 pH
+4. Schedule next calibration (Jan 4, 2026)
+
+## Pro Tips
+- Store probe in pH 4.0 or 7.0 buffer (never dry!)
+- Rinse with DI water between measurements
+- Temperature affects readings (buffers rated at 25°C)
+- Replace probe annually for best accuracy

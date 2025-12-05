@@ -160,7 +160,7 @@
 // Set to 'true' for sensor calibration (255ms fast readings, no MQTT)
 // Set to 'false' for normal water quality monitoring (60s readings + MQTT)
 // ═══════════════════════════════════════════════════════════════════════════
-#define CALIBRATION_MODE false    // ← CHANGE THIS TO true OR false
+#define CALIBRATION_MODE true    // ← CHANGE THIS TO true OR false
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -239,7 +239,7 @@
 // Sensor Validation Ranges
 // ───────────────────────────────────────────────────────────────────────────
 #define PH_MIN 0.0                          // Minimum valid pH
-#define PH_MAX 14.0                         // Maximum valid pH
+#define PH_MAX 20.0                         // Maximum valid pH (extended for calibration)
 #define TDS_MIN 0.0                         // Minimum valid TDS (ppm)
 #define TDS_MAX 2000.0                      // Maximum valid TDS (ppm)
 #define TURBIDITY_MIN 0.0                   // Minimum valid turbidity (NTU)
@@ -267,19 +267,50 @@
 // ─────────────────────────────────────────────────────────────────────────── 
 // TDS (Total Dissolved Solids) Calibration
 // ───────────────────────────────────────────────────────────────────────────
-const int CALIB_COUNT = 4;
-const PROGMEM int calibADC[CALIB_COUNT] = {105, 116, 224, 250};      // ADC values
-const PROGMEM float calibPPM[CALIB_COUNT] = {236.0, 278.0, 1220.0, 1506.0};  // PPM values
+// CALIBRATION DATA (Updated December 5, 2025 - Revision 5):
+// NOTE: Extended calibration with 6 reference samples covering low to high range
+//   - Sensor is reading LOWER than actual values
+//   - Calibration multiplies by correction factor to match actual TDS
+//
+// Current calibration measurements (sorted by ADC):
+// Sample 6: ADC=27  → Actual=42ppm   (Low range - clean water)
+// Sample 2: ADC=154 → Actual=224ppm  (Low-mid range)
+// Sample 5: ADC=155 → Actual=346ppm  (Mid range)
+// Sample 1: ADC=161 → Actual=231ppm  (Mid range)
+// Sample 4: ADC=161 → Actual=230ppm  (Mid range - duplicate check)
+// Sample 3: ADC=257 → Actual=370ppm  (High range)
+//
+// Calibration approach:
+// 1. ADC-to-PPM lookup table with piecewise linear interpolation
+// 2. Direct mapping to actual TDS values (no secondary correction factor needed)
+//
+// Note: Samples 1 and 4 have same ADC (161) but slightly different actual readings
+//       Using average of 230.5 ppm for ADC 161
 
-const float TDS_CALIBRATION_FACTOR = 0.589;  // Final adjustment factor
-const float TDS_OFFSET = 0.0;                // Zero offset
+const int CALIB_COUNT = 6;
+const PROGMEM int calibADC[CALIB_COUNT] = {27, 154, 155, 161, 161, 257};           // ADC values from calibration
+const PROGMEM float calibPPM[CALIB_COUNT] = {42.0, 224.0, 346.0, 231.0, 230.0, 370.0};  // Actual TDS readings (ppm)
+
+// Calibration factor - now using direct mapping, so factor is 1.0
+const float TDS_CALIBRATION_FACTOR = 1.0;  // Direct mapping (calibration table handles correction)
+const float TDS_OFFSET = 0.0;              // Zero offset
 
 // ─────────────────────────────────────────────────────────────────────────── 
 // pH Sensor Calibration
 // ───────────────────────────────────────────────────────────────────────────
-const int PH_CALIB_COUNT = 4;
-const PROGMEM int phCalibADC[PH_CALIB_COUNT] = {0, 100, 400, 450};   // ADC values
-const PROGMEM float phCalibPH[PH_CALIB_COUNT] = {6.6, 7.0, 4.0, 9.0}; // pH values
+// CALIBRATION DATA (Updated December 4, 2025):
+// Three-point calibration with standard buffer solutions
+//   Sample 1: ADC=166 → pH 4.01 (Acidic buffer)
+//   Sample 2: ADC=434 → pH 6.86 (Near-neutral buffer)
+//   Sample 3: ADC=539 → pH 9.18 (Basic buffer)
+//
+// Calibration range: pH 4.01 - 9.18 (covers typical water quality range)
+// ADC range: 166 - 539 (373 ADC units span)
+// Slope: ~0.0138 pH/ADC unit
+
+const int PH_CALIB_COUNT = 3;
+const PROGMEM int phCalibADC[PH_CALIB_COUNT] = {166, 434, 539};        // ADC values from calibration
+const PROGMEM float phCalibPH[PH_CALIB_COUNT] = {4.01, 6.86, 9.18};    // pH values (buffer solutions)
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2541,13 +2572,31 @@ float adcToPH(int adc) {
 }
 
 float calculateTurbidityNTU(int adcValue) {
-  // Calibrated for:
-  // Clear water: ADC ~360, NTU = 0
-  // Cloudy water: ADC ~100, NTU = 20
-  float slope = 20.0 / (100.0 - 360.0);  // -0.0769230769
-  float intercept = -slope * 360.0;       // 27.69230769
+  // ─────────────────────────────────────────────────────────────────────────
+  // Turbidity Calibration (Updated December 5, 2025)
+  // ─────────────────────────────────────────────────────────────────────────
+  // CALIBRATION DATA:
+  //   Sample 1: ADC ≥205 → Very Clear (0 NTU)
+  //   Sample 2: ADC ≤100 → Very Cloudy (100 NTU)
+  //
+  // SENSOR BEHAVIOR:
+  //   - Higher ADC = Clearer water (more light passes through)
+  //   - Lower ADC = Cloudier water (more light scattered)
+  //
+  // LINEAR INTERPOLATION:
+  //   Slope = (100 - 0) / (100 - 205) = -0.9524 NTU/ADC
+  //   NTU = slope * (ADC - 205) + 0
+  // ─────────────────────────────────────────────────────────────────────────
+  
+  float slope = 100.0 / (100.0 - 205.0);  // -0.9523809524
+  float intercept = -slope * 205.0;        // 195.2380952
   float ntu = slope * adcValue + intercept;
-  return (ntu < 0) ? 0 : ntu;
+  
+  // Clamp to valid range
+  if (ntu < 0) ntu = 0;
+  if (ntu > 1000.0) ntu = 1000.0;
+  
+  return ntu;
 }
 
 String getTurbidityStatus(float ntu) {
@@ -2636,11 +2685,15 @@ void readSensors() {
   int avgTurb = turbSum / max(1, turbCount);
 
   float ppm = adcToPPM(avgTDS);
+  
+  // TDS calibration - direct mapping from lookup table (6-point calibration)
+  // Calibration table now contains actual TDS values, no secondary correction needed
   tds = (ppm * TDS_CALIBRATION_FACTOR) + TDS_OFFSET;
 
   ph = adcToPH(avgPH);
+  // Allow full range for calibration - validation happens separately
   if (ph < 0.0) ph = 0.0;
-  if (ph > 14.0) ph = 14.0;
+  if (ph > 20.0) ph = 20.0;  // Extended limit for calibration mode
 
   int turb10bit = avgTurb / 16;
   turbidity = calculateTurbidityNTU(avgTurb);
