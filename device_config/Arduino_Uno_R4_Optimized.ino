@@ -298,19 +298,22 @@ const float TDS_OFFSET = 0.0;              // Zero offset
 // ─────────────────────────────────────────────────────────────────────────── 
 // pH Sensor Calibration
 // ───────────────────────────────────────────────────────────────────────────
-// CALIBRATION DATA (Updated December 4, 2025):
-// Three-point calibration with standard buffer solutions
-//   Sample 1: ADC=166 → pH 4.01 (Acidic buffer)
-//   Sample 2: ADC=434 → pH 6.86 (Near-neutral buffer)
-//   Sample 3: ADC=539 → pH 9.18 (Basic buffer)
+// CALIBRATION DATA (Updated December 5, 2025):
+// Five-point calibration with standard buffers + drinkable water samples
+//   Sample 1: ADC=30  → pH 6.5  (Drinkable water - normal range)
+//   Sample 2: ADC=154 → pH 6.7  (Drinkable water - normal range)
+//   Sample 3: ADC=166 → pH 4.01 (Acidic buffer solution)
+//   Sample 4: ADC=434 → pH 6.86 (Near-neutral buffer solution)
+//   Sample 5: ADC=539 → pH 9.18 (Basic buffer solution)
 //
-// Calibration range: pH 4.01 - 9.18 (covers typical water quality range)
-// ADC range: 166 - 539 (373 ADC units span)
-// Slope: ~0.0138 pH/ADC unit
+// Calibration range: pH 4.01 - 9.18 (full range)
+// Drinkable water range: pH 6.5 - 7.0 (ADC 30-154) ✓
+// ADC range: 30 - 539 (509 ADC units span)
+// Enhanced accuracy in drinking water range (pH 6.5-7.0)
 
-const int PH_CALIB_COUNT = 3;
-const PROGMEM int phCalibADC[PH_CALIB_COUNT] = {166, 434, 539};        // ADC values from calibration
-const PROGMEM float phCalibPH[PH_CALIB_COUNT] = {4.01, 6.86, 9.18};    // pH values (buffer solutions)
+const int PH_CALIB_COUNT = 5;
+const PROGMEM int phCalibADC[PH_CALIB_COUNT] = {30, 154, 166, 434, 539};           // ADC values from calibration
+const PROGMEM float phCalibPH[PH_CALIB_COUNT] = {6.5, 6.7, 4.01, 6.86, 9.18};      // pH values (buffers + drinkable water)
 
 
 // ═══════════════════════════════════════════════════════════════════════════
