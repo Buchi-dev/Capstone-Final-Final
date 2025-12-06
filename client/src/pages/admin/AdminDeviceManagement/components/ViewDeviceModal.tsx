@@ -44,6 +44,7 @@ interface ViewDeviceModalProps {
   visible: boolean;
   device: DeviceWithReadings | null;
   onClose: () => void;
+  // onRefetch removed - WebSocket provides instant updates, no need to manually refetch
 }
 
 // ✅ UI Status color mapping (uses centralized deviceStatus.util uiStatus)
@@ -116,10 +117,14 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
             <span>
               {COMMAND_LABELS[command as keyof typeof COMMAND_LABELS]} queued successfully
               {isDeviceOffline && ' (device offline, will execute when online)'}
+              {command === 'send_now' && !isDeviceOffline && ' - Data will appear instantly via WebSocket'}
             </span>
           ),
           duration: 4,
         });
+
+        // ✅ NO REFETCH NEEDED - WebSocket pushes data instantly
+        // onRefetch callback removed since WebSocket eliminates race condition
 
         // Auto-clear command state after 5 seconds
         setTimeout(() => {

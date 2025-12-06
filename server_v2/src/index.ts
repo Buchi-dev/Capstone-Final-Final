@@ -5,8 +5,8 @@ import helmet from 'helmet';
 import { appConfig, dbConnection, initializeFirebase } from '@core/configs';
 import { errorHandler, requestLogger } from '@core/middlewares';
 import { NotFoundError } from '@utils/errors.util';
-import { mqttService, emailService, gridfsService, initializeLogger, logInfo, logError } from '@utils';
-import { startDeviceOfflineChecker, stopDeviceOfflineChecker, startReportCleanupJob, stopReportCleanupJob, startPermanentDeletionJob, stopPermanentDeletionJob, startBackupJobs, stopBackupJobs } from '@feature/jobs';
+import { mqttService, emailService, gridfsService, initializeLogger, logInfo, logError, websocketService } from '@utils';
+import { startPresenceChecker, startReportCleanupJob, stopReportCleanupJob, startPermanentDeletionJob, stopPermanentDeletionJob, startBackupJobs, stopBackupJobs } from '@feature/jobs';
 
 // Import entity routes
 import { authRoutes } from '@feature/auth';
@@ -96,13 +96,13 @@ const startServer = async (): Promise<void> => {
     await mqttService.connect();
 
     // Start background jobs
-    startDeviceOfflineChecker();
+    startPresenceChecker(); // Send "who_is_online" query every minute (ping-pong) - ONLY status detection method
     startReportCleanupJob();
     startPermanentDeletionJob();
     startBackupJobs(); // Start all backup jobs (daily, weekly, monthly)
 
     // Start listening
-    app.listen(appConfig.server.port, () => {
+    const server = app.listen(appConfig.server.port, () => {
       logInfo('='.repeat(50));
       logInfo(`🚀 Server is running on port ${appConfig.server.port}`);
       logInfo(`📊 Environment: ${appConfig.server.nodeEnv}`);
@@ -110,6 +110,10 @@ const startServer = async (): Promise<void> => {
       logInfo(`🌐 CORS Origin: ${appConfig.cors.origin}`);
       logInfo('='.repeat(50));
     });
+
+    // Initialize WebSocket server
+    websocketService.initialize(server);
+    logInfo('✅ WebSocket server initialized');
   } catch (error) {
     logError('❌ Failed to start server', error);
     process.exit(1);
@@ -121,12 +125,12 @@ process.on('SIGTERM', async () => {
   logInfo('⚠️  SIGTERM received, shutting down gracefully...');
   
   // Stop background jobs
-  stopDeviceOfflineChecker();
   stopReportCleanupJob();
   stopPermanentDeletionJob();
   stopBackupJobs();
   
   // Disconnect services
+  await websocketService.shutdown();
   await mqttService.disconnect();
   await emailService.close();
   await dbConnection.disconnect();
@@ -139,12 +143,12 @@ process.on('SIGINT', async () => {
   logInfo('⚠️  SIGINT received, shutting down gracefully...');
   
   // Stop background jobs
-  stopDeviceOfflineChecker();
   stopReportCleanupJob();
   stopPermanentDeletionJob();
   stopBackupJobs();
   
   // Disconnect services
+  await websocketService.shutdown();
   await mqttService.disconnect();
   await emailService.close();
   await dbConnection.disconnect();

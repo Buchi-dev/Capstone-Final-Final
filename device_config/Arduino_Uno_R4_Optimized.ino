@@ -160,7 +160,7 @@
 // Set to 'true' for sensor calibration (255ms fast readings, no MQTT)
 // Set to 'false' for normal water quality monitoring (60s readings + MQTT)
 // ═══════════════════════════════════════════════════════════════════════════
-#define CALIBRATION_MODE true    // ← CHANGE THIS TO true OR false
+#define CALIBRATION_MODE false    // ← CHANGE THIS TO true OR false
 
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1877,7 +1877,7 @@ void handleWiFiDisconnection() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ───────────────────────────────────────────────────────────────────────────
-// Connect to MQTT Broker (SSL/TLS with LWT - QoS 1)
+// Connect to MQTT Broker (SSL/TLS - Server Polling Only)
 // ───────────────────────────────────────────────────────────────────────────
 void connectMQTT() {
   // Skip MQTT in calibration mode (unless you want remote control)
@@ -1919,43 +1919,28 @@ void connectMQTT() {
   Serial.println(F("Establishing SSL handshake..."));
 
   // ═════════════════════════════════════════════════════════════════════════
-  // CRITICAL FIX #3: Configure Last Will Testament (LWT)
+  // STATUS DETECTION: Server Polling Only (No LWT)
   // ═════════════════════════════════════════════════════════════════════════
-  // Server will be notified immediately when device dies
-  char statusTopic[60];
-  snprintf(statusTopic, sizeof(statusTopic), "devices/%s/status", DEVICE_ID.c_str());
-  
-  char lwtPayload[60];
-  snprintf(lwtPayload, sizeof(lwtPayload), "{\"status\":\"offline\",\"deviceId\":\"%s\"}", DEVICE_ID.c_str());
-  
-  Serial.print(F("✓ LWT configured: "));
-  Serial.println(statusTopic);
+  // Device status is determined by responding to server's "who_is_online" queries
+  // No Last Will & Testament - simpler and more reliable
 
-  // Connect with credentials and LWT
+
+  // Connect with credentials only (no LWT)
   bool connected = mqttClient.connect(
     MQTT_CLIENT_ID.c_str(),
     MQTT_USERNAME,
-    MQTT_PASSWORD,
-    statusTopic,
-    0,  // willQoS
-    true,  // willRetain
-    lwtPayload
+    MQTT_PASSWORD
   );
 
 
   if (connected) {
-    Serial.println(F("✓ MQTT SSL Connected with LWT + QoS 1"));
+
     mqttConnected = true;
     consecutiveMqttFailures = 0;
     consecutiveAuthFailures = 0;  // Reset auth failure counter
 
-    // Publish online status immediately
-    char onlinePayload[80];
-    snprintf(onlinePayload, sizeof(onlinePayload), 
-             "{\"status\":\"online\",\"deviceId\":\"%s\",\"firmware\":\"%s\"}", 
-             DEVICE_ID.c_str(), FIRMWARE_VERSION);
-    mqttClient.publish(statusTopic, (uint8_t*)onlinePayload, strlen(onlinePayload), true);
-    Serial.println(F("✓ Published online status"));
+    Serial.println(F("✓ MQTT connected successfully"));
+    Serial.println(F("Status will be determined by server polling (who_is_online)"));
 
     // Subscribe to command topic with QoS 1
     if (mqttClient.subscribe(topicCommands, 1)) {
@@ -2229,6 +2214,15 @@ void publishSensorData() {
   char payload[160];
   size_t payloadSize = serializeJson(doc, payload, sizeof(payload));
 
+  // Check for buffer overflow
+  if (payloadSize >= sizeof(payload) - 1) {
+    Serial.println(F("✗ WARNING: Sensor payload truncated!"));
+    Serial.print(F("Payload size: "));
+    Serial.print(payloadSize);
+    Serial.print(F(" / Buffer size: "));
+    Serial.println(sizeof(payload));
+    return; // Don't send malformed JSON
+  }
 
   Serial.print(F("Publishing ("));
   Serial.print(payloadSize);
@@ -2443,7 +2437,8 @@ void publishPresenceOnline() {
   }
 
 
-  StaticJsonDocument<240> presenceDoc;
+  // Increased buffer size to prevent truncation
+  StaticJsonDocument<300> presenceDoc;
   presenceDoc["deviceId"] = DEVICE_ID;
   presenceDoc["deviceName"] = DEVICE_NAME;
   presenceDoc["status"] = "online";
@@ -2461,8 +2456,19 @@ void publishPresenceOnline() {
   }
 
 
-  char presencePayload[240];
-  serializeJson(presenceDoc, presencePayload, sizeof(presencePayload));
+  // Increased buffer size to prevent truncation (was 240, now 320)
+  char presencePayload[320];
+  size_t payloadSize = serializeJson(presenceDoc, presencePayload, sizeof(presencePayload));
+  
+  // Check for buffer overflow
+  if (payloadSize >= sizeof(presencePayload) - 1) {
+    Serial.println(F("✗ WARNING: Presence payload truncated!"));
+    Serial.print(F("Payload size: "));
+    Serial.print(payloadSize);
+    Serial.print(F(" / Buffer size: "));
+    Serial.println(sizeof(presencePayload));
+    return; // Don't send malformed JSON
+  }
 
 
   // Publish WITHOUT retained flag - server will poll to verify
@@ -2860,7 +2866,8 @@ void setup() {
   Serial.println(F("Firmware: v8.2.0 - Industrial Hardening"));
   Serial.print(F("Boot: "));
   Serial.println(bootTime);
-  Serial.println(F("MQTT: SSL/TLS (Port 8883) QoS 1 + LWT"));
+  Serial.println(F("MQTT: SSL/TLS (Port 8883) - Server Polling Only"));
+  Serial.println(F("Status: Detected by server's 'who_is_online' queries"));
   Serial.println(F("Restart: 12:00 AM Philippine Time (UTC+8)"));
   Serial.println(F("Data TX: Every 30 minutes (:00 and :30)"));
   Serial.println(F("Security: EEPROM checksum + sensor validation"));

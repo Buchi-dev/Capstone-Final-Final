@@ -189,25 +189,6 @@ export const updateNotificationPreferences = asyncHandler(
 );
 
 /**
- * Delete user
- * @route DELETE /api/v1/users/:id
- */
-export const deleteUser = asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { id } = req.params;
-
-  if (!id) {
-    throw new Error('User ID is required');
-  }
-
-  const deletedBy = new Types.ObjectId(req.user!.userId);
-  const deleterRole = req.user!.role;
-
-  await userService.deleteUser(id, deletedBy, deleterRole);
-
-  ResponseHandler.success(res, null, SUCCESS_MESSAGES.USER.DELETED);
-});
-
-/**
  * Get user statistics
  * @route GET /api/v1/users/statistics
  */

@@ -29,7 +29,6 @@ export const USER_ENDPOINTS = {
   UPDATE_STATUS: (userId: string) => `${API_VERSION}/users/${userId}/status`,
   UPDATE_PROFILE: (userId: string) => `${API_VERSION}/users/${userId}/profile`,
   COMPLETE_PROFILE: (userId: string) => `${API_VERSION}/users/${userId}/complete-profile`,
-  DELETE: (userId: string) => `${API_VERSION}/users/${userId}`,
   PREFERENCES: (userId: string) => `${API_VERSION}/users/${userId}/preferences`,
 } as const;
 

@@ -3,7 +3,7 @@
  * Exports all background jobs
  */
 
-export { startDeviceOfflineChecker, stopDeviceOfflineChecker } from './deviceOfflineChecker.job';
+export { startPresenceChecker, stopPresenceChecker } from './presenceChecker.job';
 export { startReportCleanupJob, stopReportCleanupJob } from './reportCleanup.job';
 export { 
   startPermanentDeletionJob, 

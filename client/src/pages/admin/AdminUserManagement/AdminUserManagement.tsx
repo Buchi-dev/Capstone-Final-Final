@@ -62,7 +62,6 @@ export const AdminUserManagement: React.FC = () => {
     updateUserRole,
     updateUserStatus,
     updateUserProfile,
-    deleteUser,
     isLoading: refreshing,
     error: writeError,
   } = useUserMutations();
@@ -166,22 +165,6 @@ export const AdminUserManagement: React.FC = () => {
       throw error; // Re-throw for drawer to handle
     }
   };
-
-  // Handle delete user
-  const handleDeleteUser = async (userId: string, userName: string) => {
-    try {
-      await deleteUser(userId);
-      message.success(`User "${userName}" deleted successfully`);
-      await refetch(); // Refetch to update the list
-    } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      message.error(errorMsg);
-      console.error('[AdminUserManagement] Delete user error:', errorMsg);
-      throw error; // Re-throw for drawer to handle
-    }
-  };
-
-  // Diagnostics removed - debug-only code
 
   // Handle refresh with loading state
   const handleRefresh = async () => {
@@ -330,6 +313,7 @@ export const AdminUserManagement: React.FC = () => {
         </Space>
 
         {/* User Actions Drawer */}
+        {/* User management drawer for viewing and editing user details */}
         <UserActionsDrawer
           open={drawerVisible}
           user={selectedUser}
@@ -338,7 +322,6 @@ export const AdminUserManagement: React.FC = () => {
           onSaveProfile={handleSaveUser}
           onQuickStatusChange={handleQuickStatusChange}
           onQuickRoleChange={handleQuickRoleChange}
-          onDelete={handleDeleteUser}
           loading={refreshing}
         />
       </Content>

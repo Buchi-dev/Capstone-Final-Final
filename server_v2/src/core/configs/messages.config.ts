@@ -100,7 +100,6 @@ export const ERROR_MESSAGES = {
     ALREADY_EXISTS: 'User already exists',
     INVALID_ROLE: 'Invalid user role',
     INVALID_STATUS: 'Invalid user status',
-    CANNOT_DELETE_SELF: 'Cannot delete your own account',
     CANNOT_CHANGE_OWN_ROLE: 'Cannot change your own role',
   },
 
@@ -211,7 +210,6 @@ export const SUCCESS_MESSAGES = {
   USER: {
     CREATED: 'User created successfully',
     UPDATED: 'User updated successfully',
-    DELETED: 'User deleted successfully',
     STATUS_UPDATED: 'User status updated successfully',
   },
 

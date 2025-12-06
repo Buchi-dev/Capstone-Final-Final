@@ -86,20 +86,25 @@ export const DeviceSchema = z.object({
  * Sensor Reading Schema
  * ✅ V2 Backend uses: pH (capital H), turbidity, tds
  * ✅ Uses SENSOR_THRESHOLDS from constants for validation
+ * ✅ Includes validity flags for sensor health monitoring
  */
 export const SensorReadingSchema = z.object({
   id: z.union([z.string(), z.any()]).optional(),
   _id: z.any().optional(),
   deviceId: z.string(),
-  pH: z.number()
-    .min(SENSOR_THRESHOLDS.pH.critical.min, `pH must be at least ${SENSOR_THRESHOLDS.pH.critical.min}`)
-    .max(SENSOR_THRESHOLDS.pH.critical.max, `pH must not exceed ${SENSOR_THRESHOLDS.pH.critical.max}`),
-  turbidity: z.number()
-    .min(0, 'Turbidity must be non-negative')
-    .max(SENSOR_THRESHOLDS.turbidity.critical * 2, `Turbidity reading exceeds maximum expected value`),
-  tds: z.number()
-    .min(0, 'TDS must be non-negative')
-    .max(SENSOR_THRESHOLDS.tds.critical * 2, `TDS reading exceeds maximum expected value`),
+  pH: z.number().nullable()
+    .refine((val) => val === null || (val >= SENSOR_THRESHOLDS.pH.critical.min && val <= SENSOR_THRESHOLDS.pH.critical.max), 
+      `pH must be between ${SENSOR_THRESHOLDS.pH.critical.min} and ${SENSOR_THRESHOLDS.pH.critical.max} or null`),
+  turbidity: z.number().nullable()
+    .refine((val) => val === null || (val >= 0 && val <= SENSOR_THRESHOLDS.turbidity.critical * 2), 
+      'Turbidity must be non-negative and within expected range or null'),
+  tds: z.number().nullable()
+    .refine((val) => val === null || (val >= 0 && val <= SENSOR_THRESHOLDS.tds.critical * 2), 
+      'TDS must be non-negative and within expected range or null'),
+  // Sensor validity flags (sent by Arduino)
+  pH_valid: z.boolean().optional().default(true),
+  tds_valid: z.boolean().optional().default(true),
+  turbidity_valid: z.boolean().optional().default(true),
   timestamp: z.union([z.date(), z.any()]),
   createdAt: z.union([z.date(), z.any()]).optional(),
   // Legacy fields for backwards compatibility

@@ -14,7 +14,6 @@ import {
   updateUserRole,
   getUserPreferences,
   updateNotificationPreferences,
-  deleteUser,
   getUserStatistics,
   getUsersByRole,
 } from './user.controller';
@@ -27,7 +26,6 @@ import {
   updateUserRoleSchema,
   updateNotificationPreferencesSchema,
   getUserByIdSchema,
-  deleteUserSchema,
 } from './user.schema';
 
 const router = Router();
@@ -147,12 +145,5 @@ router.get('/:id', requireAuth, requireStaff, validateRequest(getUserByIdSchema)
  * @access  Protected (Staff for own profile, Admin for all)
  */
 router.patch('/:id', requireAuth, requireStaff, validateRequest(updateUserSchema), updateUser);
-
-/**
- * @route   DELETE /api/v1/users/:id
- * @desc    Delete user
- * @access  Protected (Admin only)
- */
-router.delete('/:id', requireAuth, requireAdmin, validateRequest(deleteUserSchema), deleteUser);
 
 export default router;

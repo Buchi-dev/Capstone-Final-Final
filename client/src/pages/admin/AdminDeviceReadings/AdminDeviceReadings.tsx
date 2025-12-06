@@ -14,10 +14,11 @@ import {
   LineChartOutlined,
   InfoCircleOutlined,
   ReloadOutlined,
+  WifiOutlined,
 } from '@ant-design/icons';
 import { AdminLayout } from '../../../components/layouts';
 import { PageHeader } from '../../../components/PageHeader';
-import { useDevices, useAlerts } from '../../../hooks';
+import { useDevices, useAlerts, useRealtimeSensorData } from '../../../hooks';
 import { useDeviceSeverityCalculator } from './hooks/useDeviceSeverityCalculator';
 import { StatsOverview, DeviceTable, FilterControls } from './components';
 import { devicesService } from '../../../services/devices.Service';
@@ -26,9 +27,19 @@ const { Content } = Layout;
 const { Text } = Typography;
 
 export const AdminDeviceReadings = () => {
-  // ✅ GLOBAL HOOKS: Real-time data
-  const { devices: devicesData, isLoading: devicesLoading, error: devicesError, refetch: refetchDevices } = useDevices({ pollInterval: 10000 });
+  // ✅ DEVICE LIST: Fetch once on mount, no polling needed
+  const { devices: devicesData, isLoading: devicesLoading, error: devicesError } = useDevices({ 
+    pollInterval: 0, // ❌ NO POLLING - WebSocket provides real-time updates
+  });
+  
   const { alerts, isLoading: alertsLoading, error: alertsError, refetch: refetchAlerts } = useAlerts({ pollInterval: 5000 });
+  
+  // ✅ REAL-TIME SENSOR DATA: WebSocket connection for instant updates
+  const deviceIds = useMemo(() => devicesData.map(d => d.deviceId), [devicesData]);
+  const { sensorData, connectionState } = useRealtimeSensorData({
+    deviceIds,
+    autoConnect: true,
+  });
   
   // ✅ LOCAL UI HOOK: Severity calculation logic only
   const { enrichDeviceWithSeverity, sortBySeverity } = useDeviceSeverityCalculator();
@@ -43,11 +54,48 @@ export const AdminDeviceReadings = () => {
   const loading = devicesLoading || alertsLoading;
   const error = devicesError || alertsError;
 
+  // ✅ MERGE DEVICE DATA WITH REAL-TIME SENSOR DATA
+  const devicesWithLiveData = useMemo(() => {
+    const merged = devicesData.map(device => {
+      const wsData = sensorData.get(device.deviceId);
+      const result = {
+        ...device,
+        // Override latestReading with WebSocket data if available
+        latestReading: wsData || device.latestReading,
+      };
+      
+      // Debug logging
+      if (import.meta.env.DEV) {
+        console.log(`[AdminDeviceReadings] Device ${device.deviceId}:`, {
+          name: device.name,
+          status: device.status,
+          hasInitialReading: !!device.latestReading,
+          hasWebSocketReading: !!wsData,
+          finalReading: result.latestReading,
+          readingValues: result.latestReading ? {
+            pH: result.latestReading.pH,
+            tds: result.latestReading.tds,
+            turbidity: result.latestReading.turbidity,
+            timestamp: result.latestReading.timestamp,
+          } : 'NO DATA',
+        });
+      }
+      
+      return result;
+    });
+    
+    if (import.meta.env.DEV) {
+      console.log(`[AdminDeviceReadings] Total devices: ${merged.length}, With readings: ${merged.filter(d => d.latestReading).length}`);
+    }
+    
+    return merged;
+  }, [devicesData, sensorData]);
+
   // Enrich devices with severity information and sort by severity
   const enrichedDevices = useMemo(() => {
-    const enriched = devicesData.map((device) => enrichDeviceWithSeverity(device, alerts));
+    const enriched = devicesWithLiveData.map((device) => enrichDeviceWithSeverity(device, alerts));
     return sortBySeverity(enriched);
-  }, [devicesData, alerts, enrichDeviceWithSeverity, sortBySeverity]);
+  }, [devicesWithLiveData, alerts, enrichDeviceWithSeverity, sortBySeverity]);
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -75,12 +123,9 @@ export const AdminDeviceReadings = () => {
       );
       
       await Promise.all(promises);
-      message.success(`Send Now command sent to ${onlineDevices.length} online device(s)`);
+      message.success(`Send Now command sent to ${onlineDevices.length} online device(s) - Data will appear instantly via WebSocket`);
       
-      // Refresh data after a short delay to see updated readings
-      setTimeout(() => {
-        refetchDevices();
-      }, 2000);
+      // ✅ NO DELAY NEEDED - WebSocket pushes data instantly when device publishes
     } catch (error) {
       message.error(`Failed to send command: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -92,8 +137,8 @@ export const AdminDeviceReadings = () => {
     
     setIsRefreshing(true);
     try {
-      await Promise.all([refetchDevices(), refetchAlerts()]);
-      handleForceDeviceSendData();
+      await refetchAlerts(); // Only refresh alerts
+      handleForceDeviceSendData(); // Send command to devices
       setTimeout(() => setIsRefreshing(false), 500);
     } catch (error) {
       console.error('Refresh error:', error);
@@ -155,6 +200,38 @@ export const AdminDeviceReadings = () => {
         />
 
         <Space direction="vertical" size="large" style={{ width: '100%', marginTop: 24 }}>
+
+          {/* WebSocket Connection Status */}
+          {connectionState.isConnected ? (
+            <Alert
+              message="Real-Time Mode Active"
+              description="Connected via WebSocket - Sensor data updates instantly without polling"
+              type="success"
+              icon={<WifiOutlined />}
+              showIcon
+              closable
+            />
+          ) : (
+            <Alert
+              message="Connecting to Real-Time Server..."
+              description={connectionState.error || "Establishing WebSocket connection"}
+              type="warning"
+              icon={<WifiOutlined spin />}
+              showIcon
+            />
+          )}
+
+          {/* No Data Warning */}
+          {enrichedDevices.length > 0 && enrichedDevices.filter(d => !d.latestReading).length > 0 && (
+            <Alert
+              message="No Sensor Data Available"
+              description={`${enrichedDevices.filter(d => !d.latestReading).length} device(s) have no sensor readings yet. Data will appear automatically when devices publish their first readings.`}
+              type="warning"
+              icon={<InfoCircleOutlined />}
+              showIcon
+              closable
+            />
+          )}
 
           {/* Info Alert */}
           <Alert

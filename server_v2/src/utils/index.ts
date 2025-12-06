@@ -16,6 +16,7 @@ export {
   QueryResult 
 } from './queryBuilder.util';
 export { default as mqttService } from './mqtt.service';
+export { default as websocketService } from './websocket.service';
 export { default as emailService } from './email.service';
 export { default as pdfService } from './pdf.service';
 export { default as gridfsService } from './gridfs.service';

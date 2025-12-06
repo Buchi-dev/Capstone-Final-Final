@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { memo } from 'react';
 import type { DeviceWithReadings } from '../../../../schemas';
+import { SensorHealthIndicator } from '../../../../components';
 
 const { Text } = Typography;
 
@@ -139,27 +140,42 @@ export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
     {
       title: 'pH Level',
       key: 'ph',
-      width: 150,
+      width: 180,
       render: (device: DeviceWithReadings) => {
         // Handle both pH (capital H) and ph (lowercase) for backwards compatibility
         const phValue = device.latestReading?.pH ?? device.latestReading?.ph;
+        const phValid = device.latestReading?.pH_valid;
         
-        if (!device.latestReading || typeof phValue !== 'number') {
+        if (!device.latestReading) {
           return <Text type="secondary">-</Text>;
         }
 
-        const quality = getQualityStatus('ph', phValue);
+        const quality = getQualityStatus('ph', phValue ?? 0);
         return (
           <Space direction="vertical" size={2}>
             <Space align="center" size={8}>
               <ExperimentOutlined style={{ fontSize: '16px', color: '#1890ff' }} />
-              <Text strong style={{ fontSize: '16px' }}>{phValue.toFixed(2)}</Text>
+              <Text strong style={{ fontSize: '16px' }}>
+                {typeof phValue === 'number' ? phValue.toFixed(2) : '-'}
+              </Text>
             </Space>
             <Space align="center" size={4}>
-              {quality.icon}
-              <Tag color={quality.status} style={{ margin: 0 }}>
-                {quality.text}
-              </Tag>
+              {typeof phValue === 'number' && phValid !== false ? (
+                <>
+                  {quality.icon}
+                  <Tag color={quality.status} style={{ margin: 0 }}>
+                    {quality.text}
+                  </Tag>
+                </>
+              ) : (
+                <SensorHealthIndicator 
+                  sensor="pH" 
+                  value={phValue} 
+                  valid={phValid}
+                  mode="tag"
+                  size="small"
+                />
+              )}
             </Space>
           </Space>
         );
@@ -168,24 +184,41 @@ export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
     {
       title: 'TDS (ppm)',
       key: 'tds',
-      width: 150,
+      width: 180,
       render: (device: DeviceWithReadings) => {
-        if (!device.latestReading || typeof device.latestReading.tds !== 'number') {
+        const tdsValue = device.latestReading?.tds;
+        const tdsValid = device.latestReading?.tds_valid;
+
+        if (!device.latestReading) {
           return <Text type="secondary">-</Text>;
         }
 
-        const quality = getQualityStatus('tds', device.latestReading.tds);
+        const quality = getQualityStatus('tds', tdsValue ?? 0);
         return (
           <Space direction="vertical" size={2}>
             <Space align="center" size={8}>
               <DashboardOutlined style={{ fontSize: '16px', color: '#1890ff' }} />
-              <Text strong style={{ fontSize: '16px' }}>{device.latestReading.tds.toFixed(0)}</Text>
+              <Text strong style={{ fontSize: '16px' }}>
+                {typeof tdsValue === 'number' ? tdsValue.toFixed(0) : '-'}
+              </Text>
             </Space>
             <Space align="center" size={4}>
-              {quality.icon}
-              <Tag color={quality.status} style={{ margin: 0 }}>
-                {quality.text}
-              </Tag>
+              {typeof tdsValue === 'number' && tdsValid !== false ? (
+                <>
+                  {quality.icon}
+                  <Tag color={quality.status} style={{ margin: 0 }}>
+                    {quality.text}
+                  </Tag>
+                </>
+              ) : (
+                <SensorHealthIndicator 
+                  sensor="tds" 
+                  value={tdsValue} 
+                  valid={tdsValid}
+                  mode="tag"
+                  size="small"
+                />
+              )}
             </Space>
           </Space>
         );
@@ -194,24 +227,41 @@ export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
     {
       title: 'Turbidity (NTU)',
       key: 'turbidity',
-      width: 170,
+      width: 180,
       render: (device: DeviceWithReadings) => {
-        if (!device.latestReading || typeof device.latestReading.turbidity !== 'number') {
+        const turbidityValue = device.latestReading?.turbidity;
+        const turbidityValid = device.latestReading?.turbidity_valid;
+
+        if (!device.latestReading) {
           return <Text type="secondary">-</Text>;
         }
 
-        const quality = getQualityStatus('turbidity', device.latestReading.turbidity);
+        const quality = getQualityStatus('turbidity', turbidityValue ?? 0);
         return (
           <Space direction="vertical" size={2}>
             <Space align="center" size={8}>
               <EyeOutlined style={{ fontSize: '16px', color: '#1890ff' }} />
-              <Text strong style={{ fontSize: '16px' }}>{device.latestReading.turbidity.toFixed(2)}</Text>
+              <Text strong style={{ fontSize: '16px' }}>
+                {typeof turbidityValue === 'number' ? turbidityValue.toFixed(2) : '-'}
+              </Text>
             </Space>
             <Space align="center" size={4}>
-              {quality.icon}
-              <Tag color={quality.status} style={{ margin: 0 }}>
-                {quality.text}
-              </Tag>
+              {typeof turbidityValue === 'number' && turbidityValid !== false ? (
+                <>
+                  {quality.icon}
+                  <Tag color={quality.status} style={{ margin: 0 }}>
+                    {quality.text}
+                  </Tag>
+                </>
+              ) : (
+                <SensorHealthIndicator 
+                  sensor="turbidity" 
+                  value={turbidityValue} 
+                  valid={turbidityValid}
+                  mode="tag"
+                  size="small"
+                />
+              )}
             </Space>
           </Space>
         );

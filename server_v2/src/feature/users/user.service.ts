@@ -267,34 +267,6 @@ export class UserService {
   }
 
   /**
-   * Delete user
-   * Only admins can delete users
-   */
-  async deleteUser(id: string, deletedBy: Types.ObjectId, deleterRole: UserRole): Promise<void> {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestError(ERROR_MESSAGES.VALIDATION.INVALID_OBJECT_ID('User ID'));
-    }
-
-    // Only admins can delete users
-    if (deleterRole !== UserRole.ADMIN) {
-      throw new ForbiddenError(ERROR_MESSAGES.AUTH.INSUFFICIENT_PERMISSIONS);
-    }
-
-    // Check if user exists
-    const user = await this.crud.findById(id);
-    if (!user) {
-      throw new NotFoundError(ERROR_MESSAGES.USER.NOT_FOUND);
-    }
-
-    // Prevent user from deleting themselves
-    if (user._id.toString() === deletedBy.toString()) {
-      throw new ForbiddenError(ERROR_MESSAGES.USER.CANNOT_DELETE_SELF);
-    }
-
-    await this.crud.deleteById(id);
-  }
-
-  /**
    * Get users by role
    */
   async getUsersByRole(role: UserRole, page = 1, limit = 50) {

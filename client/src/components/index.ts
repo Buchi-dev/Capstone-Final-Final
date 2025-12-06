@@ -11,3 +11,4 @@ export { RealtimeAlertMonitor } from './RealtimeAlertMonitor';
 export { RootRedirect } from './RootRedirect';
 export { ThemeSwitcher } from './ThemeSwitcher';
 export { AuthErrorBoundary } from './AuthErrorBoundary';
+export { default as SensorHealthIndicator } from './SensorHealthIndicator';

@@ -36,7 +36,6 @@ export const PERMISSIONS = {
   USER_CREATE: 'user:create',
   USER_READ: 'user:read',
   USER_UPDATE: 'user:update',
-  USER_DELETE: 'user:delete',
   USER_MANAGE_ROLES: 'user:manage_roles',
   USER_MANAGE_STATUS: 'user:manage_status',
   
@@ -84,7 +83,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     PERMISSIONS.USER_CREATE,
     PERMISSIONS.USER_READ,
     PERMISSIONS.USER_UPDATE,
-    PERMISSIONS.USER_DELETE,
     PERMISSIONS.USER_MANAGE_ROLES,
     PERMISSIONS.USER_MANAGE_STATUS,
     PERMISSIONS.DEVICE_CREATE,

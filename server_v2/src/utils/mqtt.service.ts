@@ -16,6 +16,7 @@ import { DeviceStatus } from '@feature/devices/device.types';
 import { sensorReadingService } from '@feature/sensorReadings';
 import logger from '@utils/logger.util';
 import { alertService } from '@feature/alerts';
+import { websocketService } from '@utils/websocket.service';
 
 /**
  * MQTT Topics
@@ -98,6 +99,7 @@ class MQTTService {
 
   /**
    * Subscribe to all required topics
+   * STATUS DETECTION: Server Polling Only
    */
   private subscribeToTopics(): void {
     if (!this.client) return;
@@ -105,8 +107,8 @@ class MQTTService {
     const topics = [
       TOPICS.SENSOR_DATA,
       TOPICS.DEVICE_REGISTRATION,
-      TOPICS.DEVICE_PRESENCE,
-      TOPICS.DEVICE_STATUS, // LWT topic
+      TOPICS.DEVICE_PRESENCE, // For "who_is_online" responses only
+      // REMOVED: TOPICS.DEVICE_STATUS (No LWT - using server polling)
     ];
 
     topics.forEach((topic) => {
@@ -124,9 +126,14 @@ class MQTTService {
    * Handle incoming MQTT messages
    */
   private async handleMessage(topic: string, payload: Buffer): Promise<void> {
+    const deviceId = this.extractDeviceId(topic);
+    
     try {
-      const message = JSON.parse(payload.toString());
-      const deviceId = this.extractDeviceId(topic);
+      // Convert buffer to string first
+      const payloadString = payload.toString();
+      
+      // Try to parse JSON
+      const message = JSON.parse(payloadString);
 
       if (!deviceId) {
         logger.error('❌ MQTT: Invalid topic format', { topic });
@@ -140,11 +147,19 @@ class MQTTService {
         await this.handleDeviceRegistration(deviceId, message);
       } else if (topic.includes('/presence')) {
         await this.handleDevicePresence(deviceId, message);
-      } else if (topic.includes('/status')) {
-        await this.handleDeviceStatus(deviceId, message);
       }
+      // REMOVED: handleDeviceStatus - No LWT handling
     } catch (error: any) {
-      logger.error('❌ MQTT: Message handling error', { error: error.message, stack: error.stack });
+      // Log the malformed payload for debugging
+      const payloadPreview = payload.toString().substring(0, 500); // First 500 chars
+      logger.error('❌ MQTT: Message handling error', { 
+        error: error.message, 
+        topic,
+        deviceId,
+        payloadLength: payload.length,
+        payloadPreview,
+        stack: error.stack 
+      });
     }
   }
 
@@ -195,11 +210,13 @@ class MQTTService {
         logger.warn(`⚠️ MQTT: Device ${deviceId} reporting invalid sensors:`, { deviceId, invalidSensors });
       }
 
-      // Update device heartbeat
-      await deviceService.updateHeartbeat(deviceId);
+      // STATUS DETECTION: Do NOT update device status here
+      // Status is only updated by presence responses (ping-pong mechanism)
+      // Update lastSeen timestamp only (for UI display purposes)
+      await deviceService.updateLastSeenOnly(deviceId);
 
       // Store sensor reading with validity flags
-      await sensorReadingService.processSensorData(deviceId, {
+      const reading = await sensorReadingService.processSensorData(deviceId, {
         pH: data.pH_valid !== false ? data.pH : null, // Store null if sensor invalid
         turbidity: data.turbidity_valid !== false ? data.turbidity : null,
         tds: data.tds_valid !== false ? data.tds : null,
@@ -208,6 +225,10 @@ class MQTTService {
         turbidity_valid: data.turbidity_valid !== false,
         timestamp: data.timestamp ? new Date(data.timestamp * 1000) : new Date(),
       });
+
+      // ✅ BROADCAST TO WEBSOCKET CLIENTS IMMEDIATELY
+      // This eliminates the need for HTTP polling - data appears instantly
+      websocketService.broadcastSensorData(deviceId, reading);
 
       // Only check thresholds for valid sensors
       if (invalidSensors.length === 0) {
@@ -291,16 +312,20 @@ class MQTTService {
 
   /**
    * Handle device presence/heartbeat messages
+   * STATUS DETECTION: This is the ONLY place device status is set to ONLINE
+   * Responds to "who_is_online" queries - ping-pong mechanism
    * AUTO-REGISTRATION: If device is not found, auto-register it
    */
   private async handleDevicePresence(deviceId: string, data: any): Promise<void> {
     try {
+      // Update device status to ONLINE and lastSeen timestamp
+      await deviceService.updateDeviceStatus(deviceId, DeviceStatus.ONLINE);
       await deviceService.updateHeartbeat(deviceId);
-      logger.info(`💓 MQTT: Heartbeat from ${deviceId}`);
+      logger.info(`� MQTT: Device ${deviceId} is ONLINE (presence confirmed)`);
     } catch (error: any) {
       // Auto-register device if not found
       if (error.message === 'Device not found' || error.message?.includes('not found')) {
-        logger.warn(`⚠️ MQTT: Device ${deviceId} not registered, auto-registering from heartbeat...`);
+        logger.warn(`⚠️ MQTT: Device ${deviceId} not registered, auto-registering from presence...`);
         try {
           await deviceService.processDeviceRegistration({
             deviceId,
@@ -308,9 +333,10 @@ class MQTTService {
             type: data.type || 'Unknown',
             sensors: data.sensors || [],
           });
-          logger.info(`✅ MQTT: Auto-registered device ${deviceId} from heartbeat`);
+          logger.info(`✅ MQTT: Auto-registered device ${deviceId} from presence`);
           
-          // Retry heartbeat update after registration
+          // Retry presence update after registration
+          await deviceService.updateDeviceStatus(deviceId, DeviceStatus.ONLINE);
           await deviceService.updateHeartbeat(deviceId);
         } catch (regError: any) {
           logger.error(`❌ MQTT: Failed to auto-register device ${deviceId}`, { error: regError.message, stack: regError.stack });
@@ -322,64 +348,10 @@ class MQTTService {
   }
 
   /**
-   * Handle device status messages (LWT - Last Will Testament)
-   * BUG FIX #1: Critical fix for offline detection
-   * Devices send LWT to devices/{deviceId}/status when they disconnect unexpectedly
-   * AUTO-REGISTRATION: If device is not found, auto-register it
+   * REMOVED: handleDeviceStatus - No longer used
+   * Device status is ONLY updated via presence responses (ping-pong)
+   * LWT (Last Will & Testament) has been removed for simplicity
    */
-  private async handleDeviceStatus(deviceId: string, data: any): Promise<void> {
-    try {
-      if (data.status === 'offline') {
-        // Device went offline (power loss, network failure, crash)
-        await deviceService.updateDeviceStatus(deviceId, DeviceStatus.OFFLINE);
-        await deviceService.updateHeartbeat(deviceId);
-        logger.warn(`🔴 MQTT: Device ${deviceId} went OFFLINE (LWT triggered)`);
-      } else if (data.status === 'online') {
-        // Device came online
-        await deviceService.updateDeviceStatus(deviceId, DeviceStatus.ONLINE);
-        await deviceService.updateHeartbeat(deviceId);
-        logger.info(`🟢 MQTT: Device ${deviceId} came ONLINE`);
-      }
-    } catch (error: any) {
-      // Auto-register device if not found
-      if (error.message === 'Device not found') {
-        logger.warn(`⚠️ MQTT: Device ${deviceId} not registered, auto-registering with partial data...`);
-        logger.info(`📦 MQTT: Received data from ${deviceId}:`, data);
-        try {
-          // Extract device type from deviceId if possible (e.g., "arduino_r4_xxx")
-          let deviceType = data.type || 'Unknown';
-          if (!data.type && deviceId.includes('arduino_r4')) {
-            deviceType = 'Arduino UNO R4 WiFi';
-          } else if (!data.type && deviceId.includes('arduino')) {
-            deviceType = 'Arduino';
-          }
-
-          await deviceService.processDeviceRegistration({
-            deviceId,
-            name: data.name || `Auto-registered ${deviceId}`,
-            type: deviceType,
-            firmwareVersion: data.firmwareVersion || '',
-            macAddress: data.macAddress || '',
-            ipAddress: data.ipAddress || '',
-            sensors: data.sensors || [],
-            location: data.location || '',
-          });
-          logger.info(`✅ MQTT: Auto-registered device ${deviceId} (partial registration - please update device details)`);
-          
-          // Retry status update after registration
-          if (data.status === 'online') {
-            await deviceService.updateDeviceStatus(deviceId, DeviceStatus.ONLINE);
-          } else if (data.status === 'offline') {
-            await deviceService.updateDeviceStatus(deviceId, DeviceStatus.OFFLINE);
-          }
-        } catch (regError: any) {
-          logger.error(`❌ MQTT: Failed to auto-register device ${deviceId}`, { error: regError.message, stack: regError.stack });
-        }
-      } else {
-        logger.error(`❌ MQTT: Error processing device status from ${deviceId}`, { error: error.message, stack: error.stack, deviceId });
-      }
-    }
-  }
 
   /**
    * Publish command to device
@@ -402,6 +374,23 @@ class MQTTService {
           resolve();
         }
       });
+    });
+  }
+
+  /**
+   * Generic publish method
+   * Used by background jobs to publish to any topic
+   */
+  public publish(topic: string, payload: string): void {
+    if (!this.client || !this.isConnected) {
+      logger.error('MQTT: Cannot publish - client not connected');
+      return;
+    }
+
+    this.client.publish(topic, payload, { qos: 1 as 0 | 1 | 2 }, (error) => {
+      if (error) {
+        logger.error(`❌ MQTT: Failed to publish to ${topic}`, { error: error.message });
+      }
     });
   }
 

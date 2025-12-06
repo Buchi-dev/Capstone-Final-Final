@@ -117,15 +117,6 @@ export const getUserByIdSchema = z.object({
   }),
 });
 
-/**
- * Delete user schema
- */
-export const deleteUserSchema = z.object({
-  params: z.object({
-    id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid MongoDB ObjectId'),
-  }),
-});
-
 // Export inferred types for use in controllers
 export type UserFiltersInput = z.infer<typeof userFiltersSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
@@ -134,4 +125,3 @@ export type UpdateUserStatusInput = z.infer<typeof updateUserStatusSchema>;
 export type UpdateUserRoleInput = z.infer<typeof updateUserRoleSchema>;
 export type UpdateNotificationPreferencesInput = z.infer<typeof updateNotificationPreferencesSchema>;
 export type GetUserByIdInput = z.infer<typeof getUserByIdSchema>;
-export type DeleteUserInput = z.infer<typeof deleteUserSchema>;

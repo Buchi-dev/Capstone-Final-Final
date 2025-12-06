@@ -36,7 +36,6 @@ export const REPORT_SUCCESS = {
 export const USER_SUCCESS = {
   CREATED: 'User created successfully',
   UPDATED: 'User updated successfully',
-  DELETED: 'User deleted successfully',
   FETCHED: 'Users retrieved successfully',
   PROFILE_UPDATED: 'Profile updated successfully',
   ROLE_UPDATED: 'User role updated successfully',

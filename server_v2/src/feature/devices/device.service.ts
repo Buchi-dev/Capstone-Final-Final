@@ -268,7 +268,8 @@ export class DeviceService {
 
   /**
    * Update device heartbeat
-   * Called when device sends data or presence message
+   * Called when device responds to presence query (ping-pong)
+   * This is the ONLY method that updates both lastSeen AND status
    */
   async updateHeartbeat(deviceId: string): Promise<void> {
     await Device.findOneAndUpdate(
@@ -277,6 +278,22 @@ export class DeviceService {
         $set: {
           lastSeen: new Date(),
           status: DeviceStatus.ONLINE,
+        },
+      }
+    );
+  }
+
+  /**
+   * Update last seen timestamp only
+   * Called when device sends sensor data (does NOT change status)
+   * Status changes ONLY happen via presence query/response (ping-pong)
+   */
+  async updateLastSeenOnly(deviceId: string): Promise<void> {
+    await Device.findOneAndUpdate(
+      { deviceId },
+      {
+        $set: {
+          lastSeen: new Date(),
         },
       }
     );

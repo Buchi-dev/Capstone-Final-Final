@@ -63,6 +63,11 @@ export {
   type UseDeviceMutationsReturn,
 } from './useDevices';
 
+export {
+  useRealtimeSensorData,
+  useDeviceSensorData,
+} from './useRealtimeSensorData';
+
 // ============================================================================
 // ANALYTICS HOOKS
 // ============================================================================
