@@ -49,8 +49,9 @@ export interface IBackup {
   status: BackupStatus;
   size: number;
   metadata: IBackupMetadata;
-  googleDriveFileId?: string;
+  gridFsFileId?: string;
   createdAt: Date;
+  expiresAt?: Date;
   error?: string;
 }
 
@@ -74,15 +75,4 @@ export interface IBackupFilters {
   status?: BackupStatus;
   startDate?: Date;
   endDate?: Date;
-}
-
-/**
- * Google Drive upload result
- */
-export interface IGoogleDriveUploadResult {
-  fileId: string;
-  name: string;
-  size: number;
-  webViewLink?: string;
-  verified: boolean;
 }

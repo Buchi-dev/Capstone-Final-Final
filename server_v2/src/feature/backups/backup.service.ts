@@ -1,26 +1,29 @@
 /**
  * Backup Service
  * 
- * Handles automated backups with Google Drive integration:
+ * Handles automated backups with MongoDB GridFS storage:
  * - MongoDB collection exports
  * - Compression and encryption
- * - Google Drive uploads with retry logic
+ * - GridFS storage for backup files
  * - Backup retention policies
  * - Backup verification
  * 
  * @module feature/backups/backup.service
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
 import * as crypto from 'crypto';
 import * as zlib from 'zlib';
 import { promisify } from 'util';
+import { Types } from 'mongoose';
+import { GridFSBucket } from 'mongodb';
+import { Readable } from 'stream';
 
+import Backup from './backup.model';
 import Device from '@feature/devices/device.model';
 import Alert from '@feature/alerts/alert.model';
 import SensorReading from '@feature/sensorReadings/sensorReading.model';
 import logger from '@utils/logger.util';
+import { dbConnection } from '@core/configs';
 import { appConfig } from '@core/configs';
 
 import {
@@ -29,138 +32,39 @@ import {
   BackupType,
   BackupStatus,
   IBackup,
-  IGoogleDriveUploadResult,
 } from './backup.types';
-
-const writeFile = promisify(fs.writeFile);
-const readFile = promisify(fs.readFile);
-const mkdir = promisify(fs.mkdir);
-const unlink = promisify(fs.unlink);
-const access = promisify(fs.access);
 
 /**
  * Backup Service Class
  */
 export class BackupService {
-  private drive: any;
-  private backupDir: string;
   private encryptionKey: string;
-  private initializationPromise: Promise<void>;
+  private bucket: GridFSBucket | null = null;
 
   constructor() {
-    this.backupDir = path.join(process.cwd(), 'backups');
     this.encryptionKey = process.env.BACKUP_ENCRYPTION_KEY || this.generateEncryptionKey();
-    
-    // Initialize Google Drive API asynchronously
-    this.initializationPromise = this.initializeGoogleDrive();
+    this.initializeGridFS();
   }
 
   /**
-   * Wait for Google Drive initialization to complete
+   * Initialize GridFS bucket for backups
    */
-  private async waitForInitialization(): Promise<void> {
-    await this.initializationPromise;
-  }
-
-  /**
-   * Initialize Google Drive API client
-   */
-  private async initializeGoogleDrive(): Promise<void> {
+  private initializeGridFS(): void {
     try {
-      // Dynamic import to avoid compile-time dependency
-      const { google } = await import('googleapis');
-      
-      // Try to load credentials from file path first, then from JSON string
-      let credentials;
-      
-      if (process.env.FIREBASE_SERVICE_ACCOUNT_PATH) {
-        // Use file path (can reuse Firebase service account)
-        const credentialsPath = path.resolve(
-          process.cwd(), 
-          process.env.FIREBASE_SERVICE_ACCOUNT_PATH || ''
-        );
-        
-        try {
-          credentials = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
-          logger.info(`Loaded Google Drive credentials from: ${credentialsPath}`);
-        } catch (error) {
-          logger.warn(`Failed to read credentials file: ${credentialsPath}`);
-        }
-      } else if (process.env.GOOGLE_DRIVE_CREDENTIALS) {
-        // Use JSON string from environment variable
-        credentials = JSON.parse(process.env.GOOGLE_DRIVE_CREDENTIALS);
+      const connection = dbConnection.getConnection();
+      const db = connection.db;
+
+      if (!db) {
+        throw new Error('Database connection is null');
       }
 
-      if (!credentials) {
-        logger.warn('Google Drive credentials not found. Backups will be stored locally only.');
-        return;
-      }
-
-      const auth = new google.auth.GoogleAuth({
-        credentials,
-        scopes: ['https://www.googleapis.com/auth/drive.file'],
+      this.bucket = new GridFSBucket(db, {
+        bucketName: 'backups',
       });
 
-      this.drive = google.drive({ version: 'v3', auth });
-      logger.info('✅ Google Drive API initialized with service account');
-
-      // Create backup folder structure on initialization
-      await this.createBackupFolderStructure();
+      logger.info('✅ Backup GridFS: Initialized successfully');
     } catch (error) {
-      logger.error('Failed to initialize Google Drive API', error);
-    }
-  }
-
-  /**
-   * Create the PureTrack_Backups folder structure in Google Drive
-   * Creates: PureTrack_Backups/Daily, Weekly, Monthly, Manual
-   */
-  private async createBackupFolderStructure(): Promise<void> {
-    if (!this.drive) return;
-
-    try {
-      logger.info('Creating backup folder structure in Google Drive...');
-
-      // Create or get root folder
-      let rootFolderId = await this.findFolder('PureTrack_Backups');
-      const wasJustCreated = !rootFolderId;
-      
-      if (!rootFolderId) {
-        rootFolderId = await this.createFolder('PureTrack_Backups');
-        logger.info('✅ Created root folder: PureTrack_Backups');
-      } else {
-        logger.info('📁 Root folder already exists: PureTrack_Backups');
-      }
-
-      // Share the folder with owner if email is provided and folder was just created
-      if (wasJustCreated && rootFolderId) {
-        const ownerEmail = process.env.GOOGLE_DRIVE_OWNER_EMAIL;
-        if (ownerEmail) {
-          await this.shareFolderWithUser(rootFolderId, ownerEmail, 'writer');
-          logger.info(`✅ Shared PureTrack_Backups folder with: ${ownerEmail}`);
-        } else {
-          logger.warn('⚠️  GOOGLE_DRIVE_OWNER_EMAIL not set - backup folder not shared');
-          logger.warn('📌 Set GOOGLE_DRIVE_OWNER_EMAIL in .env to access backups in your Google Drive');
-        }
-      }
-
-      // Create subfolders for each backup type
-      const subfolders = ['Daily', 'Weekly', 'Monthly', 'Manual'];
-      
-      for (const folderName of subfolders) {
-        let subfolderId = await this.findFolder(folderName, rootFolderId);
-        if (!subfolderId) {
-          subfolderId = await this.createFolder(folderName, rootFolderId);
-          logger.info(`✅ Created subfolder: ${folderName}`);
-        } else {
-          logger.info(`📁 Subfolder already exists: ${folderName}`);
-        }
-      }
-
-      logger.info('✅ Backup folder structure verified in Google Drive');
-    } catch (error) {
-      logger.error('Failed to create backup folder structure', error);
-      logger.warn('Backups will still work - folders will be created on first backup');
+      logger.error('❌ Backup GridFS: Initialization failed:', error);
     }
   }
 
@@ -169,167 +73,8 @@ export class BackupService {
    */
   private generateEncryptionKey(): string {
     const key = crypto.randomBytes(32).toString('hex');
-    logger.warn('Generated temporary encryption key. Set BACKUP_ENCRYPTION_KEY in environment for production.');
+    logger.warn('⚠️  Generated temporary encryption key. Set BACKUP_ENCRYPTION_KEY in environment for production.');
     return key;
-  }
-
-  /**
-   * Ensure backup directory exists
-   */
-  private async ensureBackupDirectory(): Promise<void> {
-    try {
-      await access(this.backupDir);
-    } catch {
-      await mkdir(this.backupDir, { recursive: true });
-      logger.info(`Created backup directory: ${this.backupDir}`);
-    }
-  }
-
-  /**
-   * Get or create Google Drive folder structure
-   */
-  private async getOrCreateGoogleDriveFolder(type: BackupType): Promise<string | null> {
-    if (!this.drive) return null;
-
-    try {
-      const folderName = 'PureTrack_Backups';
-      const subFolderMap = {
-        [BackupType.DAILY]: 'Daily',
-        [BackupType.WEEKLY]: 'Weekly',
-        [BackupType.MONTHLY]: 'Monthly',
-        [BackupType.MANUAL]: 'Manual',
-      };
-
-      // Get or create root folder
-      let rootFolderId = await this.findFolder(folderName);
-      if (!rootFolderId) {
-        rootFolderId = await this.createFolder(folderName);
-      }
-
-      // Get or create subfolder
-      const subFolderName = subFolderMap[type];
-      let subFolderId = await this.findFolder(subFolderName, rootFolderId);
-      if (!subFolderId) {
-        subFolderId = await this.createFolder(subFolderName, rootFolderId);
-      }
-
-      return subFolderId;
-    } catch (error) {
-      logger.error('Failed to get/create Google Drive folder', error);
-      return null;
-    }
-  }
-
-  /**
-   * Find folder in Google Drive
-   */
-  private async findFolder(name: string, parentId?: string): Promise<string | null> {
-    try {
-      const query = parentId
-        ? `name='${name}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
-        : `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-
-      const response = await this.drive.files.list({
-        q: query,
-        fields: 'files(id, name)',
-        spaces: 'drive',
-      });
-
-      return response.data.files?.[0]?.id || null;
-    } catch (error) {
-      logger.error(`Failed to find folder: ${name}`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Create folder in Google Drive
-   */
-  private async createFolder(name: string, parentId?: string): Promise<string> {
-    const fileMetadata: any = {
-      name,
-      mimeType: 'application/vnd.google-apps.folder',
-    };
-
-    if (parentId) {
-      fileMetadata.parents = [parentId];
-    }
-
-    const response = await this.drive.files.create({
-      requestBody: fileMetadata,
-      fields: 'id',
-    });
-
-    logger.info(`Created Google Drive folder: ${name}`);
-    return response.data.id;
-  }
-
-  /**
-   * Share a Google Drive folder with a user
-   */
-  private async shareFolderWithUser(
-    folderId: string,
-    emailAddress: string,
-    role: 'reader' | 'writer' | 'owner' = 'writer'
-  ): Promise<void> {
-    try {
-      await this.drive.permissions.create({
-        fileId: folderId,
-        requestBody: {
-          type: 'user',
-          role: role,
-          emailAddress: emailAddress,
-        },
-        sendNotificationEmail: true,
-        emailMessage: 'You now have access to PureTrack water quality system backups.',
-      });
-      
-      logger.info(`Shared folder ${folderId} with ${emailAddress} as ${role}`);
-    } catch (error) {
-      logger.error(`Failed to share folder with ${emailAddress}`, error);
-      throw error;
-    }
-  }
-
-  /**
-   * Manually share existing backup folder with an email address
-   * Use this if folder was already created before setting GOOGLE_DRIVE_OWNER_EMAIL
-   */
-  async shareBackupFolder(emailAddress: string): Promise<{ success: boolean; message: string }> {
-    try {
-      await this.waitForInitialization();
-
-      if (!this.drive) {
-        return {
-          success: false,
-          message: 'Google Drive not initialized',
-        };
-      }
-
-      // Find root folder
-      const rootFolderId = await this.findFolder('PureTrack_Backups');
-      
-      if (!rootFolderId) {
-        return {
-          success: false,
-          message: 'PureTrack_Backups folder not found in Google Drive',
-        };
-      }
-
-      // Share folder
-      await this.shareFolderWithUser(rootFolderId, emailAddress, 'writer');
-
-      return {
-        success: true,
-        message: `Successfully shared PureTrack_Backups folder with ${emailAddress}`,
-      };
-    } catch (error) {
-      logger.error('Failed to share backup folder', error);
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'Failed to share folder',
-      };
-    }
   }
 
   /**
@@ -449,107 +194,95 @@ export class BackupService {
   }
 
   /**
-   * Upload backup to Google Drive with retry logic
+   * Upload backup to MongoDB GridFS
    */
-  private async uploadToGoogleDrive(
-    filePath: string,
+  private async uploadToGridFS(
+    buffer: Buffer,
     filename: string,
-    type: BackupType,
-    retries = 3
-  ): Promise<IGoogleDriveUploadResult | null> {
-    if (!this.drive) {
-      logger.warn('Google Drive not initialized. Skipping upload.');
-      return null;
+    metadata: IBackupMetadata,
+    type: BackupType
+  ): Promise<Types.ObjectId> {
+    if (!this.bucket) {
+      throw new Error('GridFS bucket not initialized');
     }
 
-    const folderId = await this.getOrCreateGoogleDriveFolder(type);
+    return new Promise((resolve, reject) => {
+      const uploadStream = this.bucket!.openUploadStream(filename, {
+        metadata: {
+          contentType: 'application/gzip',
+          backupType: type,
+          collections: metadata.collections,
+          version: metadata.version,
+          environment: metadata.environment,
+          uploadedAt: new Date(),
+        },
+      });
 
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        logger.info(`Uploading to Google Drive (attempt ${attempt}/${retries})...`);
+      const readableStream = Readable.from(buffer);
 
-        const fileMetadata: any = {
-          name: filename,
-        };
+      uploadStream.on('finish', () => {
+        logger.info(
+          `✅ Backup uploaded to GridFS: ${filename} (${uploadStream.id}) - ${(buffer.length / 1024 / 1024).toFixed(2)} MB`
+        );
+        resolve(uploadStream.id as Types.ObjectId);
+      });
 
-        if (folderId) {
-          fileMetadata.parents = [folderId];
-        }
+      uploadStream.on('error', (error: Error) => {
+        logger.error(`❌ Backup upload to GridFS failed:`, error);
+        reject(error);
+      });
 
-        const media = {
-          mimeType: 'application/gzip',
-          body: fs.createReadStream(filePath),
-        };
-
-        const response = await this.drive.files.create({
-          requestBody: fileMetadata,
-          media,
-          fields: 'id, name, size, webViewLink',
-        });
-
-        // Verify upload
-        const verified = await this.verifyUpload(response.data.id, filePath);
-
-        logger.info(`✅ Backup uploaded to Google Drive: ${response.data.id}`);
-
-        return {
-          fileId: response.data.id,
-          name: response.data.name,
-          size: parseInt(response.data.size || '0'),
-          webViewLink: response.data.webViewLink,
-          verified,
-        };
-      } catch (error) {
-        logger.error(`Upload attempt ${attempt} failed`, error);
-
-        if (attempt < retries) {
-          const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
-          await new Promise((resolve) => setTimeout(resolve, delay));
-        } else {
-          logger.error('All upload attempts failed');
-          return null;
-        }
-      }
-    }
-
-    return null;
+      readableStream.pipe(uploadStream);
+    });
   }
 
   /**
-   * Verify uploaded file integrity
+   * Download from GridFS as buffer
    */
-  private async verifyUpload(fileId: string, localFilePath: string): Promise<boolean> {
-    try {
-      const response = await this.drive.files.get(
-        { fileId, alt: 'media' },
-        { responseType: 'stream' }
-      );
+  private async downloadFromGridFS(fileId: Types.ObjectId | string): Promise<Buffer> {
+    if (!this.bucket) {
+      throw new Error('GridFS bucket not initialized');
+    }
 
-      const localSize = fs.statSync(localFilePath).size;
-      let downloadedSize = 0;
+    const objectId = typeof fileId === 'string' ? new Types.ObjectId(fileId) : fileId;
 
-      return new Promise((resolve) => {
-        response.data
-          .on('data', (chunk: Buffer) => {
-            downloadedSize += chunk.length;
-          })
-          .on('end', () => {
-            const verified = downloadedSize === localSize;
-            if (verified) {
-              logger.info('✅ Upload verified successfully');
-            } else {
-              logger.warn(`Upload verification failed. Local: ${localSize}, Remote: ${downloadedSize}`);
-            }
-            resolve(verified);
-          })
-          .on('error', () => {
-            logger.error('Upload verification failed');
-            resolve(false);
-          });
+    return new Promise((resolve, reject) => {
+      const downloadStream = this.bucket!.openDownloadStream(objectId);
+      const chunks: Buffer[] = [];
+
+      downloadStream.on('data', (chunk: Buffer) => {
+        chunks.push(chunk);
       });
+
+      downloadStream.on('end', () => {
+        const buffer = Buffer.concat(chunks);
+        logger.info(`✅ Downloaded backup from GridFS - ${(buffer.length / 1024 / 1024).toFixed(2)} MB`);
+        resolve(buffer);
+      });
+
+      downloadStream.on('error', (error: Error) => {
+        logger.error(`❌ Backup download from GridFS failed:`, error);
+        reject(error);
+      });
+    });
+  }
+
+  /**
+   * Delete file from GridFS
+   */
+  private async deleteFromGridFS(fileId: Types.ObjectId | string): Promise<void> {
+    if (!this.bucket) {
+      throw new Error('GridFS bucket not initialized');
+    }
+
+    const objectId = typeof fileId === 'string' ? new Types.ObjectId(fileId) : fileId;
+
+    try {
+      await this.bucket.delete(objectId);
+      logger.info(`✅ Deleted backup from GridFS: ${objectId}`);
     } catch (error) {
-      logger.error('Failed to verify upload', error);
-      return false;
+      logger.error(`❌ Failed to delete backup from GridFS:`, error);
+      throw error;
     }
   }
 
@@ -560,15 +293,30 @@ export class BackupService {
     const startTime = Date.now();
     const timestamp = new Date();
     const filename = `backup_${timestamp.toISOString().replace(/[:.]/g, '-')}_${type}.gz`;
-    const filePath = path.join(this.backupDir, filename);
+
+    // Create backup record in MongoDB with IN_PROGRESS status
+    let backupRecord = await Backup.create({
+      filename,
+      type,
+      status: BackupStatus.IN_PROGRESS,
+      size: 0,
+      metadata: {
+        timestamp,
+        version: appConfig.server.apiVersion,
+        environment: appConfig.server.nodeEnv,
+        collections: {
+          devices: 0,
+          users: 0,
+          sensorReadings: 0,
+          alerts: 0,
+        },
+        size: 0,
+        encrypted: true,
+      },
+    });
 
     try {
       logger.info(`Starting ${type} backup...`);
-
-      // Ensure Google Drive is initialized before proceeding
-      await this.waitForInitialization();
-
-      await this.ensureBackupDirectory();
 
       // Export collections
       const backupData = await this.exportCollections();
@@ -579,51 +327,41 @@ export class BackupService {
       // Update metadata with size
       backupData.metadata.size = encryptedData.length;
 
-      // Write to file
-      await writeFile(filePath, encryptedData);
+      // Upload to GridFS
+      const gridFsFileId = await this.uploadToGridFS(encryptedData, filename, backupData.metadata, type);
 
-      logger.info(`Backup file created: ${filename}`);
-
-      // Upload to Google Drive
-      const uploadResult = await this.uploadToGoogleDrive(filePath, filename, type);
-
-      // Create backup record
-      const backup: IBackup = {
-        id: crypto.randomBytes(16).toString('hex'),
-        filename,
-        type,
-        status: BackupStatus.COMPLETED,
-        size: encryptedData.length,
-        metadata: backupData.metadata,
-        googleDriveFileId: uploadResult?.fileId,
-        createdAt: timestamp,
-      };
+      // Update backup record with completed status
+      backupRecord.status = BackupStatus.COMPLETED;
+      backupRecord.size = encryptedData.length;
+      backupRecord.metadata = backupData.metadata;
+      backupRecord.gridFsFileId = gridFsFileId as any;
+      await backupRecord.save();
 
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
       logger.info(`✅ Backup completed in ${duration}s`, {
         filename,
-        size: `${(backup.size / 1024 / 1024).toFixed(2)} MB`,
-        googleDriveFileId: backup.googleDriveFileId,
+        size: `${(encryptedData.length / 1024 / 1024).toFixed(2)} MB`,
+        gridFsFileId: gridFsFileId.toString(),
       });
 
-      // Clean up local file if uploaded successfully
-      if (uploadResult && process.env.KEEP_LOCAL_BACKUPS !== 'true') {
-        try {
-          await unlink(filePath);
-          logger.info('Local backup file removed after successful upload');
-        } catch (error) {
-          logger.warn('Failed to remove local backup file', error);
-        }
-      }
-
-      return backup;
+      return {
+        id: backupRecord._id.toString(),
+        filename: backupRecord.filename,
+        type: backupRecord.type,
+        status: backupRecord.status,
+        size: backupRecord.size,
+        metadata: backupRecord.metadata,
+        gridFsFileId: gridFsFileId.toString(),
+        createdAt: backupRecord.createdAt,
+        expiresAt: backupRecord.expiresAt,
+      };
     } catch (error) {
       logger.error('Backup failed', error);
 
-      // Clean up failed backup file
-      try {
-        await unlink(filePath);
-      } catch {}
+      // Update backup record with failed status
+      backupRecord.status = BackupStatus.FAILED;
+      backupRecord.error = error instanceof Error ? error.message : 'Unknown error';
+      await backupRecord.save();
 
       throw error;
     }
@@ -632,34 +370,28 @@ export class BackupService {
   /**
    * Restore from backup
    */
-  async restoreFromBackup(fileId: string): Promise<void> {
-    logger.info(`Restoring from backup: ${fileId}`);
+  async restoreFromBackup(backupId: string): Promise<void> {
+    logger.info(`Restoring from backup: ${backupId}`);
 
     try {
-      // Download from Google Drive if fileId is a Google Drive ID
-      let encryptedData: Buffer;
-
-      if (this.drive && fileId.length > 20) {
-        // Likely a Google Drive file ID
-        const response = await this.drive.files.get(
-          { fileId, alt: 'media' },
-          { responseType: 'stream' }
-        );
-
-        const chunks: Buffer[] = [];
-        await new Promise((resolve, reject) => {
-          response.data
-            .on('data', (chunk: Buffer) => chunks.push(chunk))
-            .on('end', () => resolve(undefined))
-            .on('error', reject);
-        });
-
-        encryptedData = Buffer.concat(chunks);
-      } else {
-        // Local file
-        const filePath = path.join(this.backupDir, fileId);
-        encryptedData = await readFile(filePath);
+      // Find backup record
+      const backupRecord = await Backup.findById(backupId);
+      
+      if (!backupRecord) {
+        throw new Error('Backup not found');
       }
+
+      if (backupRecord.status !== BackupStatus.COMPLETED) {
+        throw new Error('Cannot restore from incomplete backup');
+      }
+
+      if (!backupRecord.gridFsFileId) {
+        throw new Error('Backup file not found in GridFS');
+      }
+
+      // Download from GridFS
+      logger.info('Downloading backup from GridFS...');
+      const encryptedData = await this.downloadFromGridFS(backupRecord.gridFsFileId);
 
       // Decrypt and decompress
       const backupData = await this.decryptAndDecompress(encryptedData);
@@ -667,19 +399,23 @@ export class BackupService {
       logger.info('Restoring collections...', backupData.metadata.collections);
 
       // WARNING: This will replace all data!
-      // In production, you might want to add more safety checks
-
       // Restore devices
       await Device.deleteMany({});
-      await Device.insertMany(backupData.devices);
+      if (backupData.devices.length > 0) {
+        await Device.insertMany(backupData.devices);
+      }
 
       // Restore alerts
       await Alert.deleteMany({});
-      await Alert.insertMany(backupData.alerts);
+      if (backupData.alerts.length > 0) {
+        await Alert.insertMany(backupData.alerts);
+      }
 
       // Restore sensor readings
       await SensorReading.deleteMany({});
-      await SensorReading.insertMany(backupData.sensorReadings);
+      if (backupData.sensorReadings.length > 0) {
+        await SensorReading.insertMany(backupData.sensorReadings);
+      }
 
       logger.info('✅ Backup restored successfully');
     } catch (error) {
@@ -689,38 +425,67 @@ export class BackupService {
   }
 
   /**
+   * Delete backup
+   */
+  async deleteBackup(backupId: string): Promise<void> {
+    logger.info(`Deleting backup: ${backupId}`);
+
+    try {
+      // Find backup record
+      const backupRecord = await Backup.findById(backupId);
+      
+      if (!backupRecord) {
+        throw new Error('Backup not found');
+      }
+
+      // Delete from GridFS if exists
+      if (backupRecord.gridFsFileId) {
+        try {
+          await this.deleteFromGridFS(backupRecord.gridFsFileId);
+        } catch (error) {
+          logger.warn('Failed to delete backup file from GridFS', error);
+          // Continue with record deletion even if GridFS deletion fails
+        }
+      }
+
+      // Delete backup record
+      await Backup.findByIdAndDelete(backupId);
+      
+      logger.info('✅ Backup deleted successfully');
+    } catch (error) {
+      logger.error('Failed to delete backup', error);
+      throw error;
+    }
+  }
+
+  /**
    * Delete old backups based on retention policy
    */
   async cleanupOldBackups(): Promise<void> {
-    // Ensure Google Drive is initialized
-    await this.waitForInitialization();
-
-    if (!this.drive) return;
-
     logger.info('Cleaning up old backups...');
 
     try {
-      const now = new Date();
-      const retentionDays = {
-        [BackupType.DAILY]: 7,
-        [BackupType.WEEKLY]: 28,
-        [BackupType.MONTHLY]: 365,
-      };
+      // Find expired backups
+      const expiredBackups = await Backup.find({
+        expiresAt: { $lt: new Date() },
+      });
 
-      for (const [type, days] of Object.entries(retentionDays)) {
-        const folderId = await this.getOrCreateGoogleDriveFolder(type as BackupType);
-        if (!folderId) continue;
+      logger.info(`Found ${expiredBackups.length} expired backups`);
 
-        const cutoffDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+      for (const backup of expiredBackups) {
+        try {
+          // Delete from GridFS
+          if (backup.gridFsFileId) {
+            await this.deleteFromGridFS(backup.gridFsFileId);
+          }
 
-        const response = await this.drive.files.list({
-          q: `'${folderId}' in parents and trashed=false and createdTime < '${cutoffDate.toISOString()}'`,
-          fields: 'files(id, name, createdTime)',
-        });
-
-        for (const file of response.data.files || []) {
-          await this.drive.files.delete({ fileId: file.id });
-          logger.info(`Deleted old backup: ${file.name}`);
+          // Delete backup record
+          await Backup.findByIdAndDelete(backup._id);
+          
+          logger.info(`Deleted expired backup: ${backup.filename}`);
+        } catch (error) {
+          logger.error(`Failed to delete expired backup: ${backup.filename}`, error);
+          // Continue with other deletions
         }
       }
 
@@ -733,51 +498,134 @@ export class BackupService {
   /**
    * List available backups
    */
-  async listBackups(): Promise<IBackup[]> {
-    const backups: IBackup[] = [];
-
-    // Ensure Google Drive is initialized
-    await this.waitForInitialization();
-
-    if (!this.drive) {
-      logger.warn('Google Drive not initialized. Cannot list backups.');
-      return backups;
-    }
-
+  async listBackups(filters?: {
+    type?: BackupType;
+    status?: BackupStatus;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<IBackup[]> {
     try {
-      const rootFolderId = await this.findFolder('PureTrack_Backups');
-      if (!rootFolderId) return backups;
+      const query: any = {};
 
-      const response = await this.drive.files.list({
-        q: `'${rootFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-        fields: 'files(id, name)',
-      });
+      if (filters?.type) {
+        query.type = filters.type;
+      }
 
-      for (const folder of response.data.files || []) {
-        const filesResponse = await this.drive.files.list({
-          q: `'${folder.id}' in parents and trashed=false`,
-          fields: 'files(id, name, size, createdTime)',
-          orderBy: 'createdTime desc',
-        });
+      if (filters?.status) {
+        query.status = filters.status;
+      }
 
-        for (const file of filesResponse.data.files || []) {
-          backups.push({
-            id: file.id,
-            filename: file.name,
-            type: folder.name.toLowerCase() as BackupType,
-            status: BackupStatus.COMPLETED,
-            size: parseInt(file.size || '0'),
-            metadata: {} as any,
-            googleDriveFileId: file.id,
-            createdAt: new Date(file.createdTime),
-          });
+      if (filters?.startDate || filters?.endDate) {
+        query.createdAt = {};
+        if (filters.startDate) {
+          query.createdAt.$gte = filters.startDate;
+        }
+        if (filters.endDate) {
+          query.createdAt.$lte = filters.endDate;
         }
       }
 
-      return backups;
+      const backups = await Backup.find(query)
+        .sort({ createdAt: -1 })
+        .lean();
+
+      return backups.map((backup) => ({
+        id: backup._id.toString(),
+        filename: backup.filename,
+        type: backup.type,
+        status: backup.status,
+        size: backup.size,
+        metadata: backup.metadata,
+        gridFsFileId: backup.gridFsFileId?.toString(),
+        createdAt: backup.createdAt,
+        expiresAt: backup.expiresAt,
+        error: backup.error,
+      }));
     } catch (error) {
       logger.error('Failed to list backups', error);
-      return backups;
+      return [];
+    }
+  }
+
+  /**
+   * Get backup by ID
+   */
+  async getBackupById(backupId: string): Promise<IBackup | null> {
+    try {
+      const backup = await Backup.findById(backupId).lean();
+
+      if (!backup) {
+        return null;
+      }
+
+      return {
+        id: backup._id.toString(),
+        filename: backup.filename,
+        type: backup.type,
+        status: backup.status,
+        size: backup.size,
+        metadata: backup.metadata,
+        gridFsFileId: backup.gridFsFileId?.toString(),
+        createdAt: backup.createdAt,
+        expiresAt: backup.expiresAt,
+        error: backup.error,
+      };
+    } catch (error) {
+      logger.error('Failed to get backup by ID', error);
+      return null;
+    }
+  }
+
+  /**
+   * Download backup file
+   * Returns the encrypted, compressed backup file buffer
+   */
+  async downloadBackup(backupId: string): Promise<{ buffer: Buffer; filename: string }> {
+    logger.info(`Downloading backup: ${backupId}`);
+
+    try {
+      // Find backup record
+      const backupRecord = await Backup.findById(backupId);
+      
+      if (!backupRecord) {
+        throw new Error('Backup not found');
+      }
+
+      if (!backupRecord.gridFsFileId) {
+        throw new Error('Backup file not found in GridFS');
+      }
+
+      // Download from GridFS
+      const fileBuffer = await this.downloadFromGridFS(backupRecord.gridFsFileId);
+
+      logger.info(`✅ Downloaded backup: ${backupRecord.filename}`);
+
+      return {
+        buffer: fileBuffer,
+        filename: backupRecord.filename,
+      };
+    } catch (error) {
+      logger.error('Failed to download backup', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get backup statistics
+   */
+  async getStatistics(): Promise<any> {
+    try {
+      const stats = await (Backup as any).getStatistics();
+      return stats[0];
+    } catch (error) {
+      logger.error('Failed to get backup statistics', error);
+      return {
+        total: [{ count: 0 }],
+        byType: [],
+        byStatus: [],
+        totalSize: [{ size: 0 }],
+        recent: [],
+      };
     }
   }
 }

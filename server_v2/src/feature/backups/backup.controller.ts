@@ -40,6 +40,47 @@ export const listBackups = asyncHandler(async (_req: Request, res: Response) => 
 });
 
 /**
+ * Get backup by ID
+ * @route GET /api/v1/backups/:backupId
+ */
+export const getBackup = asyncHandler(async (req: Request, res: Response) => {
+  const { backupId } = req.params;
+
+  if (!backupId) {
+    throw new Error('Backup ID is required');
+  }
+
+  const backup = await backupService.getBackupById(backupId);
+
+  if (!backup) {
+    throw new Error('Backup not found');
+  }
+
+  ResponseHandler.success(res, backup, 'Backup retrieved successfully');
+});
+
+/**
+ * Download backup file
+ * @route GET /api/v1/backups/:backupId/download
+ */
+export const downloadBackup = asyncHandler(async (req: Request, res: Response) => {
+  const { backupId } = req.params;
+
+  if (!backupId) {
+    throw new Error('Backup ID is required');
+  }
+
+  const { buffer, filename } = await backupService.downloadBackup(backupId);
+
+  // Set headers for file download
+  res.setHeader('Content-Type', 'application/gzip');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Length', buffer.length);
+
+  res.send(buffer);
+});
+
+/**
  * Restore from backup
  * @route POST /api/v1/backups/:backupId/restore
  */
@@ -67,19 +108,18 @@ export const deleteBackup = asyncHandler(async (req: Request, res: Response) => 
     throw new Error('Backup ID is required');
   }
 
-  // Delete from Google Drive
-  // Note: This requires implementing delete method in backup service
-  // For now, just return success
+  await backupService.deleteBackup(backupId);
   
   ResponseHandler.success(res, null, 'Backup deleted successfully');
 });
 
 /**
- * Get backup status
+ * Get backup status and statistics
  * @route GET /api/v1/backups/status
  */
 export const getBackupStatus = asyncHandler(async (_req: Request, res: Response) => {
   const backups = await backupService.listBackups();
+  const stats = await backupService.getStatistics();
   
   const lastBackup = backups.length > 0 ? backups[0] : null;
   const nextScheduled = {
@@ -93,31 +133,6 @@ export const getBackupStatus = asyncHandler(async (_req: Request, res: Response)
     nextScheduled,
     totalBackups: backups.length,
     status: lastBackup ? 'OK' : 'No backups found',
+    statistics: stats,
   }, 'Backup status retrieved successfully');
-});
-
-/**
- * Share Google Drive backup folder with user
- * @route POST /api/v1/backups/share-folder
- */
-export const shareBackupFolder = asyncHandler(async (req: Request, res: Response) => {
-  const { email } = req.body;
-
-  if (!email) {
-    throw new Error('Email address is required');
-  }
-
-  // Validate email format
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
-    throw new Error('Invalid email address format');
-  }
-
-  const result = await backupService.shareBackupFolder(email);
-
-  if (result.success) {
-    ResponseHandler.success(res, result, result.message);
-  } else {
-    throw new Error(result.message);
-  }
 });
