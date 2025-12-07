@@ -1,4 +1,4 @@
-import { Space, Alert, Tabs, Layout, Row, Col } from 'antd';
+import { Space, Alert, Tabs, Layout } from 'antd';
 import { 
   DashboardOutlined, 
   ReloadOutlined,
@@ -10,7 +10,7 @@ import {
   useHealth,
   useDevices, 
   useAlerts,
-  useResponsiveGutter
+  useResponsive
 } from '../../../hooks';
 import { useDashboardStats } from './hooks';
 import {
@@ -36,7 +36,7 @@ const { Content } = Layout;
 export const AdminDashboard = memo(() => {
   const [activeTab, setActiveTab] = useState('overview');
   const [refreshing, setRefreshing] = useState(false);
-  const gutter = useResponsiveGutter();
+  const { isMobile } = useResponsive();
   
   // ✅ GLOBAL HOOKS - Real-time data from service layer
   const {
@@ -115,24 +115,21 @@ export const AdminDashboard = memo(() => {
           )}
 
           {/* PRIORITY 1: Overall System Health + Recent Alerts (TOP ROW) */}
-          <Row gutter={gutter}>
-            <Col xs={24} lg={16}>
-              <OverallHealthCard
-                deviceStats={deviceStats}
-                alertStats={alertStats}
-                alerts={alerts}
-                systemHealth={systemHealth}
-                loading={isLoading}
-              />
-            </Col>
-            <Col xs={24} lg={8}>
-              <RecentAlertsList
-                alerts={alerts}
-                loading={alertsLoading}
-                maxItems={10}
-              />
-            </Col>
-          </Row>
+          <Space direction="vertical" size={isMobile ? 'small' : 'middle'} style={{ width: '100%' }}>
+            <OverallHealthCard
+              deviceStats={deviceStats}
+              alertStats={alertStats}
+              alerts={alerts}
+              systemHealth={systemHealth}
+              loading={isLoading}
+            />
+            
+            <RecentAlertsList
+              alerts={alerts}
+              loading={alertsLoading}
+              maxItems={isMobile ? 5 : 10}
+            />
+          </Space>
 
           {/* PRIORITY 2: Quick Stats - Devices & Alerts */}
           <QuickStatsCard
@@ -152,18 +149,18 @@ export const AdminDashboard = memo(() => {
 
   return (
     <AdminLayout>
-      <Content style={{ padding: '24px' }}>
+      <Content style={{ padding: isMobile ? '12px' : '24px' }}>
         <PageHeader
           title="Dashboard"
           icon={<DashboardOutlined />}
-          description="Monitor system health, device status, and water quality metrics in real-time"
+          description={isMobile ? "" : "Monitor system health, device status, and water quality metrics in real-time"}
           breadcrumbItems={[
             { title: 'Dashboard', icon: <DashboardOutlined /> }
           ]}
           actions={[
             {
               key: 'refresh',
-              label: 'Refresh',
+              label: isMobile ? "" : 'Refresh',
               icon: <ReloadOutlined spin={refreshing} />,
               onClick: handleRefreshAll,
               disabled: refreshing,
@@ -177,8 +174,8 @@ export const AdminDashboard = memo(() => {
           activeKey={activeTab}
           onChange={setActiveTab}
           items={tabItems}
-          size="large"
-          style={{ marginTop: 24 }}
+          size={isMobile ? 'small' : 'large'}
+          style={{ marginTop: isMobile ? 12 : 24 }}
         />
       </Content>
     </AdminLayout>

@@ -23,7 +23,7 @@ import { calculateDeviceStatus } from '../../../utils/waterQualityUtils';
 import { ALERT_STATUS } from '../../../constants';
 import {
   DashboardHeader,
-  DeviceStatsCards,
+  CompactDeviceStats,
   DeviceStatusTable,
   RecentAlertsTable,
   QuickActionsSidebar,
@@ -224,8 +224,8 @@ export const StaffDashboard = () => {
             refreshing={refreshing}
           />
 
-          {/* Device Statistics Cards */}
-          <DeviceStatsCards stats={deviceStats} />
+          {/* Device Statistics Cards - Compact for Mobile */}
+          <CompactDeviceStats stats={deviceStats} />
 
           {/* Warning Alert for High Severity Issues */}
           {deviceStats.warnings > 0 && (

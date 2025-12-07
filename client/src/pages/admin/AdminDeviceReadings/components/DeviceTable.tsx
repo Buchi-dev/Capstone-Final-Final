@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons';
 import { memo } from 'react';
 import type { DeviceWithReadings } from '../../../../schemas';
-import { useTableScroll } from '../../../../hooks';
+import { useTableScroll, useResponsive } from '../../../../hooks';
 import { SensorHealthIndicator } from '../../../../components';
 
 const { Text } = Typography;
@@ -89,6 +89,117 @@ const getQualityStatus = (
 };
 
 export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
+  const { isMobile } = useResponsive();
+
+  // Mobile-optimized columns (Device, Status, Sensors)
+  const mobileColumns = [
+    {
+      title: 'Device',
+      key: 'device',
+      ellipsis: false,
+      render: (device: DeviceWithReadings) => (
+        <Space direction="vertical" size={2} style={{ width: '100%' }}>
+          <Text strong style={{ fontSize: '13px', display: 'block', lineHeight: 1.3 }}>
+            {device.name}
+          </Text>
+          <Text type="secondary" style={{ fontSize: '11px', display: 'block' }}>
+            {device.deviceId}
+          </Text>
+          {device.metadata?.location && (
+            <Text type="secondary" style={{ fontSize: '11px' }}>
+              <EnvironmentOutlined style={{ marginRight: 2 }} />
+              {device.metadata.location.building}
+            </Text>
+          )}
+        </Space>
+      ),
+    },
+    {
+      title: 'Status',
+      key: 'status',
+      width: 70,
+      align: 'center' as const,
+      render: (device: DeviceWithReadings) => {
+        const { severityLevel, status } = device;
+
+        if (status === 'offline' || !device.latestReading) {
+          return (
+            <Tooltip title="Offline">
+              <CloseCircleOutlined style={{ fontSize: '24px', color: '#d9d9d9' }} />
+            </Tooltip>
+          );
+        }
+
+        switch (severityLevel) {
+          case 'critical':
+            return (
+              <Tooltip title="Critical">
+                <CloseCircleOutlined style={{ fontSize: '24px', color: '#ff4d4f' }} />
+              </Tooltip>
+            );
+          case 'warning':
+            return (
+              <Tooltip title="Warning">
+                <WarningOutlined style={{ fontSize: '24px', color: '#faad14' }} />
+              </Tooltip>
+            );
+          case 'normal':
+            return (
+              <Tooltip title="Normal">
+                <CheckCircleOutlined style={{ fontSize: '24px', color: '#52c41a' }} />
+              </Tooltip>
+            );
+          default:
+            return (
+              <Tooltip title="Unknown">
+                <CloseCircleOutlined style={{ fontSize: '24px', color: '#d9d9d9' }} />
+              </Tooltip>
+            );
+        }
+      },
+    },
+    {
+      title: 'Sensors',
+      key: 'sensors',
+      render: (device: DeviceWithReadings) => {
+        if (!device.latestReading) {
+          return <Text type="secondary" style={{ fontSize: '11px' }}>No data</Text>;
+        }
+
+        const phValue = device.latestReading?.pH ?? device.latestReading?.ph;
+        const tdsValue = device.latestReading?.tds;
+        const turbidityValue = device.latestReading?.turbidity;
+
+        const phQuality = getQualityStatus('ph', phValue ?? 0);
+        const tdsQuality = getQualityStatus('tds', tdsValue ?? 0);
+        const turbidityQuality = getQualityStatus('turbidity', turbidityValue ?? 0);
+
+        return (
+          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {phQuality.icon}
+              <Text style={{ fontSize: '11px' }}>
+                pH: <strong>{typeof phValue === 'number' ? phValue.toFixed(2) : '-'}</strong>
+              </Text>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {tdsQuality.icon}
+              <Text style={{ fontSize: '11px' }}>
+                TDS: <strong>{typeof tdsValue === 'number' ? tdsValue.toFixed(0) : '-'}</strong>
+              </Text>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              {turbidityQuality.icon}
+              <Text style={{ fontSize: '11px' }}>
+                NTU: <strong>{typeof turbidityValue === 'number' ? turbidityValue.toFixed(2) : '-'}</strong>
+              </Text>
+            </div>
+          </Space>
+        );
+      },
+    },
+  ];
+
   const columns = [
     {
       title: 'Device',
@@ -328,18 +439,21 @@ export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
 
   return (
     <Table
-      columns={columns}
+      columns={isMobile ? mobileColumns : columns}
       dataSource={devices}
       rowKey="deviceId"
       pagination={{
-        pageSize: 20,
-        showSizeChanger: true,
-        showQuickJumper: true,
-        showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} devices`,
+        pageSize: isMobile ? 5 : 20,
+        showSizeChanger: !isMobile,
+        showQuickJumper: !isMobile,
+        showTotal: (total, range) => isMobile 
+          ? `${total} devices` 
+          : `${range[0]}-${range[1]} of ${total} devices`,
+        size: isMobile ? 'small' : 'default',
       }}
-      scroll={tableScroll}
-      size="middle"
-      bordered
+      scroll={isMobile ? undefined : tableScroll}
+      size={isMobile ? 'small' : 'middle'}
+      bordered={!isMobile}
     />
   );
 });

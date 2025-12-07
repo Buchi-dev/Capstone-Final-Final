@@ -30,12 +30,16 @@ import {
   ExclamationCircleOutlined,
   FilterOutlined,
   EyeOutlined,
+  AlertOutlined,
+  WarningOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { ALERT_STATUS } from '../../../constants';
 import { useThemeToken } from '../../../theme';
-import { useAlerts, useAlertMutations, useTableScroll, useResponsiveGutter } from '../../../hooks';
-import { PageHeader, StatsCard } from '../../../components/staff';
+import { useAlerts, useAlertMutations, useTableScroll, useResponsive } from '../../../hooks';
+import { PageHeader } from '../../../components/staff';
+import CompactAlertStats from './components/CompactAlertStats';
 import { getSeverityColor } from '../../../schemas';
 import type { WaterQualityAlert } from '../../../schemas';
 import type { ColumnsType } from 'antd/es/table';
@@ -48,8 +52,8 @@ const { TextArea } = Input;
  */
 export const StaffAlerts = () => {
   const token = useThemeToken();
+  const { isMobile } = useResponsive();
   const tableScroll = useTableScroll({ offsetHeight: 450 });
-  const gutter = useResponsiveGutter();
   
   // State for filters and modals
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -269,6 +273,91 @@ export const StaffAlerts = () => {
   };
 
   // Table columns definition
+  const mobileColumns: ColumnsType<WaterQualityAlert> = useMemo(() => [
+    {
+      title: 'Alert',
+      key: 'alert',
+      ellipsis: false,
+      render: (_, record) => {
+        const statusConfig = getStatusConfig(record.status);
+        
+        return (
+          <Space direction="vertical" size={2} style={{ width: '100%' }}>
+            <Space size={4} wrap>
+              <Text strong style={{ fontSize: '12px', wordBreak: 'break-word' }}>
+                {record.deviceName || record.deviceId}
+              </Text>
+              <Tag 
+                icon={statusConfig.icon} 
+                color={statusConfig.color}
+                style={{ fontSize: '9px', margin: 0 }}
+              >
+                {record.status}
+              </Tag>
+            </Space>
+            <Space size={4} wrap>
+              <Tag color="blue" style={{ fontSize: '10px', margin: 0 }}>
+                {record.parameter.toUpperCase()}
+              </Tag>
+              <Text strong style={{ fontSize: '11px', color: getSeverityColor(record.severity) }}>
+                {(record.currentValue ?? record.value) !== undefined 
+                  ? (record.currentValue ?? record.value).toFixed(2) 
+                  : 'N/A'}
+              </Text>
+            </Space>
+            {(record.deviceBuilding || record.deviceFloor) && (
+              <Text type="secondary" style={{ fontSize: '10px' }}>
+                📍 {[record.deviceBuilding, record.deviceFloor].filter(Boolean).join(', ')}
+              </Text>
+            )}
+            <Text type="secondary" style={{ fontSize: '10px' }}>
+              {getTimeSince(record.createdAt)}
+            </Text>
+          </Space>
+        );
+      },
+    },
+    {
+      title: 'Severity',
+      key: 'severity',
+      width: 50,
+      align: 'center' as const,
+      render: (_, record) => {
+        const severityConfig = {
+          Critical: { color: token.colorError, icon: <AlertOutlined /> },
+          Warning: { color: token.colorWarning, icon: <WarningOutlined /> },
+          Advisory: { color: token.colorInfo, icon: <InfoCircleOutlined /> },
+        };
+        const config = severityConfig[record.severity as keyof typeof severityConfig];
+        
+        return (
+          <div style={{ fontSize: '24px', color: config.color }}>
+            {config.icon}
+          </div>
+        );
+      },
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 90,
+      align: 'center' as const,
+      render: (_, record) => (
+        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <Button
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => handleViewDetails(record)}
+            block
+            style={{ height: '32px' }}
+          >
+            View
+          </Button>
+        </Space>
+      ),
+    },
+  ], [token, isMobile]);
+
   const columns: ColumnsType<WaterQualityAlert> = [
     {
       title: 'Status',
@@ -434,72 +523,7 @@ export const StaffAlerts = () => {
         />
 
         {/* Statistics Cards */}
-        <Row gutter={gutter}>
-          <Col xs={24} sm={12} md={8} lg={6}>
-            <StatsCard
-              title="Total Alerts"
-              value={filteredStats.total}
-              icon={<BellOutlined />}
-              color={token.colorInfo}
-              description="All alerts in system"
-            />
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={6}>
-            <StatsCard
-              title="Active Alerts"
-              value={filteredStats.active}
-              icon={<ExclamationCircleOutlined />}
-              color={token.colorError}
-              description="Require attention"
-            />
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={6}>
-            <StatsCard
-              title="Acknowledged"
-              value={filteredStats.acknowledged}
-              icon={<CheckCircleOutlined />}
-              color={token.colorWarning}
-              description="Being investigated"
-            />
-          </Col>
-          <Col xs={24} sm={12} md={8} lg={6}>
-            <StatsCard
-              title="Resolved"
-              value={filteredStats.resolved}
-              icon={<CloseCircleOutlined />}
-              color={token.colorSuccess}
-              description="Successfully resolved"
-            />
-          </Col>
-        </Row>
-
-        {/* Severity Breakdown */}
-        <Row gutter={gutter}>
-          <Col xs={24} sm={8}>
-            <StatsCard
-              title="Critical"
-              value={filteredStats.critical}
-              color="#cf1322"
-              size="small"
-            />
-          </Col>
-          <Col xs={24} sm={8}>
-            <StatsCard
-              title="Warning"
-              value={filteredStats.warning}
-              color="#d46b08"
-              size="small"
-            />
-          </Col>
-          <Col xs={24} sm={8}>
-            <StatsCard
-              title="Advisory"
-              value={filteredStats.advisory}
-              color="#096dd9"
-              size="small"
-            />
-          </Col>
-        </Row>
+        <CompactAlertStats stats={filteredStats} />
 
         {/* Filters */}
         <Card>
@@ -581,12 +605,17 @@ export const StaffAlerts = () => {
           }
         >
           <Table
-            columns={columns}
+            columns={isMobile ? mobileColumns : columns}
             dataSource={filteredAlerts}
             rowKey="alertId"
             loading={isLoading}
-            scroll={tableScroll}
-            pagination={{
+            scroll={isMobile ? undefined : tableScroll}
+            size={isMobile ? 'small' : 'middle'}
+            bordered={!isMobile}
+            pagination={isMobile ? {
+              pageSize: 5,
+              simple: true,
+            } : {
               pageSize: 10,
               showSizeChanger: true,
               showTotal: (total) => `Total ${total} alerts`,

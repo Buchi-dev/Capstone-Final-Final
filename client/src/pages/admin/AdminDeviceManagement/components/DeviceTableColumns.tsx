@@ -15,6 +15,7 @@ import {
 import type { DeviceWithReadings, DeviceStatus, DeviceUIStatus } from '../../../../schemas';
 import { isDeviceRegistered } from '../../../../schemas';
 import type { ReactNode } from 'react';
+import { useResponsive } from '../../../../hooks';
 
 const { Text } = Typography;
 
@@ -48,6 +49,138 @@ export const useDeviceColumns = ({
   onRegister,
   onRecover,
 }: UseDeviceColumnsProps) => {
+  const { isMobile } = useResponsive();
+
+  // Mobile-optimized columns (3 columns: Device ID, Status, Actions)
+  const mobileColumns: ColumnsType<DeviceWithReadings> = [
+    {
+      title: 'Device ID',
+      dataIndex: 'deviceId',
+      key: 'deviceId',
+      ellipsis: false,
+      render: (text, record) => (
+        <Space direction="vertical" size={2} style={{ width: '100%' }}>
+          <Text 
+            strong 
+            code 
+            style={{ 
+              fontSize: '13px', 
+              display: 'block',
+              wordBreak: 'break-all',
+              lineHeight: 1.3,
+            }}
+          >
+            {text}
+          </Text>
+          <Text 
+            type="secondary" 
+            style={{ 
+              fontSize: '12px',
+              display: 'block',
+              lineHeight: 1.2,
+            }}
+          >
+            {record.name}
+          </Text>
+        </Space>
+      ),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'uiStatus',
+      key: 'uiStatus',
+      width: 60,
+      align: 'center',
+      render: (_: unknown, record: DeviceWithReadings) => {
+        const status = record.uiStatus || record.status;
+        const config = record.uiStatus 
+          ? uiStatusConfig[record.uiStatus] 
+          : legacyStatusConfig[record.status];
+        
+        return (
+          <Tooltip title={status.toUpperCase()}>
+            <div
+              style={{
+                fontSize: '24px',
+                color: config.color === 'success' 
+                  ? '#52c41a' 
+                  : config.color === 'warning' 
+                  ? '#faad14' 
+                  : '#d9d9d9',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {config.icon}
+            </div>
+          </Tooltip>
+        );
+      },
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 70,
+      align: 'center',
+      render: (_, record) => {
+        const isUnregistered = !isDeviceRegistered(record);
+
+        return (
+          <Space size={4} direction="vertical">
+            {activeTab === 'unregistered' && isUnregistered ? (
+              <Button
+                type="primary"
+                icon={<CheckCircleOutlined />}
+                onClick={() => onRegister(record)}
+                size="small"
+                style={{ width: '100%' }}
+              >
+                Register
+              </Button>
+            ) : onRecover ? (
+              <>
+                <Button
+                  type="default"
+                  icon={<EyeOutlined />}
+                  onClick={() => onView(record)}
+                  size="small"
+                  block
+                />
+                <Button
+                  type="primary"
+                  icon={<RollbackOutlined />}
+                  onClick={() => onRecover(record)}
+                  size="small"
+                  block
+                />
+              </>
+            ) : (
+              <>
+                <Button
+                  type="default"
+                  icon={<EyeOutlined />}
+                  onClick={() => onView(record)}
+                  size="small"
+                  block
+                />
+                {onDelete && (
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => onDelete(record)}
+                    size="small"
+                    block
+                  />
+                )}
+              </>
+            )}
+          </Space>
+        );
+      },
+    },
+  ];
+
   // Table columns for registered devices
   const registeredColumns: ColumnsType<DeviceWithReadings> = [
     {
@@ -422,6 +555,11 @@ export const useDeviceColumns = ({
       ),
     },
   ];
+
+  // Return mobile columns if on mobile device, otherwise return full columns
+  if (isMobile) {
+    return mobileColumns;
+  }
 
   return activeTab === 'registered' ? registeredColumns : unregisteredColumns;
 };

@@ -1,10 +1,12 @@
-import { Card, Row, Col, Progress, Typography, Space } from 'antd';
+import { Row, Col, Progress, Typography, Space } from 'antd';
 import { DashboardOutlined } from '@ant-design/icons';
 import { memo, useMemo } from 'react';
 import type { SystemHealthMetrics } from '../../../../services/health.Service';
 import type { WaterQualityAlert } from '../../../../schemas';
 import { HEALTH_COLORS } from '../config/healthThresholds';
 import { calculateSystemHealth, getSystemHealthColor } from '../utils';
+import { ResponsiveCard } from '../../../../components';
+import { useResponsive } from '../../../../hooks';
 
 const { Text, Title } = Typography;
 
@@ -31,6 +33,7 @@ export const OverallHealthCard = memo<OverallHealthCardProps>(({
   systemHealth,
   loading 
 }) => {
+  const { isMobile } = useResponsive();
   // Calculate Express server health score using the new SystemHealthMetrics
   const serverScore: number = useMemo(() => {
     if (!systemHealth?.memory || !systemHealth?.database || !systemHealth?.cpu) return 0;
@@ -103,30 +106,31 @@ export const OverallHealthCard = memo<OverallHealthCardProps>(({
   }, [systemHealth, deviceStats, alertStats]);
 
   return (
-    <Card
+    <ResponsiveCard
       loading={loading}
       bordered={false}
+      compactMobile
       style={{
         background: `linear-gradient(135deg, ${healthColor}20 0%, ${healthColor}05 100%)`,
         borderRadius: 12,
         height: '100%',
       }}
     >
-      <Row gutter={24} align="middle">
+      <Row gutter={isMobile ? [8, 16] : [24, 24]} align="middle">
         {/* Left side - Progress Circle */}
         <Col xs={24} md={8} style={{ textAlign: 'center' }}>
           <Progress
             type="dashboard"
             percent={overallSystemHealth.overallScore}
             strokeColor={healthColor}
-            strokeWidth={12}
-            size={200}
+            strokeWidth={isMobile ? 10 : 12}
+            size={isMobile ? 160 : 200}
             format={(percent) => (
               <div>
-                <div style={{ fontSize: 48, fontWeight: 'bold', color: healthColor }}>
+                <div style={{ fontSize: isMobile ? 36 : 48, fontWeight: 'bold', color: healthColor }}>
                   {percent}%
                 </div>
-                <div style={{ fontSize: 16, color: '#666', marginTop: 8 }}>
+                <div style={{ fontSize: isMobile ? 13 : 16, color: '#666', marginTop: isMobile ? 4 : 8 }}>
                   {overallSystemHealth.status}
                 </div>
               </div>
@@ -136,18 +140,18 @@ export const OverallHealthCard = memo<OverallHealthCardProps>(({
 
         {/* Right side - Info & Component Breakdown */}
         <Col xs={24} md={16}>
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Space direction="vertical" size={isMobile ? 'small' : 'middle'} style={{ width: '100%' }}>
             <div>
-              <Space>
-                <DashboardOutlined style={{ fontSize: 32, color: healthColor }} />
+              <Space align="start">
+                <DashboardOutlined style={{ fontSize: isMobile ? 24 : 32, color: healthColor }} />
                 <div>
-                  <Title level={3} style={{ margin: 0, lineHeight: 1.2 }}>
+                  <Title level={isMobile ? 4 : 3} style={{ margin: 0, lineHeight: 1.2 }}>
                     Overall System Health
                   </Title>
                   <Text 
                     type={overallSystemHealth.status === 'Healthy' ? 'secondary' : 'warning'} 
                     style={{ 
-                      fontSize: 13,
+                      fontSize: isMobile ? 12 : 13,
                       display: 'block',
                       marginTop: 4,
                       color: overallSystemHealth.status === 'Healthy' ? '#52c41a' : 
@@ -163,74 +167,74 @@ export const OverallHealthCard = memo<OverallHealthCardProps>(({
                 {/* Component Breakdown */}
                 <div
                   style={{
-                    padding: 20,
+                    padding: isMobile ? 12 : 20,
                     background: 'rgba(255,255,255,0.8)',
                     borderRadius: 12,
                     boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
                   }}
                 >
-                  <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  <Space direction="vertical" size={isMobile ? 'small' : 'middle'} style={{ width: '100%' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text strong style={{ fontSize: 13, color: '#595959', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      <Text strong style={{ fontSize: isMobile ? 11 : 13, color: '#595959', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                         Component Breakdown
                       </Text>
-                      <Text type="secondary" style={{ fontSize: 12 }}>
+                      <Text type="secondary" style={{ fontSize: isMobile ? 10 : 12 }}>
                         Weighted Calculation
                       </Text>
                     </div>
                     
                     {/* Express Server */}
                     <div style={{ 
-                      padding: '12px 14px', 
+                      padding: isMobile ? '8px 10px' : '12px 14px', 
                       background: '#fafafa', 
                       borderRadius: 8,
                       border: '1px solid #f0f0f0'
                     }}>
-                      <Row justify="space-between" align="middle" style={{ marginBottom: 8 }}>
+                      <Row justify="space-between" align="middle" style={{ marginBottom: isMobile ? 4 : 8 }}>
                         <Col>
-                          <Text strong style={{ fontSize: 14 }}>Express Server</Text>
+                          <Text strong style={{ fontSize: isMobile ? 12 : 14 }}>Express Server</Text>
                         </Col>
                         <Col>
                           <Space size="small">
-                            <Text strong style={{ color: healthColor, fontSize: 18 }}>
+                            <Text strong style={{ color: healthColor, fontSize: isMobile ? 14 : 18 }}>
                               {overallSystemHealth.components.expressServer.score}%
                             </Text>
-                            <Text type="secondary" style={{ fontSize: 11 }}>
-                              (60% weight)
+                            <Text type="secondary" style={{ fontSize: isMobile ? 10 : 11 }}>
+                              (60%)
                             </Text>
                           </Space>
                         </Col>
                       </Row>
                       {systemHealth && (
-                        <Row gutter={8} style={{ marginTop: 8 }}>
+                        <Row gutter={isMobile ? 4 : 8} style={{ marginTop: isMobile ? 4 : 8 }}>
                           <Col span={6}>
-                            <div style={{ textAlign: 'center', padding: '6px', background: '#fff', borderRadius: 6 }}>
-                              <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>CPU</Text>
-                              <Text strong style={{ fontSize: 12, color: systemHealth.cpu.status === 'ok' ? HEALTH_COLORS.EXCELLENT : HEALTH_COLORS.WARNING }}>
+                            <div style={{ textAlign: 'center', padding: isMobile ? 4 : 6, background: '#fff', borderRadius: 6 }}>
+                              <Text type="secondary" style={{ fontSize: isMobile ? 9 : 10, display: 'block' }}>CPU</Text>
+                              <Text strong style={{ fontSize: isMobile ? 11 : 12, color: systemHealth.cpu.status === 'ok' ? HEALTH_COLORS.EXCELLENT : HEALTH_COLORS.WARNING }}>
                                 {systemHealth.cpu.usagePercent.toFixed(0)}%
                               </Text>
                             </div>
                           </Col>
                           <Col span={6}>
-                            <div style={{ textAlign: 'center', padding: '6px', background: '#fff', borderRadius: 6 }}>
-                              <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Memory</Text>
-                              <Text strong style={{ fontSize: 12, color: systemHealth.memory.status === 'ok' ? HEALTH_COLORS.EXCELLENT : HEALTH_COLORS.WARNING }}>
+                            <div style={{ textAlign: 'center', padding: isMobile ? 4 : 6, background: '#fff', borderRadius: 6 }}>
+                              <Text type="secondary" style={{ fontSize: isMobile ? 9 : 10, display: 'block' }}>RAM</Text>
+                              <Text strong style={{ fontSize: isMobile ? 11 : 12, color: systemHealth.memory.status === 'ok' ? HEALTH_COLORS.EXCELLENT : HEALTH_COLORS.WARNING }}>
                                 {systemHealth.memory.usagePercent.toFixed(0)}%
                               </Text>
                             </div>
                           </Col>
                           <Col span={6}>
-                            <div style={{ textAlign: 'center', padding: '6px', background: '#fff', borderRadius: 6 }}>
-                              <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>Storage</Text>
-                              <Text strong style={{ fontSize: 12, color: systemHealth.storage.status === 'ok' ? HEALTH_COLORS.EXCELLENT : HEALTH_COLORS.WARNING }}>
+                            <div style={{ textAlign: 'center', padding: isMobile ? 4 : 6, background: '#fff', borderRadius: 6 }}>
+                              <Text type="secondary" style={{ fontSize: isMobile ? 9 : 10, display: 'block' }}>Disk</Text>
+                              <Text strong style={{ fontSize: isMobile ? 11 : 12, color: systemHealth.storage.status === 'ok' ? HEALTH_COLORS.EXCELLENT : HEALTH_COLORS.WARNING }}>
                                 {systemHealth.storage.usagePercent.toFixed(0)}%
                               </Text>
                             </div>
                           </Col>
                           <Col span={6}>
-                            <div style={{ textAlign: 'center', padding: '6px', background: '#fff', borderRadius: 6 }}>
-                              <Text type="secondary" style={{ fontSize: 10, display: 'block' }}>DB</Text>
-                              <Text strong style={{ fontSize: 12, color: systemHealth.database.connectionStatus === 'connected' ? HEALTH_COLORS.EXCELLENT : HEALTH_COLORS.ERROR }}>
+                            <div style={{ textAlign: 'center', padding: isMobile ? 4 : 6, background: '#fff', borderRadius: 6 }}>
+                              <Text type="secondary" style={{ fontSize: isMobile ? 9 : 10, display: 'block' }}>DB</Text>
+                              <Text strong style={{ fontSize: isMobile ? 11 : 12, color: systemHealth.database.connectionStatus === 'connected' ? HEALTH_COLORS.EXCELLENT : HEALTH_COLORS.ERROR }}>
                                 {systemHealth.database.connectionStatus === 'connected' ? '✓' : '✗'}
                               </Text>
                             </div>
@@ -241,26 +245,26 @@ export const OverallHealthCard = memo<OverallHealthCardProps>(({
                     
                     {/* Devices */}
                     <div style={{ 
-                      padding: '12px 14px', 
+                      padding: isMobile ? '8px 10px' : '12px 14px', 
                       background: '#fafafa', 
                       borderRadius: 8,
                       border: '1px solid #f0f0f0'
                     }}>
                       <Row justify="space-between" align="middle">
                         <Col>
-                          <Text strong style={{ fontSize: 14 }}>Devices</Text>
+                          <Text strong style={{ fontSize: isMobile ? 12 : 14 }}>Devices</Text>
                           <br />
-                          <Text type="secondary" style={{ fontSize: 12 }}>
+                          <Text type="secondary" style={{ fontSize: isMobile ? 11 : 12 }}>
                             {deviceStats.online}/{deviceStats.total} online
                           </Text>
                         </Col>
                         <Col>
                           <Space size="small">
-                            <Text strong style={{ color: healthColor, fontSize: 18 }}>
+                            <Text strong style={{ color: healthColor, fontSize: isMobile ? 14 : 18 }}>
                               {overallSystemHealth.components.devices.score}%
                             </Text>
-                            <Text type="secondary" style={{ fontSize: 11 }}>
-                              (20% weight)
+                            <Text type="secondary" style={{ fontSize: isMobile ? 10 : 11 }}>
+                              (20%)
                             </Text>
                           </Space>
                         </Col>
@@ -270,32 +274,32 @@ export const OverallHealthCard = memo<OverallHealthCardProps>(({
                         strokeColor={healthColor}
                         showInfo={false}
                         size="small"
-                        style={{ marginTop: 8 }}
+                        style={{ marginTop: isMobile ? 4 : 8 }}
                       />
                     </div>
                     
                     {/* Alerts */}
                     <div style={{ 
-                      padding: '12px 14px', 
+                      padding: isMobile ? '8px 10px' : '12px 14px', 
                       background: '#fafafa', 
                       borderRadius: 8,
                       border: '1px solid #f0f0f0'
                     }}>
                       <Row justify="space-between" align="middle">
                         <Col>
-                          <Text strong style={{ fontSize: 14 }}>Alerts</Text>
+                          <Text strong style={{ fontSize: isMobile ? 12 : 14 }}>Alerts</Text>
                           <br />
-                          <Text type="secondary" style={{ fontSize: 12 }}>
+                          <Text type="secondary" style={{ fontSize: isMobile ? 11 : 12 }}>
                             {alertStats.critical} critical, {alertStats.active} active
                           </Text>
                         </Col>
                         <Col>
                           <Space size="small">
-                            <Text strong style={{ color: healthColor, fontSize: 18 }}>
+                            <Text strong style={{ color: healthColor, fontSize: isMobile ? 14 : 18 }}>
                               {overallSystemHealth.components.alerts.score}%
                             </Text>
-                            <Text type="secondary" style={{ fontSize: 11 }}>
-                              (20% weight)
+                            <Text type="secondary" style={{ fontSize: isMobile ? 10 : 11 }}>
+                              (20%)
                             </Text>
                           </Space>
                         </Col>
@@ -305,7 +309,7 @@ export const OverallHealthCard = memo<OverallHealthCardProps>(({
                         strokeColor={healthColor}
                         showInfo={false}
                         size="small"
-                        style={{ marginTop: 8 }}
+                        style={{ marginTop: isMobile ? 4 : 8 }}
                       />
                     </div>
                   </Space>
@@ -313,7 +317,7 @@ export const OverallHealthCard = memo<OverallHealthCardProps>(({
               </Space>
             </Col>
           </Row>
-        </Card>
+        </ResponsiveCard>
   );
 });
 

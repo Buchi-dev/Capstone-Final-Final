@@ -39,6 +39,9 @@ import {
 // 404 Page
 import { NotFoundPage } from '../pages/NotFoundPage';
 
+// Test Page (Development)
+import ComponentTestPage from '../pages/ComponentTestPage';
+
 /**
  * Application Routes Configuration
  * Uses React Router v6 with data router (createBrowserRouter)
@@ -262,6 +265,12 @@ const router = createBrowserRouter([
         <StaffDashboard />
       </ApprovedRoute>
     ),
+  },
+
+  // ==================== TEST PAGE (DEVELOPMENT) ====================
+  {
+    path: '/test/components',
+    element: <ComponentTestPage />,
   },
 
   // ==================== 404 NOT FOUND ====================

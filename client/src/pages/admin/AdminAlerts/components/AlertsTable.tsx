@@ -14,6 +14,7 @@ import type { ColumnsType } from 'antd/es/table';
 import type { TableRowSelection } from 'antd/es/table/interface';
 import { useThemeToken } from '../../../../theme';
 import { useTableScroll } from '../../../../hooks';
+import { useResponsive } from '../../../../hooks/useResponsive';
 import {
   getParameterUnit,
   getSeverityColor,
@@ -52,6 +53,7 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
 }) => {
   const token = useThemeToken();
   const tableScroll = useTableScroll({ offsetHeight: 400 });
+  const { isMobile } = useResponsive();
   
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
@@ -116,6 +118,137 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
       disabled: record.status !== ALERT_STATUS.UNACKNOWLEDGED,
     }),
   };
+
+  // Mobile-optimized columns (3 columns)
+  const mobileColumns: ColumnsType<WaterQualityAlert> = [
+    {
+      title: 'Alert',
+      key: 'alertInfo',
+      ellipsis: false,
+      render: (_, record) => {
+        const deviceDisplayName = record.deviceName || record.deviceId;
+        const locationText = record.deviceLocation || 'No location';
+        
+        return (
+          <Space direction="vertical" size={2} style={{ width: '100%' }}>
+            <Space size={4} wrap>
+              <Tag 
+                color={getSeverityColor(record.severity)} 
+                icon={<WarningOutlined />}
+                style={{ fontSize: '10px', margin: 0 }}
+              >
+                {record.severity}
+              </Tag>
+              <Tag 
+                color={getStatusColor(record.status)} 
+                style={{ fontSize: '10px', margin: 0 }}
+              >
+                {record.status}
+              </Tag>
+            </Space>
+            <Text strong style={{ fontSize: '11px', display: 'block', wordBreak: 'break-word' }}>
+              {record.parameter.toUpperCase()}: {' '}
+              <Text style={{ color: getSeverityColor(record.severity), fontSize: '11px' }}>
+                {formatAlertValue(record.currentValue)} {getParameterUnit(record.parameter)}
+              </Text>
+            </Text>
+            <Text style={{ fontSize: '11px', display: 'block', wordBreak: 'break-word' }}>
+              {deviceDisplayName}
+            </Text>
+            <Space size={4}>
+              <EnvironmentOutlined style={{ fontSize: '10px', color: token.colorTextTertiary }} />
+              <Text type="secondary" style={{ fontSize: '10px' }}>
+                {locationText}
+              </Text>
+            </Space>
+          </Space>
+        );
+      },
+    },
+    {
+      title: 'Time',
+      key: 'time',
+      width: 70,
+      render: (_, record) => {
+        let timeStr = 'N/A';
+        try {
+          if (record.createdAt?.toDate) {
+            const date = record.createdAt.toDate();
+            timeStr = date.toLocaleString('en-US', { 
+              month: 'short', 
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+          } else if (record.createdAt) {
+            const date = new Date(record.createdAt);
+            if (!isNaN(date.getTime())) {
+              timeStr = date.toLocaleString('en-US', { 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+            }
+          } else if (record.timestamp) {
+            const date = new Date(record.timestamp);
+            if (!isNaN(date.getTime())) {
+              timeStr = date.toLocaleString('en-US', { 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+            }
+          }
+        } catch (error) {
+          console.error('Error formatting timestamp:', error);
+        }
+        
+        return (
+          <Space direction="vertical" size={2} align="center">
+            <ClockCircleOutlined style={{ fontSize: '16px', color: token.colorTextTertiary }} />
+            <Text style={{ fontSize: '10px', textAlign: 'center', lineHeight: 1.2 }}>
+              {timeStr}
+            </Text>
+          </Space>
+        );
+      },
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 50,
+      render: (_, record) => (
+        <Space direction="vertical" size={4} style={{ width: '100%' }}>
+          <Button
+            type="primary"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => onViewDetails(record)}
+            block
+            style={{ fontSize: '11px', height: '28px' }}
+          >
+            View
+          </Button>
+          {record.status === ALERT_STATUS.UNACKNOWLEDGED && (
+            <Button
+              type="default"
+              size="small"
+              icon={<CheckCircleOutlined />}
+              onClick={() => handleAcknowledgeClick(record.id!)}
+              loading={acknowledgingAlertId === record.id}
+              disabled={acknowledgingAlertId === record.id}
+              block
+              style={{ fontSize: '11px', height: '28px' }}
+            >
+              Ack
+            </Button>
+          )}
+        </Space>
+      ),
+    },
+  ];
 
   const columns: ColumnsType<WaterQualityAlert> = [
     {
@@ -320,17 +453,20 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
       )}
 
       <Table
-        columns={columns}
+        columns={isMobile ? mobileColumns : columns}
         dataSource={alerts}
         rowKey="id"
         loading={loading}
-        rowSelection={onBatchAcknowledge ? rowSelection : undefined}
-        scroll={tableScroll}
+        rowSelection={onBatchAcknowledge && !isMobile ? rowSelection : undefined}
+        scroll={isMobile ? undefined : tableScroll}
+        bordered={!isMobile}
+        size={isMobile ? 'small' : 'middle'}
         pagination={{
-          pageSize: 20,
-          showSizeChanger: true,
+          pageSize: isMobile ? 5 : 20,
+          showSizeChanger: !isMobile,
           pageSizeOptions: ['10', '20', '50', '100'],
           showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} alerts`,
+          simple: isMobile,
         }}
         locale={{
           emptyText: (

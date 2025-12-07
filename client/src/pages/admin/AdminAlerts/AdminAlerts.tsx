@@ -23,7 +23,7 @@ import { PageHeader } from '../../../components/PageHeader';
 import { useAlerts, useAlertMutations } from '../../../hooks';
 import { useAlertStats, useAlertFilters } from './hooks';
 import {
-  AlertStatistics,
+  CompactAlertStatistics,
   AlertFilters,
   AlertsTable,
   AlertDetailsDrawer,
@@ -199,7 +199,7 @@ export const AdminAlerts = () => {
 
         <Space direction="vertical" size="large" style={{ width: '100%', marginTop: 24 }}>
           {/* Statistics */}
-          <AlertStatistics stats={stats} />
+          <CompactAlertStatistics stats={stats} />
 
           {/* Filters and Actions */}
           <AlertFilters

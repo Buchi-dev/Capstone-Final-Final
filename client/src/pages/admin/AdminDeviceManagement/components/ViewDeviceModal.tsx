@@ -30,6 +30,7 @@ import {
 import type { DeviceWithReadings, DeviceStatus, DeviceUIStatus, CommandResult } from '../../../../schemas';
 import { isDeviceRegistered } from '../../../../schemas';
 import { useThemeToken } from '../../../../theme';
+import { useResponsive } from '../../../../hooks';
 import { devicesService } from '../../../../services/devices.Service';
 import { formatLastSeen } from '../../../../utils/deviceStatus.util';
 import {
@@ -37,6 +38,7 @@ import {
   COMMAND_LABELS,
   COMMAND_DESCRIPTIONS,
 } from '../../../../constants/deviceCommand.constants';
+import { MobileDeviceInfo } from './MobileDeviceInfo';
 
 const { Text } = Typography;
 
@@ -65,6 +67,7 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
   if (!device) return null;
 
   const token = useThemeToken();
+  const { isMobile } = useResponsive();
   const [commandState, setCommandState] = useState<{
     status: 'idle' | 'sending' | 'queued' | 'acknowledged' | 'timeout' | 'failed';
     command: string | null;
@@ -192,27 +195,33 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
   return (
     <Modal
       title={
-        <Space>
-          <ApiOutlined style={{ color: token.colorPrimary }} />
-          <span>Device Details - {device.name}</span>
+        <Space direction={isMobile ? 'vertical' : 'horizontal'} size="small">
+          <Space>
+            <ApiOutlined style={{ color: token.colorPrimary }} />
+            <span style={{ fontSize: isMobile ? '15px' : '16px' }}>
+              {isMobile ? device.name : `Device Details - ${device.name}`}
+            </span>
+          </Space>
           {commandState.status === 'sending' && (
-            <Tag icon={<LoadingOutlined />} color="processing">
-              Sending Command...
+            <Tag icon={<LoadingOutlined />} color="processing" style={{ fontSize: '11px' }}>
+              {isMobile ? 'Sending...' : 'Sending Command...'}
             </Tag>
           )}
           {commandState.status === 'queued' && (
-            <Tag icon={<ClockCircleOutlined />} color="default">
-              Command Queued
+            <Tag icon={<ClockCircleOutlined />} color="default" style={{ fontSize: '11px' }}>
+              {isMobile ? 'Queued' : 'Command Queued'}
             </Tag>
           )}
         </Space>
       }
       open={visible}
       onCancel={onClose}
-      width={900}
-      footer={[
-        <Space key="commands">
-          <Tooltip title={COMMAND_DESCRIPTIONS[DEVICE_COMMANDS.SEND_NOW]}>
+      width={isMobile ? '100%' : 900}
+      style={isMobile ? { top: 0, padding: 0, maxWidth: '100vw' } : {}}
+      styles={isMobile ? { body: { maxHeight: 'calc(100vh - 130px)', overflowY: 'auto', padding: '16px' } } : {}}
+      footer={
+        isMobile ? (
+          <Space direction="vertical" size="small" style={{ width: '100%' }}>
             <Button
               icon={<SendOutlined />}
               onClick={(e) => {
@@ -221,12 +230,11 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
               }}
               disabled={commandState.status === 'sending'}
               loading={commandState.status === 'sending'}
+              block
             >
               Send Now
             </Button>
-          </Tooltip>
-          
-          <Tooltip title={COMMAND_DESCRIPTIONS[DEVICE_COMMANDS.RESTART]}>
+            
             <Button
               icon={<ReloadOutlined />}
               danger
@@ -236,18 +244,56 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
               }}
               disabled={commandState.status === 'sending'}
               loading={commandState.status === 'sending'}
+              block
             >
-              Restart
+              Restart Device
             </Button>
-          </Tooltip>
 
-          <Button key="close" type="primary" onClick={onClose}>
-            Close
-          </Button>
-        </Space>,
-      ]}
+            <Button type="primary" onClick={onClose} block>
+              Close
+            </Button>
+          </Space>
+        ) : (
+          [
+            <Space key="commands">
+              <Tooltip title={COMMAND_DESCRIPTIONS[DEVICE_COMMANDS.SEND_NOW]}>
+                <Button
+                  icon={<SendOutlined />}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    confirmOfflineCommand(handleSendNow);
+                  }}
+                  disabled={commandState.status === 'sending'}
+                  loading={commandState.status === 'sending'}
+                >
+                  Send Now
+                </Button>
+              </Tooltip>
+              
+              <Tooltip title={COMMAND_DESCRIPTIONS[DEVICE_COMMANDS.RESTART]}>
+                <Button
+                  icon={<ReloadOutlined />}
+                  danger
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    confirmOfflineCommand(handleRestartDevice);
+                  }}
+                  disabled={commandState.status === 'sending'}
+                  loading={commandState.status === 'sending'}
+                >
+                  Restart
+                </Button>
+              </Tooltip>
+
+              <Button key="close" type="primary" onClick={onClose}>
+                Close
+              </Button>
+            </Space>,
+          ]
+        )
+      }
     >
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Space direction="vertical" size={isMobile ? 'middle' : 'large'} style={{ width: '100%' }}>
         {/* Command Status Display */}
         {commandState.status !== 'idle' && (
           <Alert
@@ -290,14 +336,25 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
         )}
 
         {/* Device Information */}
-        <Card title={<><DashboardOutlined /> Device Information</>} size="small">
-          <Descriptions bordered column={2} size="small">
-            <Descriptions.Item label="Device ID">
-              <Text code strong>{device.deviceId}</Text>
-            </Descriptions.Item>
-            <Descriptions.Item label="Name">
-              <Text strong>{device.name}</Text>
-            </Descriptions.Item>
+        <Card 
+          title={
+            <Space>
+              <DashboardOutlined />
+              <span style={{ fontSize: isMobile ? '14px' : '16px' }}>Device Information</span>
+            </Space>
+          } 
+          size="small"
+        >
+          {isMobile ? (
+            <MobileDeviceInfo device={device} />
+          ) : (
+            <Descriptions bordered column={2} size="small">
+              <Descriptions.Item label="Device ID">
+                <Text code strong>{device.deviceId}</Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="Name">
+                <Text strong>{device.name}</Text>
+              </Descriptions.Item>
             <Descriptions.Item label="Type">
               <Tag color="blue">{device.type}</Tag>
             </Descriptions.Item>
@@ -351,41 +408,67 @@ export const ViewDeviceModal = ({ visible, device, onClose }: ViewDeviceModalPro
                 : 'Never'}
             </Descriptions.Item>
           </Descriptions>
+          )}
         </Card>
 
         {/* Location Information */}
         <Card 
           title={
-            <Space>
-              <EnvironmentOutlined />
-              <span>Location Information</span>
+            <Space direction={isMobile ? 'vertical' : 'horizontal'} size="small" style={{ width: '100%' }}>
+              <Space>
+                <EnvironmentOutlined />
+                <span style={{ fontSize: isMobile ? '14px' : '16px' }}>Location</span>
+              </Space>
               {isDeviceRegistered(device) ? (
-                <Tag icon={<CheckCircleOutlined />} color="success">REGISTERED</Tag>
+                <Tag icon={<CheckCircleOutlined />} color="success" style={{ fontSize: '11px' }}>
+                  REGISTERED
+                </Tag>
               ) : (
-                <Tag icon={<InfoCircleOutlined />} color="warning">UNREGISTERED</Tag>
+                <Tag icon={<InfoCircleOutlined />} color="warning" style={{ fontSize: '11px' }}>
+                  UNREGISTERED
+                </Tag>
               )}
             </Space>
           } 
           size="small"
         >
           {device.metadata?.location ? (
-            <Descriptions bordered column={2} size="small">
-              <Descriptions.Item label="Building" span={2}>
-                <Text strong>{device.metadata.location.building || 'Not set'}</Text>
-              </Descriptions.Item>
-              <Descriptions.Item label="Floor" span={2}>
-                <Text strong>{device.metadata.location.floor || 'Not set'}</Text>
-              </Descriptions.Item>
-              {device.metadata.location.notes && (
-                <Descriptions.Item label="Notes" span={2}>
-                  <Text>{device.metadata.location.notes}</Text>
+            isMobile ? (
+              <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                <div>
+                  <Text type="secondary" style={{ fontSize: '11px', display: 'block' }}>Building</Text>
+                  <Text strong style={{ fontSize: '13px' }}>{device.metadata.location.building || 'Not set'}</Text>
+                </div>
+                <div>
+                  <Text type="secondary" style={{ fontSize: '11px', display: 'block' }}>Floor</Text>
+                  <Text strong style={{ fontSize: '13px' }}>{device.metadata.location.floor || 'Not set'}</Text>
+                </div>
+                {device.metadata.location.notes && (
+                  <div>
+                    <Text type="secondary" style={{ fontSize: '11px', display: 'block' }}>Notes</Text>
+                    <Text style={{ fontSize: '12px' }}>{device.metadata.location.notes}</Text>
+                  </div>
+                )}
+              </Space>
+            ) : (
+              <Descriptions bordered column={2} size="small">
+                <Descriptions.Item label="Building" span={2}>
+                  <Text strong>{device.metadata.location.building || 'Not set'}</Text>
                 </Descriptions.Item>
-              )}
-            </Descriptions>
+                <Descriptions.Item label="Floor" span={2}>
+                  <Text strong>{device.metadata.location.floor || 'Not set'}</Text>
+                </Descriptions.Item>
+                {device.metadata.location.notes && (
+                  <Descriptions.Item label="Notes" span={2}>
+                    <Text>{device.metadata.location.notes}</Text>
+                  </Descriptions.Item>
+                )}
+              </Descriptions>
+            )
           ) : (
             <Alert
               message="No Location Set"
-              description="This device has not been assigned a location. Please edit the device to add location information for registration."
+              description={isMobile ? "Device not assigned to a location" : "This device has not been assigned a location. Please edit the device to add location information for registration."}
               type="warning"
               showIcon
               icon={<EnvironmentOutlined />}

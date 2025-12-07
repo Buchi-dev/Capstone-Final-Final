@@ -8,7 +8,7 @@ import type { DeviceWithReadings } from '../../../../schemas';
 import { useThemeToken } from '../../../../theme';
 import { useDeviceColumns } from './DeviceTableColumns';
 import { UnregisteredDevicesGrid } from './UnregisteredDevicesGrid';
-import { useTableScroll } from '../../../../hooks';
+import { useTableScroll, useResponsive } from '../../../../hooks';
 
 const { Text } = Typography;
 
@@ -40,6 +40,7 @@ export const DeviceTable = ({
   onRecover,
 }: DeviceTableProps) => {
   const token = useThemeToken();
+  const { isMobile } = useResponsive();
   
   // Get responsive scroll configuration
   const tableScroll = useTableScroll({ offsetHeight: 520 });
@@ -96,28 +97,28 @@ export const DeviceTable = ({
               </Space>
             ),
             children: (
-              <div style={{ padding: token.padding }}>
+              <div style={{ padding: isMobile ? '8px' : token.padding }}>
                 <Table
                   className="device-table"
                   columns={columns}
                   dataSource={filteredDevices}
                   rowKey="deviceId"
                   loading={loading}
-                  size="middle"
+                  size={isMobile ? 'small' : 'middle'}
                   pagination={{
-                    pageSize: 10,
-                    showSizeChanger: true,
+                    pageSize: isMobile ? 5 : 10,
+                    showSizeChanger: !isMobile,
                     pageSizeOptions: ['10', '20', '50', '100'],
                     showTotal: (total) => (
-                      <Text strong style={{ fontSize: '13px' }}>
-                        Total {total} registered device{total !== 1 ? 's' : ''}
+                      <Text strong style={{ fontSize: isMobile ? '13px' : '13px' }}>
+                        {isMobile ? `${total} devices` : `Total ${total} registered device${total !== 1 ? 's' : ''}`}
                       </Text>
                     ),
-                    size: 'default',
+                    size: isMobile ? 'small' : 'default',
                     position: ['bottomCenter'],
                   }}
-                  scroll={tableScroll}
-                  bordered
+                  scroll={isMobile ? undefined : { x: tableScroll.x, y: tableScroll.y }}
+                  bordered={!isMobile}
                   rowClassName={(_, index) => (index % 2 === 0 ? '' : 'ant-table-row-striped')}
                   style={{
                     backgroundColor: token.colorBgContainer,
@@ -167,28 +168,28 @@ export const DeviceTable = ({
               </Space>
             ),
             children: (
-              <div style={{ padding: token.padding }}>
+              <div style={{ padding: isMobile ? '8px' : token.padding }}>
                 <Table
                   className="device-table"
                   columns={columns}
                   dataSource={filteredDevices}
                   rowKey="deviceId"
                   loading={loading}
-                  size="middle"
+                  size={isMobile ? 'small' : 'middle'}
                   pagination={{
-                    pageSize: 10,
-                    showSizeChanger: true,
+                    pageSize: isMobile ? 5 : 10,
+                    showSizeChanger: !isMobile,
                     pageSizeOptions: ['10', '20', '50', '100'],
                     showTotal: (total) => (
-                      <Text strong style={{ fontSize: '13px' }}>
-                        Total {total} deleted device{total !== 1 ? 's' : ''}
+                      <Text strong style={{ fontSize: isMobile ? '13px' : '13px' }}>
+                        {isMobile ? `${total} deleted` : `Total ${total} deleted device${total !== 1 ? 's' : ''}`}
                       </Text>
                     ),
-                    size: 'default',
+                    size: isMobile ? 'small' : 'default',
                     position: ['bottomCenter'],
                   }}
-                  scroll={tableScroll}
-                  bordered
+                  scroll={isMobile ? undefined : { x: tableScroll.x, y: tableScroll.y }}
+                  bordered={!isMobile}
                   rowClassName={(_, index) => (index % 2 === 0 ? '' : 'ant-table-row-striped')}
                   style={{
                     backgroundColor: token.colorBgContainer,

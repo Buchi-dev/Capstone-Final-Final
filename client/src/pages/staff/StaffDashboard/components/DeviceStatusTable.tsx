@@ -19,6 +19,7 @@ import {
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useThemeToken } from '../../../../theme';
+import { useResponsive } from '../../../../hooks/useResponsive';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Text } = Typography;
@@ -48,6 +49,82 @@ interface DeviceStatusTableProps {
 export default function DeviceStatusTable({ devices }: DeviceStatusTableProps) {
   const navigate = useNavigate();
   const token = useThemeToken();
+  const { isMobile } = useResponsive();
+
+  const mobileColumns = useMemo((): ColumnsType<DeviceStatus> => {
+    if (!token) return [];
+
+    return [
+      {
+        title: 'Device',
+        key: 'device',
+        ellipsis: false,
+        render: (record: DeviceStatus) => {
+          const statusConfig = {
+            online: { color: token.colorSuccess, icon: <CheckCircleOutlined />, text: 'Online' },
+            offline: { color: token.colorTextTertiary, icon: <ClockCircleOutlined />, text: 'Offline' },
+            warning: { color: token.colorWarning, icon: <WarningOutlined />, text: 'Warning' },
+          };
+          const config = statusConfig[record.status as keyof typeof statusConfig];
+          
+          return (
+            <Space direction="vertical" size={2} style={{ width: '100%' }}>
+              <Text strong style={{ fontSize: '13px', wordBreak: 'break-word' }}>
+                {record.name}
+              </Text>
+              <Text type="secondary" style={{ fontSize: '10px' }}>
+                <EnvironmentOutlined style={{ marginRight: '4px' }} />
+                {record.location}
+              </Text>
+              <Tag icon={config.icon} color={record.status === 'online' ? 'success' : record.status === 'warning' ? 'warning' : 'default'} style={{ fontSize: '10px', margin: 0 }}>
+                {config.text}
+              </Tag>
+            </Space>
+          );
+        },
+      },
+      {
+        title: 'Status',
+        key: 'status',
+        width: 50,
+        align: 'center' as const,
+        render: (record: DeviceStatus) => {
+          const statusConfig = {
+            online: { color: token.colorSuccess, icon: <CheckCircleOutlined /> },
+            offline: { color: token.colorTextTertiary, icon: <CloseCircleOutlined /> },
+            warning: { color: token.colorWarning, icon: <WarningOutlined /> },
+          };
+          const config = statusConfig[record.status as keyof typeof statusConfig];
+          
+          return (
+            <Tooltip title={`${record.status === 'online' ? 'Online' : record.status === 'warning' ? 'Warning' : 'Offline'}`}>
+              <div style={{ fontSize: '24px', color: config.color }}>
+                {config.icon}
+              </div>
+            </Tooltip>
+          );
+        },
+      },
+      {
+        title: 'Actions',
+        key: 'actions',
+        width: 70,
+        align: 'center' as const,
+        render: () => (
+          <Button
+            type="primary"
+            size="small"
+            icon={<EyeOutlined />}
+            onClick={() => navigate('/staff/devices')}
+            block
+            style={{ fontSize: '11px', height: '32px' }}
+          >
+            View
+          </Button>
+        ),
+      },
+    ];
+  }, [token, navigate, isMobile]);
 
   const deviceColumns = useMemo((): ColumnsType<DeviceStatus> => {
     if (!token) return [];
@@ -311,13 +388,17 @@ export default function DeviceStatusTable({ devices }: DeviceStatusTableProps) {
       styles={{ body: { padding: 0 } }}
     >
       <Table
-        columns={deviceColumns}
+        columns={isMobile ? mobileColumns : deviceColumns}
         dataSource={devices}
         rowKey="id"
+        size={isMobile ? 'small' : 'middle'}
+        bordered={!isMobile}
+        scroll={isMobile ? undefined : { x: 1200 }}
         pagination={{
-          pageSize: 5,
+          pageSize: isMobile ? 5 : 5,
           size: 'small',
           showSizeChanger: false,
+          simple: isMobile,
         }}
       />
     </Card>

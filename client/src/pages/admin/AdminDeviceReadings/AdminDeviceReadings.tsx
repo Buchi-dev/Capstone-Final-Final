@@ -18,15 +18,17 @@ import {
 } from '@ant-design/icons';
 import { AdminLayout } from '../../../components/layouts';
 import { PageHeader } from '../../../components/PageHeader';
-import { useDevices, useAlerts, useRealtimeSensorData } from '../../../hooks';
+import { useDevices, useAlerts, useRealtimeSensorData, useResponsive } from '../../../hooks';
 import { useDeviceSeverityCalculator } from './hooks/useDeviceSeverityCalculator';
-import { StatsOverview, DeviceTable, FilterControls } from './components';
+import { CompactStatsOverview, DeviceTable, FilterControls } from './components';
 import { devicesService } from '../../../services/devices.Service';
 
 const { Content } = Layout;
 const { Text } = Typography;
 
 export const AdminDeviceReadings = () => {
+  const { isMobile } = useResponsive();
+  
   // ✅ DEVICE LIST: Fetch once on mount, no polling needed
   const { devices: devicesData, isLoading: devicesLoading, error: devicesError } = useDevices(); // 🔥 NO POLLING
   
@@ -203,19 +205,21 @@ export const AdminDeviceReadings = () => {
           {connectionState.isConnected ? (
             <Alert
               message="Real-Time Mode Active"
-              description="Connected via WebSocket - Sensor data updates instantly without polling"
+              description={isMobile ? "Connected via WebSocket" : "Connected via WebSocket - Sensor data updates instantly without polling"}
               type="success"
               icon={<WifiOutlined />}
               showIcon
               closable
+              style={{ fontSize: isMobile ? '12px' : '14px' }}
             />
           ) : (
             <Alert
-              message="Connecting to Real-Time Server..."
+              message={isMobile ? "Connecting..." : "Connecting to Real-Time Server..."}
               description={connectionState.error || "Establishing WebSocket connection"}
               type="warning"
               icon={<WifiOutlined spin />}
               showIcon
+              style={{ fontSize: isMobile ? '12px' : '14px' }}
             />
           )}
 
@@ -223,22 +227,30 @@ export const AdminDeviceReadings = () => {
           {enrichedDevices.length > 0 && enrichedDevices.filter(d => !d.latestReading).length > 0 && (
             <Alert
               message="No Sensor Data Available"
-              description={`${enrichedDevices.filter(d => !d.latestReading).length} device(s) have no sensor readings yet. Data will appear automatically when devices publish their first readings.`}
+              description={isMobile 
+                ? `${enrichedDevices.filter(d => !d.latestReading).length} device(s) have no readings`
+                : `${enrichedDevices.filter(d => !d.latestReading).length} device(s) have no sensor readings yet. Data will appear automatically when devices publish their first readings.`
+              }
               type="warning"
               icon={<InfoCircleOutlined />}
               showIcon
               closable
+              style={{ fontSize: isMobile ? '12px' : '14px' }}
             />
           )}
 
           {/* Info Alert */}
           <Alert
             message="Smart Severity Sorting"
-            description="Devices are automatically sorted by severity level. Critical issues appear first for immediate attention."
+            description={isMobile 
+              ? "Devices sorted by severity level"
+              : "Devices are automatically sorted by severity level. Critical issues appear first for immediate attention."
+            }
             type="info"
             icon={<InfoCircleOutlined />}
             showIcon
             closable
+            style={{ fontSize: isMobile ? '12px' : '14px' }}
           />
 
           {/* Error Alert */}
@@ -253,7 +265,7 @@ export const AdminDeviceReadings = () => {
           )}
 
           {/* Statistics Overview */}
-          <StatsOverview stats={stats} />
+          <CompactStatsOverview stats={stats} />
 
           <Divider style={{ margin: '12px 0' }} />
 

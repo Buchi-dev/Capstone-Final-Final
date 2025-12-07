@@ -4,7 +4,7 @@ import { ApiOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { AdminLayout } from '../../../components/layouts';
 import { PageHeader } from '../../../components/PageHeader';
 import {
-  DeviceStats,
+  CompactDeviceMetrics,
   DeviceTable,
   ViewDeviceModal,
   RegisterDeviceModal,
@@ -245,7 +245,7 @@ export const AdminDeviceManagement = () => {
         </PageHeader>
 
         <Space direction="vertical" size="large" style={{ width: '100%', marginTop: 24 }}>
-          <DeviceStats stats={stats} />
+          <CompactDeviceMetrics stats={stats} />
 
           <DeviceTable
             activeTab={activeTab}

@@ -28,12 +28,11 @@ const { Text } = Typography;
 import {
   UserOutlined,
   ReloadOutlined,
-  PlusOutlined,
 } from "@ant-design/icons";
 import { useUsers, useUserMutations } from "../../../hooks";
 import { UsersTable } from "./components/UsersTable";
 import { UserActionsDrawer } from "./components/UserActionsDrawer";
-import { UsersStatistics } from "./components/UsersStatistics";
+import { CompactUsersStatistics } from "./components/CompactUsersStatistics";
 import type { UserListData, UserRole, UserStatus } from "../../../schemas";
 
 import { AdminLayout } from "../../../components/layouts/AdminLayout";
@@ -217,14 +216,6 @@ export const AdminUserManagement: React.FC = () => {
               disabled: loading || isRefreshing,
               loading: isRefreshing,
             },
-            {
-              key: 'add',
-              label: 'Add User',
-              icon: <PlusOutlined />,
-              type: 'primary',
-              disabled: true,
-              onClick: () => message.info('Users are created through registration'),
-            }
           ]}
         />
 
@@ -282,7 +273,7 @@ export const AdminUserManagement: React.FC = () => {
           )}
 
           {/* Statistics Cards */}
-          <UsersStatistics users={users} loading={loading} />
+          <CompactUsersStatistics users={users} loading={loading} />
 
           {/* Users Table */}
           <Card

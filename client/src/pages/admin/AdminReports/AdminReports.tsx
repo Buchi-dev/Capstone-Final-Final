@@ -19,7 +19,6 @@ import {
   Space, 
   Button,
   Divider,
-  Statistic,
   Form,
   Select,
   DatePicker,
@@ -58,6 +57,7 @@ import { reportsService } from '../../../services/reports.Service';
 // Components
 import { AdminLayout } from '../../../components/layouts';
 import { PageHeader } from '../../../components';
+import { CompactReportStats } from './components';
 import ReportHistory from './ReportHistory';
 
 // Types
@@ -428,6 +428,11 @@ export const AdminReports = () => {
                 <Row gutter={16}>
                   {/* Main Form Section */}
                   <Col xs={24} lg={24}>
+                    {/* Compact Statistics */}
+                    <div style={{ marginBottom: 16 }}>
+                      <CompactReportStats devices={devices} />
+                    </div>
+
                     <Card
                       title={
                         <Space>
@@ -590,7 +595,7 @@ export const AdminReports = () => {
                         <Divider style={{ margin: '16px 0' }} />
 
                         <Row gutter={16} align="middle">
-                          <Col xs={24} sm={12}>
+                          <Col xs={24}>
                             <Form.Item style={{ marginBottom: 0 }}>
                               <Button
                                 type="primary"
@@ -604,32 +609,6 @@ export const AdminReports = () => {
                                 {generating ? 'Generating Report...' : 'Generate & Download Report'}
                               </Button>
                             </Form.Item>
-                          </Col>
-                          <Col xs={24} sm={12}>
-                            <Row gutter={8}>
-                              <Col span={8}>
-                                <Statistic
-                                  title="Devices"
-                                  value={devices.filter(d => d.status === 'online').length}
-                                  suffix={`/${devices.length}`}
-                                  valueStyle={{ color: token.colorSuccess, fontSize: 18 }}
-                                />
-                              </Col>
-                              <Col span={8}>
-                                <Statistic
-                                  title="Reports"
-                                  value={0}
-                                  valueStyle={{ color: token.colorPrimary, fontSize: 18 }}
-                                />
-                              </Col>
-                              <Col span={8}>
-                                <Statistic
-                                  title="Sensors"
-                                  value={devices.reduce((acc, d) => acc + (d.sensors?.length || 0), 0)}
-                                  valueStyle={{ color: token.colorInfo, fontSize: 18 }}
-                                />
-                              </Col>
-                            </Row>
                           </Col>
                         </Row>
                       </Form>
