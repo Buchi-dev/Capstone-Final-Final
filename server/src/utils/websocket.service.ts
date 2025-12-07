@@ -79,9 +79,16 @@ class WebSocketService {
    * Initialize WebSocket server
    */
   initialize(httpServer: HttpServer): void {
+    // Parse CORS origin to support multiple origins
+    const corsOrigin = process.env.CORS_ORIGIN 
+      ? process.env.CORS_ORIGIN.includes(',') 
+        ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+        : process.env.CORS_ORIGIN
+      : 'http://localhost:5173';
+
     this.io = new SocketIOServer(httpServer, {
       cors: {
-        origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+        origin: corsOrigin,
         credentials: true,
       },
       transports: ['websocket'], // WebSocket preferred, polling fallback

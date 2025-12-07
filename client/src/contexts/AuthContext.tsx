@@ -55,9 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Validate domain before making backend call
-      const email = auth.currentUser.email;
-      if (!email || !email.endsWith('@smu.edu.ph')) {
-        console.error('[AuthContext] Domain validation failed in fetchUser:', email);
+      const currentUser = auth.currentUser;
+      if (!currentUser || !currentUser.email || !currentUser.email.endsWith('@smu.edu.ph')) {
+        console.error('[AuthContext] Domain validation failed in fetchUser:', currentUser?.email);
         setUser(null);
         setLoading(false);
         return;
@@ -65,11 +65,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Try to get user from backend (with timeout)
       try {
-        const { user: userData } = await authService.getCurrentUser();
+        const response = await authService.checkStatus();
         
-        if (userData) {
-          setUser(userData);
-          console.log('[AuthContext] ✅ User data from backend:', userData.email);
+        if (response.authenticated && response.user) {
+          setUser(response.user);
+          console.log('[AuthContext] ✅ User data from backend:', response.user.email);
         } else {
           setUser(null);
         }
@@ -78,6 +78,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         
         // FALLBACK: Create user object from Firebase data
         const firebaseUser = auth.currentUser;
+        if (!firebaseUser) {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+        
         const tokenResult = await firebaseUser.getIdTokenResult();
         
         // Parse name

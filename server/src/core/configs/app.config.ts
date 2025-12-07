@@ -45,7 +45,11 @@ export const appConfig: Config = {
     },
   },
   cors: {
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: process.env.CORS_ORIGIN 
+      ? process.env.CORS_ORIGIN.includes(',') 
+        ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
+        : process.env.CORS_ORIGIN
+      : '*',
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     exposedHeaders: ['Authorization'],

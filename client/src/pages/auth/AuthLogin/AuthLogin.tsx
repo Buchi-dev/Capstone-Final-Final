@@ -10,7 +10,8 @@ import { Button, Card, Alert, Typography, Space, theme } from "antd";
 import { GoogleOutlined } from "@ant-design/icons";
 import { useAuth } from "../../../contexts";
 import { authService } from "../../../services/auth.Service";
-import { getUserDestination } from "../../../utils/navigationHelpers";
+import { auth } from "../../../config/firebase.config";
+import { onAuthStateChanged } from "firebase/auth";
 
 const { Title, Text } = Typography;
 
@@ -95,7 +96,9 @@ export default function AuthLogin() {
       // Login with Google and verify token with backend
       const response = await authService.loginWithGoogle();
       
-      console.log('[AuthLogin] Login successful:', response.user.email);
+      if (response.user) {
+        console.log('[AuthLogin] Login successful:', response.user.email);
+      }
       
       if (import.meta.env.DEV) {
         console.log('[AuthLogin] Login successful, user:', response.user);
@@ -104,7 +107,7 @@ export default function AuthLogin() {
       // Wait for Firebase auth state to be fully established
       // This ensures subsequent API calls will have auth.currentUser available
       await new Promise<void>((resolve) => {
-        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+        const unsubscribe = onAuthStateChanged(auth, (firebaseUser: import("firebase/auth").User | null) => {
           if (firebaseUser) {
             if (import.meta.env.DEV) {
               console.log('[AuthLogin] Firebase auth state confirmed for:', firebaseUser.email);

@@ -91,8 +91,6 @@ export const AuthPendingApproval = () => {
       return;
     }
     
-    const currentInterval = intervals[pollCount] || intervals[intervals.length - 1];
-    
     const interval = setInterval(async () => {
       if (import.meta.env.DEV) {
         console.log("Checking for status updates...");

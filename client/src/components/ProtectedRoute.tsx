@@ -9,6 +9,7 @@ import { Spin, Result, Button } from "antd";
 import { LoadingOutlined, LockOutlined } from "@ant-design/icons";
 import { useAuth } from "../contexts";
 import { isValidSMUEmail } from "../utils/validation.util";
+import { needsProfileCompletion } from "../utils/navigationHelpers";
 
 /**
  * Loading Spinner Component

@@ -73,7 +73,9 @@ export const useAnalyticsProcessing = (
       if (device.latestReading) {
         if (device.latestReading.ph) phValues.push(device.latestReading.ph);
         if (device.latestReading.tds) tdsValues.push(device.latestReading.tds);
-        if (device.latestReading.turbidity !== undefined) turbidityValues.push(device.latestReading.turbidity);
+        if (device.latestReading.turbidity !== undefined && device.latestReading.turbidity !== null) {
+          turbidityValues.push(device.latestReading.turbidity);
+        }
       }
     });
     
@@ -106,7 +108,9 @@ export const useAnalyticsProcessing = (
       if (device.latestReading) {
         if (device.latestReading.ph) phValues.push(device.latestReading.ph);
         if (device.latestReading.tds) tdsValues.push(device.latestReading.tds);
-        if (device.latestReading.turbidity !== undefined) turbidityValues.push(device.latestReading.turbidity);
+        if (device.latestReading.turbidity !== undefined && device.latestReading.turbidity !== null) {
+          turbidityValues.push(device.latestReading.turbidity);
+        }
       }
     });
     

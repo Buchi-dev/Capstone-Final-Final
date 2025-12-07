@@ -184,7 +184,7 @@ export function calculateDeviceUIStatus(
  */
 function checkWaterQualityWarnings(reading: SensorReading): boolean {
   // Check pH levels (min/max are the warning thresholds)
-  if (reading.pH !== undefined && reading.pH > 0) {
+  if (reading.pH !== undefined && reading.pH !== null && reading.pH > 0) {
     if (
       reading.pH < SENSOR_THRESHOLDS.pH.min ||
       reading.pH > SENSOR_THRESHOLDS.pH.max
@@ -206,6 +206,7 @@ function checkWaterQualityWarnings(reading: SensorReading): boolean {
   // Check turbidity
   if (
     reading.turbidity !== undefined &&
+    reading.turbidity !== null &&
     reading.turbidity > SENSOR_THRESHOLDS.turbidity.warning
   ) {
     return true;
@@ -214,6 +215,7 @@ function checkWaterQualityWarnings(reading: SensorReading): boolean {
   // Check TDS
   if (
     reading.tds !== undefined &&
+    reading.tds !== null &&
     reading.tds > SENSOR_THRESHOLDS.tds.warning
   ) {
     return true;

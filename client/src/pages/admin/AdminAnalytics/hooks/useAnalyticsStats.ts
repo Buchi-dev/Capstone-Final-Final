@@ -138,10 +138,10 @@ const calculateWaterQualityMetrics = (devices: DeviceWithReadings[]): WaterQuali
       if (device.latestReading.ph !== undefined && device.latestReading.ph > 0) {
         phReadings.push(device.latestReading.ph);
       }
-      if (device.latestReading.tds !== undefined && device.latestReading.tds > 0) {
+      if (device.latestReading.tds !== undefined && device.latestReading.tds !== null && device.latestReading.tds > 0) {
         tdsReadings.push(device.latestReading.tds);
       }
-      if (device.latestReading.turbidity !== undefined && device.latestReading.turbidity >= 0) {
+      if (device.latestReading.turbidity !== undefined && device.latestReading.turbidity !== null && device.latestReading.turbidity >= 0) {
         turbidityReadings.push(device.latestReading.turbidity);
       }
     }
