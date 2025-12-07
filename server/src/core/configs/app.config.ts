@@ -1,4 +1,5 @@
 import { config } from 'dotenv';
+import type { CorsOptions } from 'cors';
 
 // Load environment variables
 config();
@@ -17,19 +18,31 @@ interface ServerConfig {
   apiVersion: string;
 }
 
-interface CorsConfig {
-  origin: string | string[];
-  credentials: boolean;
-  allowedHeaders: string[];
-  exposedHeaders: string[];
-  methods: string[];
-}
-
 interface Config {
   server: ServerConfig;
   database: DatabaseConfig;
-  cors: CorsConfig;
+  cors: CorsOptions;
 }
+
+// Parse allowed origins from environment variable
+const getAllowedOrigins = (): string[] => {
+  const corsOrigin = process.env.CORS_ORIGIN;
+  
+  if (!corsOrigin) {
+    console.warn('⚠️  CORS_ORIGIN not set, allowing all origins (not recommended for production)');
+    return [];
+  }
+  
+  // Support comma-separated list of origins
+  const origins = corsOrigin.includes(',') 
+    ? corsOrigin.split(',').map(origin => origin.trim())
+    : [corsOrigin];
+  
+  console.log('✅ Allowed CORS Origins:', origins);
+  return origins;
+};
+
+const allowedOrigins = getAllowedOrigins();
 
 export const appConfig: Config = {
   server: {
@@ -45,11 +58,25 @@ export const appConfig: Config = {
     },
   },
   cors: {
-    origin: process.env.CORS_ORIGIN 
-      ? process.env.CORS_ORIGIN.includes(',') 
-        ? process.env.CORS_ORIGIN.split(',').map(origin => origin.trim())
-        : process.env.CORS_ORIGIN
-      : '*',
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, Postman, curl, or same-origin)
+      if (!origin) {
+        return callback(null, true);
+      }
+      
+      // If no specific origins configured, allow all (development mode)
+      if (allowedOrigins.length === 0) {
+        return callback(null, true);
+      }
+      
+      // Check if origin is in allowed list
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn(`⚠️  Blocked CORS request from origin: ${origin}`);
+        callback(new Error(`Origin ${origin} not allowed by CORS policy. Allowed origins: ${allowedOrigins.join(', ')}`));
+      }
+    },
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     exposedHeaders: ['Authorization'],

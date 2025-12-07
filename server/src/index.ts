@@ -76,6 +76,10 @@ app.use(helmet());
 
 // Middleware
 app.use(cors(appConfig.cors));
+
+// Handle preflight requests explicitly
+app.options('*', cors(appConfig.cors));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(requestLogger);
