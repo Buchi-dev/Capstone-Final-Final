@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "buildCommand": "cd server && npm install && npm run build",
+  "builds": [
+    {
+      "src": "server/dist/index.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "server/dist/index.js"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}

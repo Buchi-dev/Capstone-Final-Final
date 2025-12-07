@@ -22,7 +22,23 @@ export class DatabaseConnection {
     }
 
     try {
-      await mongoose.connect(appConfig.database.uri);
+      logger.info('🔄 Attempting to connect to MongoDB...', {
+        hasUri: !!appConfig.database.uri,
+        uriPrefix: appConfig.database.uri.substring(0, 20) + '...',
+      });
+
+      // Serverless-friendly mongoose configuration
+      const connectionOptions = {
+        serverSelectionTimeoutMS: 10000, // Increase timeout for serverless cold starts
+        socketTimeoutMS: 45000,
+        maxPoolSize: 10, // Limit connection pool for serverless
+        minPoolSize: 1,
+        maxIdleTimeMS: 10000, // Close idle connections faster in serverless
+        retryWrites: appConfig.database.options.retryWrites,
+        w: 'majority' as const,
+      };
+
+      await mongoose.connect(appConfig.database.uri, connectionOptions);
       this.isConnected = true;
       logger.info('✅ MongoDB connected successfully');
 
@@ -41,8 +57,17 @@ export class DatabaseConnection {
         this.isConnected = true;
       });
     } catch (error: any) {
-      logger.error('❌ Failed to connect to MongoDB', { error: error.message, stack: error.stack });
-      throw error;
+      logger.error('❌ Failed to connect to MongoDB', { 
+        error: error.message, 
+        stack: error.stack,
+        code: error.code,
+        name: error.name,
+      });
+      this.isConnected = false;
+      // Don't throw in production serverless - allow server to start
+      if (process.env.NODE_ENV !== 'production') {
+        throw error;
+      }
     }
   }
 

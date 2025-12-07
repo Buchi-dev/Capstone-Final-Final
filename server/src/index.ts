@@ -23,6 +23,54 @@ import { backupRoutes } from '@feature/backups';
 // Initialize Express app
 const app: Application = express();
 
+// Initialize services (for serverless and traditional environments)
+let isInitialized = false;
+
+const initializeServices = async (): Promise<void> => {
+  if (isInitialized) {
+    return;
+  }
+
+  try {
+    // Initialize Winston logger
+    initializeLogger();
+
+    // Initialize Firebase Admin SDK
+    initializeFirebase();
+
+    // Connect to database
+    await dbConnection.connect();
+
+    // Initialize GridFS
+    await gridfsService.initialize();
+
+    // Initialize Email Service
+    await emailService.initialize();
+
+    // Connect to MQTT broker (skip in serverless environments)
+    if (process.env.VERCEL !== '1') {
+      await mqttService.connect();
+    }
+
+    isInitialized = true;
+    logInfo('✅ All services initialized');
+  } catch (error) {
+    logError('❌ Failed to initialize services', error);
+    // Don't throw in serverless - allow app to handle requests
+    if (process.env.VERCEL !== '1') {
+      throw error;
+    }
+  }
+};
+
+// For serverless (Vercel), initialize on first request
+app.use(async (_req: Request, _res: Response, next: NextFunction) => {
+  if (!isInitialized) {
+    await initializeServices();
+  }
+  next();
+});
+
 // Security middleware
 app.use(helmet());
 
@@ -81,32 +129,16 @@ app.use((_req: Request, _res: Response, next: NextFunction) => {
 // Global error handler - Must be last
 app.use(errorHandler);
 
-// Start server
+// Start server (only for non-serverless environments)
 const startServer = async (): Promise<void> => {
   try {
-    // Initialize Winston logger
-    initializeLogger();
+    await initializeServices();
 
-    // Initialize Firebase Admin SDK
-    initializeFirebase();
-
-    // Connect to database
-    await dbConnection.connect();
-
-    // Initialize GridFS
-    await gridfsService.initialize();
-
-    // Initialize Email Service
-    await emailService.initialize();
-
-    // Connect to MQTT broker
-    await mqttService.connect();
-
-    // Start background jobs
-    startPresenceChecker(); // Send "who_is_online" query every minute (ping-pong) - ONLY status detection method
+    // Start background jobs (only in non-serverless)
+    startPresenceChecker();
     startReportCleanupJob();
     startPermanentDeletionJob();
-    startBackupJobs(); // Start all backup jobs (daily, weekly, monthly)
+    startBackupJobs();
 
     // Start listening
     const server = app.listen(appConfig.server.port, () => {
@@ -164,7 +196,9 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-// Start the application
-startServer();
+// Start the application (only if not in serverless environment)
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
 
 export default app;
