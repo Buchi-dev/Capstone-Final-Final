@@ -122,8 +122,8 @@ const logger = winston.createLogger({
     // Add file transports only if file logging is available
     ...(canWriteLogs && errorFileTransport ? [errorFileTransport] : []),
     ...(canWriteLogs && combinedFileTransport ? [combinedFileTransport] : []),
-    // Console transport only in non-production or when explicitly enabled
-    ...(process.env.NODE_ENV !== 'production' || process.env.CONSOLE_LOGS === 'true'
+    // Console transport: enabled in development, or when explicitly enabled, or when file logging is unavailable
+    ...(process.env.NODE_ENV !== 'production' || process.env.CONSOLE_LOGS === 'true' || !canWriteLogs
       ? [consoleTransport]
       : []),
   ],
