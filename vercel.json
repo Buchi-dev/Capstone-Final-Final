@@ -2,19 +2,20 @@
   "version": 2,
   "builds": [
     {
-      "src": "server/index.js",
+      "src": "api/index.js",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["server/serviceAccountKey.json", "server/dist/**"]
+        "includeFiles": ["server/**"],
+        "maxLambdaSize": "50mb"
       }
     }
   ],
   "buildCommand": "cd server && npm ci && npm run build",
-  "installCommand": "cd server && npm install",
+  "installCommand": "npm install && cd server && npm install",
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "server/index.js"
+      "dest": "/api/index.js"
     }
   ],
   "env": {
