@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import { memo } from 'react';
 import type { DeviceWithReadings } from '../../../../schemas';
+import { useTableScroll } from '../../../../hooks';
 import { SensorHealthIndicator } from '../../../../components';
 
 const { Text } = Typography;
@@ -323,6 +324,8 @@ export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
     },
   ];
 
+  const tableScroll = useTableScroll({ offsetHeight: 400 });
+
   return (
     <Table
       columns={columns}
@@ -334,7 +337,7 @@ export const DeviceTable = memo(({ devices }: DeviceTableProps) => {
         showQuickJumper: true,
         showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} devices`,
       }}
-      scroll={{ x: 1000 }}
+      scroll={tableScroll}
       size="middle"
       bordered
     />

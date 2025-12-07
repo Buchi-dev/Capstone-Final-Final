@@ -33,7 +33,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { useThemeToken } from '../../../theme';
-import { useDevices } from '../../../hooks';
+import { useDevices, useTableScroll, useResponsiveGutter } from '../../../hooks';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Title, Text } = Typography;
@@ -56,6 +56,9 @@ interface Device {
 export const StaffDevices = () => {
   const navigate = useNavigate();
   const token = useThemeToken();
+  const tableScroll = useTableScroll({ offsetHeight: 500 });
+  const gutter = useResponsiveGutter();
+  
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -275,7 +278,7 @@ export const StaffDevices = () => {
         ) : (
           <>
         {/* Statistics */}
-        <Row gutter={[16, 16]}>
+        <Row gutter={gutter}>
           <Col xs={24} sm={12} md={8} lg={6} xl={6}>
             <Card>
               <Statistic
@@ -320,7 +323,7 @@ export const StaffDevices = () => {
 
         {/* Filters and Search */}
         <Card>
-          <Row gutter={[16, 16]} align="middle">
+          <Row gutter={gutter} align="middle">
             <Col xs={24} md={12}>
               <Search
                 placeholder="Search devices by name or location..."
@@ -355,6 +358,7 @@ export const StaffDevices = () => {
           <Table
             columns={columns}
             dataSource={filteredDevices}
+            scroll={tableScroll}
             pagination={{
               pageSize: 10,
               showTotal: (total) => `Total ${total} devices`,

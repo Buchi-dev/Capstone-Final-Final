@@ -34,7 +34,7 @@ import {
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
 import { ALERT_STATUS } from '../../../constants';
 import { useThemeToken } from '../../../theme';
-import { useAlerts, useAlertMutations } from '../../../hooks';
+import { useAlerts, useAlertMutations, useTableScroll, useResponsiveGutter } from '../../../hooks';
 import { PageHeader, StatsCard } from '../../../components/staff';
 import { getSeverityColor } from '../../../schemas';
 import type { WaterQualityAlert } from '../../../schemas';
@@ -48,6 +48,8 @@ const { TextArea } = Input;
  */
 export const StaffAlerts = () => {
   const token = useThemeToken();
+  const tableScroll = useTableScroll({ offsetHeight: 450 });
+  const gutter = useResponsiveGutter();
   
   // State for filters and modals
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -432,7 +434,7 @@ export const StaffAlerts = () => {
         />
 
         {/* Statistics Cards */}
-        <Row gutter={[16, 16]}>
+        <Row gutter={gutter}>
           <Col xs={24} sm={12} md={8} lg={6}>
             <StatsCard
               title="Total Alerts"
@@ -472,7 +474,7 @@ export const StaffAlerts = () => {
         </Row>
 
         {/* Severity Breakdown */}
-        <Row gutter={[16, 16]}>
+        <Row gutter={gutter}>
           <Col xs={24} sm={8}>
             <StatsCard
               title="Critical"
@@ -583,7 +585,7 @@ export const StaffAlerts = () => {
             dataSource={filteredAlerts}
             rowKey="alertId"
             loading={isLoading}
-            scroll={{ x: 1200 }}
+            scroll={tableScroll}
             pagination={{
               pageSize: 10,
               showSizeChanger: true,

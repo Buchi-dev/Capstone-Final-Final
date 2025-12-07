@@ -9,7 +9,8 @@ import { PageHeader } from "../../../components/PageHeader";
 import { 
   useHealth,
   useDevices, 
-  useAlerts 
+  useAlerts,
+  useResponsiveGutter
 } from '../../../hooks';
 import { useDashboardStats } from './hooks';
 import {
@@ -35,6 +36,7 @@ const { Content } = Layout;
 export const AdminDashboard = memo(() => {
   const [activeTab, setActiveTab] = useState('overview');
   const [refreshing, setRefreshing] = useState(false);
+  const gutter = useResponsiveGutter();
   
   // ✅ GLOBAL HOOKS - Real-time data from service layer
   const {
@@ -113,7 +115,7 @@ export const AdminDashboard = memo(() => {
           )}
 
           {/* PRIORITY 1: Overall System Health + Recent Alerts (TOP ROW) */}
-          <Row gutter={[16, 16]}>
+          <Row gutter={gutter}>
             <Col xs={24} lg={16}>
               <OverallHealthCard
                 deviceStats={deviceStats}

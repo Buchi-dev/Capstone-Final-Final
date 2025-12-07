@@ -126,3 +126,16 @@ export {
   useHealthStatusBadge,
   formatBytes,
 } from './useHealth';
+
+// ============================================================================
+// RESPONSIVE HOOKS
+// ============================================================================
+
+export {
+  useResponsive,
+  useResponsiveColumns,
+  useTableScroll,
+  useResponsiveGutter,
+  type ResponsiveInfo,
+  type DeviceType,
+} from './useResponsive';

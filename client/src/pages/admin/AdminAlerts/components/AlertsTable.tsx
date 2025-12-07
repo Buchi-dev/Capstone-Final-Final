@@ -13,6 +13,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { TableRowSelection } from 'antd/es/table/interface';
 import { useThemeToken } from '../../../../theme';
+import { useTableScroll } from '../../../../hooks';
 import {
   getParameterUnit,
   getSeverityColor,
@@ -50,6 +51,8 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
   currentFilters,
 }) => {
   const token = useThemeToken();
+  const tableScroll = useTableScroll({ offsetHeight: 400 });
+  
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [batchLoading, setBatchLoading] = useState(false);
   const [acknowledgingAlertId, setAcknowledgingAlertId] = useState<string | null>(null);
@@ -322,7 +325,7 @@ const AlertsTable: React.FC<AlertsTableProps> = ({
         rowKey="id"
         loading={loading}
         rowSelection={onBatchAcknowledge ? rowSelection : undefined}
-        scroll={{ x: 1200 }}
+        scroll={tableScroll}
         pagination={{
           pageSize: 20,
           showSizeChanger: true,

@@ -15,7 +15,7 @@ import { Row, Col, Space, Alert, Button, Skeleton } from 'antd';
 import { EyeOutlined, AlertOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { StaffLayout } from '../../../components/layouts/StaffLayout';
-import { useAuth, useDevices, useAlerts } from '../../../hooks';
+import { useAuth, useDevices, useAlerts, useResponsiveGutter } from '../../../hooks';
 import { useThemeToken } from '../../../theme';
 import type { WaterQualityAlert } from '../../../schemas';
 import { RealtimeAlertMonitor } from '../../../components/RealtimeAlertMonitor';
@@ -39,6 +39,7 @@ export const StaffDashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const token = useThemeToken();
+  const gutter = useResponsiveGutter();
   
   // ✅ GLOBAL HOOKS - Real-time data from service layer
   const { 
@@ -258,7 +259,7 @@ export const StaffDashboard = () => {
           <RealtimeAlertMonitor />
 
           {/* Main Content Grid */}
-          <Row gutter={[16, 16]}>
+          <Row gutter={gutter}>
             {/* Left Column - Alerts & Device Status */}
             <Col xs={24} xl={16}>
               <Space direction="vertical" size="middle" style={{ width: '100%' }}>

@@ -8,6 +8,7 @@ import type { DeviceWithReadings } from '../../../../schemas';
 import { useThemeToken } from '../../../../theme';
 import { useDeviceColumns } from './DeviceTableColumns';
 import { UnregisteredDevicesGrid } from './UnregisteredDevicesGrid';
+import { useTableScroll } from '../../../../hooks';
 
 const { Text } = Typography;
 
@@ -39,6 +40,9 @@ export const DeviceTable = ({
   onRecover,
 }: DeviceTableProps) => {
   const token = useThemeToken();
+  
+  // Get responsive scroll configuration
+  const tableScroll = useTableScroll({ offsetHeight: 520 });
   
   const columns = useDeviceColumns({
     activeTab: activeTab === 'deleted' ? 'registered' : activeTab, // Use registered columns for deleted
@@ -92,7 +96,7 @@ export const DeviceTable = ({
               </Space>
             ),
             children: (
-              <div style={{ padding: '16px' }}>
+              <div style={{ padding: token.padding }}>
                 <Table
                   className="device-table"
                   columns={columns}
@@ -112,7 +116,7 @@ export const DeviceTable = ({
                     size: 'default',
                     position: ['bottomCenter'],
                   }}
-                  scroll={{ y: 'calc(100vh - 520px)' }}
+                  scroll={tableScroll}
                   bordered
                   rowClassName={(_, index) => (index % 2 === 0 ? '' : 'ant-table-row-striped')}
                   style={{
@@ -163,7 +167,7 @@ export const DeviceTable = ({
               </Space>
             ),
             children: (
-              <div style={{ padding: '16px' }}>
+              <div style={{ padding: token.padding }}>
                 <Table
                   className="device-table"
                   columns={columns}
@@ -183,7 +187,7 @@ export const DeviceTable = ({
                     size: 'default',
                     position: ['bottomCenter'],
                   }}
-                  scroll={{ y: 'calc(100vh - 520px)' }}
+                  scroll={tableScroll}
                   bordered
                   rowClassName={(_, index) => (index % 2 === 0 ? '' : 'ant-table-row-striped')}
                   style={{

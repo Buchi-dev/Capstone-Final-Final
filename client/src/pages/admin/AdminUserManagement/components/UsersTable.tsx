@@ -24,6 +24,7 @@ import {
   EyeOutlined,
 } from '@ant-design/icons';
 import type { UserListData, UserRole, UserStatus } from '../../../../schemas';
+import { useTableScroll } from '../../../../hooks';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -39,6 +40,8 @@ export const UsersTable: React.FC<UsersTableProps> = ({
   loading,
   onViewUser,
 }) => {
+  const tableScroll = useTableScroll({ offsetHeight: 450 });
+  
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<UserStatus | 'All'>('All');
   const [roleFilter, setRoleFilter] = useState<UserRole | 'All'>('All');
@@ -292,7 +295,7 @@ export const UsersTable: React.FC<UsersTableProps> = ({
         pagination={pagination}
         onChange={handleTableChange}
         rowKey="id"
-        scroll={{ x: 1300 }}
+        scroll={tableScroll}
         bordered
       />
     </div>
