@@ -57,6 +57,28 @@ const formatTimestamp = (timestamp: any): string => {
   }
 };
 
+/**
+ * Extract user display name from user object or string
+ * Handles both populated user objects and string IDs
+ */
+const getUserDisplayName = (user: any): string => {
+  if (!user) return 'Unknown';
+  
+  // If it's already a string, return it
+  if (typeof user === 'string') return user;
+  
+  // If it's a populated user object, extract the display name
+  if (typeof user === 'object') {
+    return user.displayName || 
+           `${user.firstName || ''} ${user.lastName || ''}`.trim() || 
+           user.email || 
+           user._id || 
+           'Unknown';
+  }
+  
+  return 'Unknown';
+};
+
 interface AlertDetailsDrawerProps {
   visible: boolean;
   alert: WaterQualityAlert | null;
@@ -352,7 +374,7 @@ const AlertDetailsDrawer: React.FC<AlertDetailsDrawerProps> = ({
                           </div>
                           {alert.acknowledgedBy && (
                             <Text type="secondary" style={{ fontSize: 11, paddingLeft: 24 }}>
-                              by {alert.acknowledgedBy}
+                              by {getUserDisplayName(alert.acknowledgedBy)}
                             </Text>
                           )}
                         </>
@@ -371,7 +393,7 @@ const AlertDetailsDrawer: React.FC<AlertDetailsDrawerProps> = ({
                           </div>
                           {alert.resolvedBy && (
                             <Text type="secondary" style={{ fontSize: 11, paddingLeft: 24 }}>
-                              by {alert.resolvedBy}
+                              by {getUserDisplayName(alert.resolvedBy)}
                             </Text>
                           )}
                           {alert.resolutionNotes && (

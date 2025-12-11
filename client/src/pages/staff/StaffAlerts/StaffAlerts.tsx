@@ -221,6 +221,25 @@ export const StaffAlerts = () => {
     }
   };
 
+  // Extract user display name from user object or string
+  const getUserDisplayName = (user: any): string => {
+    if (!user) return 'Unknown';
+    
+    // If it's already a string, return it
+    if (typeof user === 'string') return user;
+    
+    // If it's a populated user object, extract the display name
+    if (typeof user === 'object') {
+      return user.displayName || 
+             `${user.firstName || ''} ${user.lastName || ''}`.trim() || 
+             user.email || 
+             user._id || 
+             'Unknown';
+    }
+    
+    return 'Unknown';
+  };
+
   // Get time since alert
   const getTimeSince = (timestamp: any): string => {
     if (!timestamp) return 'N/A';
@@ -800,7 +819,7 @@ export const StaffAlerts = () => {
                   <div>
                     <Text>{formatTimestamp(selectedAlert.acknowledgedAt)}</Text>
                     {selectedAlert.acknowledgedBy && (
-                      <Text type="secondary"> by {selectedAlert.acknowledgedBy}</Text>
+                      <Text type="secondary"> by {getUserDisplayName(selectedAlert.acknowledgedBy)}</Text>
                     )}
                   </div>
                 </div>
@@ -811,7 +830,7 @@ export const StaffAlerts = () => {
                   <div>
                     <Text>{formatTimestamp(selectedAlert.resolvedAt)}</Text>
                     {selectedAlert.resolvedBy && (
-                      <Text type="secondary"> by {selectedAlert.resolvedBy}</Text>
+                      <Text type="secondary"> by {getUserDisplayName(selectedAlert.resolvedBy)}</Text>
                     )}
                   </div>
                 </div>
